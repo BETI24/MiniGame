@@ -209,35 +209,48 @@ export default {
             return score;
         };
 
-        // Erweiterte Render-Funktion für saubere Animationen
         const renderCards = (hand, containerEl, hideSecondCard = false, isHit = false) => {
-            containerEl.innerHTML = '';
+            // Leere den Container nur beim Start einer neuen Runde
+            if (!isHit) {
+                containerEl.innerHTML = '';
+            }
+
             hand.forEach((card, index) => {
-                const cardEl = document.createElement('div');
-                let className = 'bj-card';
+                // Prüfe, ob das HTML-Element für diese Karte bereits existiert
+                const existingCard = containerEl.children[index];
 
-                if (hideSecondCard && index === 1) {
-                    className += ' hidden';
+                if (existingCard) {
+                    // Aktualisiere nur das Aussehen der bestehenden Karte (wichtig für die verdeckte Dealer-Karte beim Aufdecken)
+                    if (hideSecondCard && index === 1) {
+                        existingCard.className = 'bj-card hidden';
+                        existingCard.innerHTML = '';
+                    } else {
+                        existingCard.className = `bj-card ${card.suit.color}`;
+                        existingCard.innerHTML = `${card.value}<br>${card.suit.icon}`;
+                        // Zwingt alte Karten dazu, statisch und sichtbar zu bleiben
+                        existingCard.style.animation = 'none';
+                        existingCard.style.opacity = '1';
+                    }
                 } else {
-                    className += ` ${card.suit.color}`;
-                    cardEl.innerHTML = `${card.value}<br>${card.suit.icon}`;
+                    // Erstelle ein neues HTML-Element, wenn die Karte noch fehlt (z.B. beim Hit)
+                    const cardEl = document.createElement('div');
+
+                    if (hideSecondCard && index === 1) {
+                        cardEl.className = 'bj-card hidden';
+                    } else {
+                        cardEl.className = `bj-card ${card.suit.color}`;
+                        cardEl.innerHTML = `${card.value}<br>${card.suit.icon}`;
+                    }
+
+                    // Animation für die erste Austeilrunde (zeitversetzt) oder einen Hit (sofort)
+                    if (!isHit) {
+                        cardEl.style.animationDelay = `${index * 0.15}s`;
+                    } else {
+                        cardEl.style.animationDelay = `0s`;
+                    }
+
+                    containerEl.appendChild(cardEl);
                 }
-
-                cardEl.className = className;
-
-                // Logik: Bei einem "Hit" wird nur die neu gezogene Karte animiert.
-                // Beim Rundenstart fliegen die Karten zeitversetzt ein.
-                if (!isHit) {
-                    cardEl.style.animationDelay = `${index * 0.15}s`;
-                } else if (index === hand.length - 1) {
-                    cardEl.style.animationDelay = `0s`; // Neue Karte sofort animieren
-                } else {
-                    // Alte Karten statisch anzeigen
-                    cardEl.style.animation = 'none';
-                    cardEl.style.opacity = '1';
-                }
-
-                containerEl.appendChild(cardEl);
             });
         };
 
@@ -344,7 +357,8 @@ export default {
                 }
             };
 
-            updateUI(true, false);
+            // FIX: Das zweite Argument muss true sein, damit das Spielfeld nicht geleert wird!
+            updateUI(true, true);
             setTimeout(dealerPlay, 500);
         });
 

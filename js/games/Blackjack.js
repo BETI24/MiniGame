@@ -2,16 +2,22 @@ export default {
     manifest: {
         id: 'blackjack',
         name: 'Blackjack',
-        description: 'Der Casino-Klassiker. Versuche näher an 21 Punkte zu kommen als der Dealer, ohne dich zu überkaufen.',
+        description: 'Der Casino-Klassiker. Setze dein Guthaben und versuche näher an 21 Punkte zu kommen als der Dealer.',
         icon: '🃏',
-        tags: ['Karten', 'Casino', 'Logik']
+        tags: ['Karten', 'Casino', 'Logik', 'Wetten']
     },
     init: (container, services) => {
+        // --- State Management ---
         let deck = [];
         let playerHand = [];
         let dealerHand = [];
-        let winStreak = 0;
-        let gameActive = true;
+        let gameActive = false;
+
+        let balance = 1000;
+        let currentBet = 0;
+
+        // Bisherigen Highscore laden (Standard: 0)
+        let recordBalance = services.highscores.getHighscore('blackjack') || 0;
 
         const style = document.createElement('style');
         style.textContent = `
@@ -21,10 +27,30 @@ export default {
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
-                padding: 2rem;
+                padding: 1.5rem;
                 color: #fff;
                 background: radial-gradient(circle at 50% 50%, #1a3c28 0%, #0a1710 100%);
                 overflow: hidden;
+            }
+            .bj-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                background: rgba(0,0,0,0.5);
+                padding: 1rem 1.5rem;
+                border-radius: 12px;
+                border: 1px solid rgba(255,255,255,0.2);
+            }
+            .bj-stats {
+                font-size: 1.2rem;
+                font-weight: bold;
+            }
+            .val-balance { color: #00ff88; }
+            .val-bet { color: #f4a261; }
+            .bj-record {
+                color: #ffd700;
+                font-weight: bold;
+                text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
             }
             .bj-area {
                 display: flex;
@@ -49,8 +75,6 @@ export default {
                 font-weight: bold;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.5);
                 position: relative;
-                
-                /* Animations-Setup */
                 opacity: 0;
                 animation: dealCard 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
             }
@@ -63,6 +87,7 @@ export default {
             .bj-controls {
                 display: flex;
                 justify-content: center;
+                flex-wrap: wrap;
                 gap: 1rem;
                 margin-top: 1rem;
             }
@@ -77,13 +102,19 @@ export default {
                 color: #000;
                 transition: transform 0.2s, box-shadow 0.2s;
             }
+            .bj-btn.bet-btn { background: #f4a261; }
+            .bj-btn.action-btn { background: #00ff88; }
+            .bj-btn.danger-btn { background: #ff3366; color: white; }
+            
             .bj-btn:disabled {
                 opacity: 0.3;
                 cursor: not-allowed;
+                transform: none !important;
+                box-shadow: none !important;
             }
             .bj-btn:not(:disabled):hover {
                 transform: translateY(-3px);
-                box-shadow: 0 5px 15px rgba(0, 212, 255, 0.4);
+                box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
             }
             .bj-message {
                 text-align: center;
@@ -94,30 +125,10 @@ export default {
                 transition: all 0.3s;
             }
             
-            /* Status-Klassen für die Nachrichten */
-            .bj-message.win {
-                color: #00ff88;
-                animation: winPulse 1.5s infinite;
-            }
-            .bj-message.lose {
-                color: #ff3366;
-                animation: shake 0.5s ease-in-out;
-            }
-            .bj-message.draw {
-                color: #f4a261;
-            }
-
-            .bj-streak {
-                position: absolute;
-                top: 80px;
-                right: 20px;
-                background: rgba(0,0,0,0.5);
-                padding: 0.5rem 1rem;
-                border-radius: 12px;
-                border: 1px solid rgba(255,255,255,0.2);
-            }
-
-            /* Keyframe Definitionen */
+            .bj-message.win { color: #00ff88; animation: winPulse 1.5s infinite; }
+            .bj-message.lose { color: #ff3366; animation: shake 0.5s ease-in-out; }
+            .bj-message.draw { color: #f4a261; }
+            
             @keyframes dealCard {
                 0% { transform: translateY(-150px) rotate(-15deg) scale(0.5); opacity: 0; }
                 100% { transform: translateY(0) rotate(0) scale(1); opacity: 1; }
@@ -138,39 +149,116 @@ export default {
         wrapper.className = 'bj-wrapper';
 
         wrapper.innerHTML = `
-            <div class="bj-streak">Siegesserie: <span id="streak-counter">0</span></div>
+            <div class="bj-header">
+                <div class="bj-stats">
+                    Guthaben: $<span id="balance-display" class="val-balance">1000</span> | 
+                    Einsatz: $<span id="bet-display" class="val-bet">0</span>
+                </div>
+                <div class="bj-record">Rekord: $<span id="record-counter">${recordBalance}</span></div>
+            </div>
             
             <div class="bj-area" id="dealer-area">
                 <h2>Dealer: <span id="dealer-score">?</span></h2>
                 <div class="bj-cards" id="dealer-cards"></div>
             </div>
 
-            <div class="bj-message" id="game-message"></div>
+            <div class="bj-message" id="game-message">Willkommen! Bitte Einsatz wählen.</div>
 
             <div class="bj-area" id="player-area">
                 <div class="bj-cards" id="player-cards"></div>
                 <h2>Spieler: <span id="player-score">0</span></h2>
                 
-                <div class="bj-controls">
+                <!-- Setz-Phase Buttons -->
+                <div class="bj-controls" id="betting-controls">
+                    <button class="bj-btn bet-btn" id="btn-bet-10">+$10</button>
+                    <button class="bj-btn bet-btn" id="btn-bet-50">+$50</button>
+                    <button class="bj-btn bet-btn" id="btn-bet-100">+$100</button>
+                    <button class="bj-btn bet-btn" id="btn-bet-all">All-In</button>
+                    <button class="bj-btn" id="btn-bet-clear">Löschen</button>
+                    <button class="bj-btn action-btn" id="btn-deal" disabled>Karten geben</button>
+                </div>
+
+                <!-- Spiel-Phase Buttons -->
+                <div class="bj-controls" id="playing-controls" style="display: none;">
                     <button class="bj-btn" id="btn-hit">Karte ziehen</button>
                     <button class="bj-btn" id="btn-stand">Halten</button>
-                    <button class="bj-btn" id="btn-restart" style="display: none;">Nächste Runde</button>
+                    <button class="bj-btn action-btn" id="btn-restart" style="display: none;">Nächste Runde</button>
+                    <button class="bj-btn danger-btn" id="btn-bankrupt" style="display: none;">Neues Geld holen ($1000)</button>
                 </div>
             </div>
         `;
         container.appendChild(wrapper);
 
+        // --- UI Referenzen ---
         const dealerCardsEl = wrapper.querySelector('#dealer-cards');
         const playerCardsEl = wrapper.querySelector('#player-cards');
         const dealerScoreEl = wrapper.querySelector('#dealer-score');
         const playerScoreEl = wrapper.querySelector('#player-score');
         const messageEl = wrapper.querySelector('#game-message');
-        const streakEl = wrapper.querySelector('#streak-counter');
+        const recordEl = wrapper.querySelector('#record-counter');
+        const balanceDisplay = wrapper.querySelector('#balance-display');
+        const betDisplay = wrapper.querySelector('#bet-display');
+
+        const bettingControls = wrapper.querySelector('#betting-controls');
+        const playingControls = wrapper.querySelector('#playing-controls');
+
+        const btnBet10 = wrapper.querySelector('#btn-bet-10');
+        const btnBet50 = wrapper.querySelector('#btn-bet-50');
+        const btnBet100 = wrapper.querySelector('#btn-bet-100');
+        const btnBetAll = wrapper.querySelector('#btn-bet-all');
+        const btnBetClear = wrapper.querySelector('#btn-bet-clear');
+        const btnDeal = wrapper.querySelector('#btn-deal');
 
         const btnHit = wrapper.querySelector('#btn-hit');
         const btnStand = wrapper.querySelector('#btn-stand');
         const btnRestart = wrapper.querySelector('#btn-restart');
+        const btnBankrupt = wrapper.querySelector('#btn-bankrupt');
 
+        // --- Logik für Geld & Einsätze ---
+        const updateMoneyUI = () => {
+            balanceDisplay.innerText = balance;
+            betDisplay.innerText = currentBet;
+
+            btnDeal.disabled = currentBet === 0;
+            btnBet10.disabled = balance < 10;
+            btnBet50.disabled = balance < 50;
+            btnBet100.disabled = balance < 100;
+            btnBetAll.disabled = balance === 0;
+            btnBetClear.disabled = currentBet === 0;
+        };
+
+        const placeBet = (amount) => {
+            if (balance >= amount) {
+                balance -= amount;
+                currentBet += amount;
+                updateMoneyUI();
+            }
+        };
+
+        btnBet10.addEventListener('click', () => placeBet(10));
+        btnBet50.addEventListener('click', () => placeBet(50));
+        btnBet100.addEventListener('click', () => placeBet(100));
+
+        btnBetAll.addEventListener('click', () => {
+            if (balance > 0) {
+                currentBet += balance;
+                balance = 0;
+                updateMoneyUI();
+            }
+        });
+
+        btnBetClear.addEventListener('click', () => {
+            balance += currentBet;
+            currentBet = 0;
+            updateMoneyUI();
+        });
+
+        btnBankrupt.addEventListener('click', () => {
+            balance = 1000;
+            startBettingPhase();
+        });
+
+        // --- Kartendeck Logik ---
         const suits = [{ id: 'H', icon: '♥', color: 'red' }, { id: 'D', icon: '♦', color: 'red' }, { id: 'C', icon: '♣', color: 'black' }, { id: 'S', icon: '♠', color: 'black' }];
         const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 
@@ -190,7 +278,6 @@ export default {
         const calculateScore = (hand) => {
             let score = 0;
             let aces = 0;
-
             for (let card of hand) {
                 if (['J', 'Q', 'K'].includes(card.value)) {
                     score += 10;
@@ -201,7 +288,6 @@ export default {
                     score += parseInt(card.value);
                 }
             }
-
             while (score > 21 && aces > 0) {
                 score -= 10;
                 aces -= 1;
@@ -210,64 +296,66 @@ export default {
         };
 
         const renderCards = (hand, containerEl, hideSecondCard = false, isHit = false) => {
-            // Leere den Container nur beim Start einer neuen Runde
-            if (!isHit) {
-                containerEl.innerHTML = '';
-            }
+            if (!isHit) containerEl.innerHTML = '';
 
             hand.forEach((card, index) => {
-                // Prüfe, ob das HTML-Element für diese Karte bereits existiert
                 const existingCard = containerEl.children[index];
 
                 if (existingCard) {
-                    // Aktualisiere nur das Aussehen der bestehenden Karte (wichtig für die verdeckte Dealer-Karte beim Aufdecken)
                     if (hideSecondCard && index === 1) {
                         existingCard.className = 'bj-card hidden';
                         existingCard.innerHTML = '';
                     } else {
                         existingCard.className = `bj-card ${card.suit.color}`;
                         existingCard.innerHTML = `${card.value}<br>${card.suit.icon}`;
-                        // Zwingt alte Karten dazu, statisch und sichtbar zu bleiben
                         existingCard.style.animation = 'none';
                         existingCard.style.opacity = '1';
                     }
                 } else {
-                    // Erstelle ein neues HTML-Element, wenn die Karte noch fehlt (z.B. beim Hit)
                     const cardEl = document.createElement('div');
-
                     if (hideSecondCard && index === 1) {
                         cardEl.className = 'bj-card hidden';
                     } else {
                         cardEl.className = `bj-card ${card.suit.color}`;
                         cardEl.innerHTML = `${card.value}<br>${card.suit.icon}`;
                     }
-
-                    // Animation für die erste Austeilrunde (zeitversetzt) oder einen Hit (sofort)
-                    if (!isHit) {
-                        cardEl.style.animationDelay = `${index * 0.15}s`;
-                    } else {
-                        cardEl.style.animationDelay = `0s`;
-                    }
-
+                    cardEl.style.animationDelay = !isHit ? `${index * 0.15}s` : `0s`;
                     containerEl.appendChild(cardEl);
                 }
             });
         };
 
         const updateUI = (showDealerFull = false, isHit = false) => {
-            // Die Berechnung wird direkt übergeben (kein pScore mehr nötig)
             playerScoreEl.innerText = calculateScore(playerHand);
             renderCards(playerHand, playerCardsEl, false, isHit);
 
             if (showDealerFull) {
-                // Die Berechnung wird direkt übergeben (kein dScore mehr nötig)
                 dealerScoreEl.innerText = calculateScore(dealerHand);
                 renderCards(dealerHand, dealerCardsEl, false, isHit);
             } else {
-                // Auch hier direktes Einsetzen für die verdeckte Dealer-Karte
                 dealerScoreEl.innerText = calculateScore([dealerHand[0]]) + ' + ?';
                 renderCards(dealerHand, dealerCardsEl, true, isHit);
             }
+        };
+
+        // --- Spielablauf ---
+        const startBettingPhase = () => {
+            gameActive = false;
+
+            bettingControls.style.display = 'flex';
+            playingControls.style.display = 'none';
+            btnRestart.style.display = 'none';
+            btnBankrupt.style.display = 'none';
+
+            playerCardsEl.innerHTML = '';
+            dealerCardsEl.innerHTML = '';
+            playerScoreEl.innerText = '0';
+            dealerScoreEl.innerText = '?';
+
+            messageEl.className = 'bj-message';
+            messageEl.innerText = 'Bitte Einsatz wählen';
+
+            updateMoneyUI();
         };
 
         const endGame = (message, status) => {
@@ -275,24 +363,36 @@ export default {
             btnHit.disabled = true;
             btnStand.disabled = true;
 
-            // Verzögert den Neustart-Button leicht, damit die Animationen wirken
-            setTimeout(() => {
-                btnRestart.style.display = 'block';
-            }, 600);
-
             updateUI(true, true);
-
-            // Klassen-Zuweisung für CSS-Effekte
             messageEl.className = `bj-message ${status}`;
             messageEl.innerText = message;
 
+            // Gewinnausschüttung berechnen
             if (status === 'win') {
-                winStreak++;
-                services.highscores.saveHighscore('blackjack', winStreak);
-            } else if (status === 'lose') {
-                winStreak = 0;
+                balance += currentBet * 2;
+            } else if (status === 'blackjack') {
+                balance += Math.floor(currentBet * 2.5); // 3:2 Payout
+            } else if (status === 'draw') {
+                balance += currentBet; // Geld zurück
             }
-            streakEl.innerText = winStreak;
+
+            // Highscore (Max. Guthaben) prüfen und speichern
+            services.highscores.saveHighscore('blackjack', balance);
+
+            // UI mit dem eventuell neuen Rekord aktualisieren
+            recordBalance = services.highscores.getHighscore('blackjack');
+            recordEl.innerText = recordBalance;
+
+            currentBet = 0;
+            updateMoneyUI();
+
+            setTimeout(() => {
+                if (balance === 0) {
+                    btnBankrupt.style.display = 'block';
+                } else {
+                    btnRestart.style.display = 'block';
+                }
+            }, 600);
         };
 
         const startRound = () => {
@@ -301,9 +401,11 @@ export default {
             dealerHand = [deck.pop(), deck.pop()];
 
             gameActive = true;
+            bettingControls.style.display = 'none';
+            playingControls.style.display = 'flex';
+
             btnHit.disabled = false;
             btnStand.disabled = false;
-            btnRestart.style.display = 'none';
 
             messageEl.className = 'bj-message';
             messageEl.innerText = '';
@@ -311,9 +413,13 @@ export default {
             updateUI(false, false);
 
             if (calculateScore(playerHand) === 21) {
-                endGame('Blackjack! Du gewinnst.', 'win');
+                endGame('Blackjack! Du gewinnst (3:2).', 'blackjack');
             }
         };
+
+        // --- Event Listener Spiel-Phase ---
+        btnDeal.addEventListener('click', startRound);
+        btnRestart.addEventListener('click', startBettingPhase);
 
         btnHit.addEventListener('click', () => {
             if (!gameActive) return;
@@ -321,14 +427,13 @@ export default {
             updateUI(false, true);
 
             if (calculateScore(playerHand) > 21) {
-                endGame('Überkauft! Du verlierst.', 'lose');
+                endGame('Überkauft! Du verlierst deinen Einsatz.', 'lose');
             }
         });
 
         btnStand.addEventListener('click', () => {
             if (!gameActive) return;
 
-            // Simuliert eine kleine Denkpause des Dealers für mehr Spannung
             btnHit.disabled = true;
             btnStand.disabled = true;
 
@@ -336,7 +441,7 @@ export default {
                 if (calculateScore(dealerHand) < 17) {
                     dealerHand.push(deck.pop());
                     updateUI(true, true);
-                    setTimeout(dealerPlay, 500); // Nächste Karte zeitverzögert ziehen
+                    setTimeout(dealerPlay, 500);
                 } else {
                     evaluateWinner();
                 }
@@ -351,20 +456,18 @@ export default {
                 } else if (pScore > dScore) {
                     endGame('Du gewinnst!', 'win');
                 } else if (dScore > pScore) {
-                    endGame('Dealer gewinnt!', 'lose');
+                    endGame('Dealer gewinnt.', 'lose');
                 } else {
-                    endGame('Unentschieden!', 'draw');
+                    endGame('Unentschieden! (Push)', 'draw');
                 }
             };
 
-            // FIX: Das zweite Argument muss true sein, damit das Spielfeld nicht geleert wird!
             updateUI(true, true);
             setTimeout(dealerPlay, 500);
         });
 
-        btnRestart.addEventListener('click', startRound);
-
-        startRound();
+        // Start in der Setz-Phase
+        startBettingPhase();
 
         return {
             destroy: () => {}

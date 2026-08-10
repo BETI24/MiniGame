@@ -3,11 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus Game Hub</title>
+    <meta name="theme-color" content="#080b16">
+    <title>Pixel Arcade – Minispiel-Paket</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="app-root"></div>
-<script type="module" src="js/main.js"></script>
+<main class="app-shell" aria-label="Pixel Arcade">
+    <header class="topbar">
+        <button id="back-button" class="icon-button is-hidden" type="button" aria-label="Zurück zum Menü">
+            <span aria-hidden="true">←</span> Menü
+        </button>
+        <a class="brand" href="#" id="brand-link" aria-label="Pixel Arcade Startseite">
+            <span class="brand-mark" aria-hidden="true">PA</span>
+            <span>PIXEL <strong>ARCADE</strong></span>
+        </a>
+        <div id="hud" class="hud is-hidden" aria-live="polite">
+            <span id="hud-label">Punkte</span>
+            <strong id="hud-score">0</strong>
+            <span class="hud-divider" aria-hidden="true"></span>
+            <span id="hud-extra"></span>
+        </div>
+    </header>
+
+    <section id="menu-screen" class="screen menu-screen">
+        <div class="hero-copy">
+            <p class="eyebrow">3 Spiele · 1 Highscore-Jagd</p>
+            <h1>Wähle deine<br><span>Challenge.</span></h1>
+            <p>Reaktion, Tempo oder Präzision – knackige Arcade-Runden direkt im Browser.</p>
+        </div>
+
+        <div id="game-grid" class="game-grid" aria-label="Verfügbare Minispiele">
+            <article class="game-card runner-card">
+                <div class="card-art runner-art" aria-hidden="true">
+                    <span class="pixel-runner"></span><span class="pixel-block block-one"></span><span class="pixel-block block-two"></span>
+                </div>
+                <div class="card-copy">
+                    <div><span class="game-number">01</span><span class="difficulty">Reaktion</span></div>
+                    <h2>Neon Runner</h2>
+                    <p>Springe über Hindernisse und bleib so lange wie möglich im Rennen.</p>
+                    <div class="card-footer">
+                        <span>Highscore <strong data-highscore="runner">0</strong></span>
+                        <button class="play-button" type="button" data-game="runner" aria-label="Neon Runner starten">Start <span>→</span></button>
+                    </div>
+                </div>
+            </article>
+
+            <article class="game-card clicker-card">
+                <div class="card-art clicker-art" aria-hidden="true">
+                    <span class="key-cap">A</span><span class="bolt">ϟ</span><span class="key-cap">D</span>
+                </div>
+                <div class="card-copy">
+                    <div><span class="game-number">02</span><span class="difficulty">Tempo</span></div>
+                    <h2>Turbo Mash</h2>
+                    <p>Drücke A und D abwechselnd. Zehn Sekunden, volle Energie.</p>
+                    <div class="card-footer">
+                        <span>Highscore <strong data-highscore="clicker">0</strong></span>
+                        <button class="play-button" type="button" data-game="clicker" aria-label="Turbo Mash starten">Start <span>→</span></button>
+                    </div>
+                </div>
+            </article>
+
+            <article class="game-card sorter-card">
+                <div class="card-art sorter-art" aria-hidden="true">
+                    <span class="sort-ball red-ball"></span><span class="sort-arrow">↙</span><span class="sort-arrow">↘</span><span class="sort-ball blue-ball"></span>
+                </div>
+                <div class="card-copy">
+                    <div><span class="game-number">03</span><span class="difficulty">Präzision</span></div>
+                    <h2>Color Sort</h2>
+                    <p>Lenke jede Farbe in den richtigen Korb. Drei Fehler beenden die Runde.</p>
+                    <div class="card-footer">
+                        <span>Highscore <strong data-highscore="sorter">0</strong></span>
+                        <button class="play-button" type="button" data-game="sorter" aria-label="Color Sort starten">Start <span>→</span></button>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <footer class="menu-footer">
+            <span><kbd>WASD</kbd> / <kbd>← ↑ →</kbd> Steuern</span>
+            <span><kbd>Leertaste</kbd> Aktion</span>
+            <span><kbd>Esc</kbd> Menü</span>
+        </footer>
+    </section>
+
+    <section id="game-screen" class="screen game-screen is-hidden" aria-label="Spielfeld">
+        <canvas id="game-canvas" width="1280" height="640" tabindex="0">
+            Dein Browser unterstützt Canvas nicht.
+        </canvas>
+        <div id="game-help" class="game-help"></div>
+    </section>
+
+    <section id="gameover-screen" class="screen overlay-screen is-hidden" aria-live="assertive">
+        <div class="result-panel">
+            <p id="result-kicker" class="eyebrow">Runde beendet</p>
+            <h2 id="result-title">Game Over</h2>
+            <div class="result-score">
+                <span>Punktzahl</span>
+                <strong id="result-score">0</strong>
+            </div>
+            <p id="result-highscore" class="result-highscore"></p>
+            <div class="result-actions">
+                <button id="restart-button" class="primary-button" type="button">Nochmal spielen</button>
+                <button id="menu-button" class="secondary-button" type="button">Zum Menü</button>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script type="module" src="main.js"></script>
 </body>
 </html>

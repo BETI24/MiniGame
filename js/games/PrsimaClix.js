@@ -15,7 +15,7 @@ export default {
             sps: 0,
             currentTab: 'auto',
             upgrades: {
-                // Automatisierung (SPS) aus Original-Vorlage[cite: 6]
+                // Automatisierung (SPS) aus Original-Vorlage
                 nanoDrone: { name: "Nano-Drohne", cost: 15, sps: 0.6, count: 0, desc: "+0.6 / Sek", type: 'auto' },
                 prismLaser: { name: "Prisma-Laser", cost: 110, sps: 4.5, count: 0, desc: "+4.5 / Sek", type: 'auto' },
                 quantumCore: { name: "Quanten-Kern", cost: 1200, sps: 35, count: 0, desc: "+35 / Sek", type: 'auto' },
@@ -23,7 +23,7 @@ export default {
                 hyperSingularity: { name: "Hyper-Singularität", cost: 140000, sps: 1500, count: 0, desc: "+1.5k / Sek", type: 'auto' },
                 omegaReactor: { name: "Omega-Reaktor", cost: 1600000, sps: 9200, count: 0, desc: "+9.2k / Sek", type: 'auto' },
 
-                // Aktive Klick-Upgrades aus Original-Vorlage[cite: 6]
+                // Aktive Klick-Upgrades aus Original-Vorlage
                 photonFinger: { name: "Photonen-Finger", cost: 50, clickBoost: 1, count: 0, desc: "+1 Prisma pro Klick", type: 'click' },
                 plasmaGlove: { name: "Plasma-Handschuh", cost: 350, clickBoost: 5, count: 0, desc: "+5 Prisma pro Klick", type: 'click' },
                 laserPointer: { name: "Tachyonen-Strahl", cost: 2400, clickBoost: 25, count: 0, desc: "+25 Prisma pro Klick", type: 'click' },
@@ -33,7 +33,7 @@ export default {
         };
 
         let animationId;
-        let lastTime = performance.now(); // Speichert die exakte Startzeit[cite: 6]
+        let lastTime = performance.now(); // Speichert die exakte Startzeit
 
         // --- Isoliertes Styling ---
         const style = document.createElement('style');
@@ -263,7 +263,7 @@ export default {
         `;
         container.appendChild(style);
 
-        // --- DOM-Struktur aufbauen[cite: 6] ---
+        // --- DOM-Struktur aufbauen ---
         const wrapper = document.createElement('div');
         wrapper.className = 'pc-wrapper';
 
@@ -323,7 +323,7 @@ export default {
             if (game.score >= up.cost) {
                 game.score -= up.cost;
                 up.count++;
-                up.cost *= 1.16; // Schneller steigende Kosten für den Suchtfaktor[cite: 6]
+                up.cost *= 1.16; // Schneller steigende Kosten für den Suchtfaktor
 
                 if (up.type === 'auto') {
                     game.sps += up.sps;
@@ -428,7 +428,7 @@ export default {
         // --- Klick-Logik ---
         clickerBtn.addEventListener('click', (e) => {
             let gain = game.clickPower;
-            let isCrit = Math.random() < 0.15; // 15% Chance auf fetten Crit[cite: 6]
+            let isCrit = Math.random() < 0.15; // 15% Chance auf fetten Crit
 
             if (isCrit) {
                 gain *= 5;
@@ -450,7 +450,7 @@ export default {
             updateUI();
         });
 
-        // --- Game Loop (Zeitberechnung)[cite: 6] ---
+        // --- Game Loop (Zeitberechnung) ---
         const gameLoop = (time) => {
             let delta = (time - lastTime) / 1000;
             lastTime = time;
@@ -473,7 +473,7 @@ export default {
         // --- Aufräumen (Destroy) ---
         return {
             destroy: () => {
-                cancelAnimationFrame(animationId); // Stoppt den Game Loop[cite: 6]
+                cancelAnimationFrame(animationId); // Stoppt den Game Loop
                 services.highscores.saveHighscore('prisma-clix', Math.floor(game.score));
             }
         };

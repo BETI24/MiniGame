@@ -2,9 +2,9 @@ export default {
     manifest: {
         id: 'blackjack',
         name: 'Blackjack',
-        description: 'Der Casino-Klassiker. Setze dein Guthaben und versuche näher an 21 Punkte zu kommen als der Dealer.',
+        description: 'Der Casino-Klassiker.',
         icon: '🃏',
-        tags: ['Karten', 'Casino', 'Logik', 'Wetten']
+        tags: ['Karten', 'Casino', 'Logik']
     },
     init: (container, services) => {
         // --- State Management ---

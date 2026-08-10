@@ -353,7 +353,7 @@ export default {
                 } else if (dScore > pScore) {
                     endGame('Dealer gewinnt!', 'lose');
                 } else {
-                    endGame('Unentschieden! (Push)', 'draw');
+                    endGame('Unentschieden!', 'draw');
                 }
             };
 

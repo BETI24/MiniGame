@@ -1,10 +1,12 @@
 :root {
-    --bg-color: #0d0d12;
+    --bg-color: #0b0b0e;
     --text-main: #ffffff;
     --text-muted: #8b8b9f;
-    --accent-glow: 0 0 20px rgba(0, 212, 255, 0.5);
-    --glass-bg: rgba(255, 255, 255, 0.03);
-    --glass-border: rgba(255, 255, 255, 0.08);
+    --accent-glow: 0 0 25px rgba(0, 212, 255, 0.6);
+    --accent-color: #00d4ff;
+    --glass-bg: rgba(20, 20, 30, 0.4);
+    --glass-border: rgba(255, 255, 255, 0.05);
+    --glass-hover: rgba(255, 255, 255, 0.15);
     --font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
@@ -16,10 +18,12 @@
 
 body {
     background-color: var(--bg-color);
-    background-image: radial-gradient(circle at 50% 0%, #1a1a2e 0%, transparent 50%);
+    background-image:
+            radial-gradient(circle at 15% 50%, rgba(0, 212, 255, 0.05) 0%, transparent 50%),
+            radial-gradient(circle at 85% 30%, rgba(255, 51, 102, 0.05) 0%, transparent 50%);
     color: var(--text-main);
-    font-family: var(--font-family), serif;
-    overflow: hidden; /* Verhindert Scrollbalken für ein App-Gefühl */
+    font-family: var(--font-family);
+    overflow: hidden;
     width: 100vw;
     height: 100vh;
 }
@@ -30,98 +34,192 @@ body {
     position: relative;
 }
 
-/* UI Components */
+/* Glass UI Components */
 .glass-panel {
     background: var(--glass-bg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
+/* Hub Layout */
 .hub-container {
-    padding: 3rem;
     height: 100%;
     overflow-y: auto;
-    animation: fadeIn 0.5s ease-out;
+    overflow-x: hidden;
+    animation: fadeIn 0.6s ease-out;
+    padding-bottom: 4rem;
 }
 
-.hub-header {
+/* Hero Section */
+.hero-section {
+    padding: 4rem 2rem;
     text-align: center;
-    margin-bottom: 3rem;
+    position: relative;
+    max-width: 800px;
+    margin: 0 auto;
 }
 
-.hub-header h1 {
-    font-size: 3rem;
-    font-weight: 800;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    text-shadow: var(--accent-glow);
-    margin-bottom: 0.5rem;
+.hero-section h1 {
+    font-size: 4rem;
+    font-weight: 900;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, #fff 0%, var(--text-muted) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 1rem;
 }
 
-.hub-header p {
+.hero-section p {
     color: var(--text-muted);
     font-size: 1.2rem;
+    margin-bottom: 2.5rem;
+    line-height: 1.6;
 }
 
+/* Search Bar */
+.search-container {
+    position: relative;
+    max-width: 500px;
+    margin: 0 auto;
+    transition: transform 0.3s ease;
+}
+
+.search-container:focus-within {
+    transform: scale(1.02);
+}
+
+.search-input {
+    width: 100%;
+    padding: 1rem 1.5rem 1rem 3rem;
+    border-radius: 30px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+    font-size: 1.1rem;
+    outline: none;
+    transition: all 0.3s ease;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.search-input:focus {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.2), inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.search-icon {
+    position: absolute;
+    left: 1.2rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    pointer-events: none;
+}
+
+/* Grid & Cards */
 .game-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 2rem;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 2.5rem;
     max-width: 1200px;
     margin: 0 auto;
+    padding: 0 2rem;
 }
 
 .game-card {
     padding: 1.5rem;
     cursor: pointer;
-    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.2rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.game-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: radial-gradient(circle at 50% 0%, rgba(255,255,255,0.03) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
 }
 
 .game-card:hover {
-    transform: translateY(-10px);
-    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 212, 255, 0.1);
-    border-color: rgba(0, 212, 255, 0.3);
+    transform: translateY(-12px);
+    border-color: var(--glass-hover);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 212, 255, 0.1);
+}
+
+.game-card:hover::before {
+    opacity: 1;
 }
 
 .game-icon {
     width: 100%;
-    height: 150px;
-    border-radius: 8px;
-    background: linear-gradient(45deg, #2a2a35, #1a1a24);
+    height: 160px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #1a1a24 0%, #0b0b0e 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 3rem;
+    font-size: 4rem;
+    border: 1px solid rgba(255,255,255,0.02);
+    box-shadow: inset 0 4px 20px rgba(0,0,0,0.5);
+    transition: transform 0.3s ease;
+}
+
+.game-card:hover .game-icon {
+    transform: scale(1.05);
+}
+
+.game-info {
+    z-index: 1;
 }
 
 .game-info h2 {
-    font-size: 1.5rem;
+    font-size: 1.4rem;
     margin-bottom: 0.5rem;
+    color: #fff;
+    font-weight: 700;
 }
 
 .game-info p {
     color: var(--text-muted);
-    font-size: 0.9rem;
-    line-height: 1.4;
+    font-size: 0.95rem;
+    line-height: 1.5;
 }
 
 .tags {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     margin-top: auto;
+    z-index: 1;
 }
 
 .tag {
     font-size: 0.75rem;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.1);
-    color: #00d4ff;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    background: rgba(0, 212, 255, 0.1);
+    color: var(--accent-color);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+.no-results {
+    text-align: center;
+    grid-column: 1 / -1;
+    padding: 4rem;
+    color: var(--text-muted);
+    font-size: 1.2rem;
 }
 
 /* Game Wrapper Styles */
@@ -134,35 +232,46 @@ body {
     display: flex;
     flex-direction: column;
     background-color: var(--bg-color);
-    animation: slideUp 0.4s ease-out;
+    animation: slideUp 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+    z-index: 100;
 }
 
 .game-toolbar {
-    height: 60px;
+    height: 65px;
     padding: 0 2rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--glass-border);
-    background: rgba(13, 13, 18, 0.8);
-    backdrop-filter: blur(10px);
+    background: rgba(11, 11, 14, 0.85);
+    backdrop-filter: blur(12px);
     z-index: 10;
 }
 
-.btn-back {
-    background: transparent;
-    border: 1px solid var(--text-muted);
+.game-toolbar h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
     color: var(--text-main);
-    padding: 0.5rem 1.5rem;
-    border-radius: 20px;
+}
+
+.btn-back {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+    padding: 0.6rem 1.5rem;
+    border-radius: 30px;
     cursor: pointer;
-    font-weight: bold;
-    transition: all 0.2s;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .btn-back:hover {
     background: var(--text-main);
     color: var(--bg-color);
+    transform: translateX(-5px);
 }
 
 .game-container {
@@ -176,11 +285,11 @@ body {
 
 /* Animations */
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideUp {
-    from { opacity: 0; transform: translateY(30px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: translateY(50px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
 }

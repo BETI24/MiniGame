@@ -4,6 +4,7 @@ export default {
         name: 'Neon Clicker',
         description: 'Klicke auf die erscheinenden Leucht-Orbs, bevor die Zeit abläuft. Teste deine Reaktionszeit.',
         icon: '🎯',
+        imageUrl: 'js/assets/images/neonClicker.png',
         tags: ['Reflex', 'DOM', 'Speed']
     },
     init: (container, services) => {

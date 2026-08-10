@@ -4,6 +4,7 @@ export default {
         name: 'Void Dodger',
         description: 'Steuere dein Schiff (Pfeiltasten) und weiche den roten Asteroiden aus. Ein Canvas-basiertes Überlebensspiel.',
         icon: '🚀',
+        imageUrl: 'js/assets/images/ShapeDodger.png',
         tags: ['Survival', 'Canvas', 'Arcade']
     },
     init: (container, services) => {

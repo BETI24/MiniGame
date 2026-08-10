@@ -4,6 +4,7 @@ export default {
         name: 'Reactor Crash',
         description: 'High Stakes Krypto-Crash. Lass den Multiplikator steigen, aber rette deinen Einsatz vor dem Absturz!',
         icon: '🚀',
+        imageUrl: 'js/assets/images/Crash.png',
         tags: ['Casino', 'Canvas', 'Risk']
     },
     init: (container, services) => {

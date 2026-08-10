@@ -70,26 +70,39 @@ export class HubView {
     createGameCard(gameModule) {
         const manifest = gameModule.manifest;
         const card = document.createElement('div');
-        card.className = 'game-card glass-panel';
+        card.className = 'game-card';
 
-        const highscore = services.highscores.getHighscore(manifest.id);
-        const tagsHtml = manifest.tags.map(tag => `<span class="tag">${tag}</span>`).join('');
+        const highscore = services.highscores.getHighscore(manifest.id) || 0;
 
-        // Prüfen, ob ein Bild vorhanden ist. Falls ja, Bild-Container nutzen, sonst Icon-Container.
-        const imageHtml = manifest.imageUrl
-            ? `<div class="game-image" style="background-image: url('${manifest.imageUrl}');"></div>`
-            : `<div class="game-icon">${manifest.icon}</div>`;
+        const tagsHtml = manifest.tags.map(tag => `<span class="card-tag">${tag.toUpperCase()}</span>`).join('');
 
+        const bgStyle = manifest.imageUrl ? `background-image: url('${manifest.imageUrl}');` : `background: #1a1a24;`;
+
+        // Zweifarbiger Titel-Trick: Das erste Wort wird weiß, der Rest bekommt die Klasse "text-cyan"
+        const titleParts = manifest.name.split(' ');
+        const formattedTitle = titleParts.length > 1
+            ? `${titleParts[0]} <span class="text-cyan">${titleParts.slice(1).join(' ')}</span>`
+            : titleParts[0];
+
+        // Struktur mit isoliertem Hintergrund (.card-bg) für den perfekten Zoom-Effekt
         card.innerHTML = `
-            ${imageHtml}
-            <div class="game-info">
-                <div class="title-row">
-                    <h2>${manifest.name}</h2>
-                    <span class="highscore-badge">🏆 ${highscore}</span>
+            <div class="card-inner">
+                <div class="card-bg" style="${bgStyle}"></div>
+                <div class="card-overlay"></div>
+                <div class="card-content">
+                    <div class="card-top">
+                        <h2>${formattedTitle.toUpperCase()}</h2>
+                        <p class="card-desc">${manifest.description}</p>
+                        <div class="card-highscore">
+                            <span class="trophy">🏆</span> $${highscore}
+                        </div>
+                    </div>
+                    <div class="card-bottom">
+                        <div class="card-tags">${tagsHtml}</div>
+                        <button class="play-btn">PLAY NOW &gt;</button>
+                    </div>
                 </div>
-                <p>${manifest.description}</p>
             </div>
-            <div class="tags">${tagsHtml}</div>
         `;
 
         card.addEventListener('click', () => {

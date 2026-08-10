@@ -15,6 +15,7 @@ export default {
             sps: 0,
             currentTab: 'auto',
             upgrades: {
+                // Automatisierung (SPS) aus Original-Vorlage
                 nanoDrone: { name: "Nano-Drohne", cost: 15, sps: 0.6, count: 0, desc: "+0.6 / Sek", type: 'auto' },
                 prismLaser: { name: "Prisma-Laser", cost: 110, sps: 4.5, count: 0, desc: "+4.5 / Sek", type: 'auto' },
                 quantumCore: { name: "Quanten-Kern", cost: 1200, sps: 35, count: 0, desc: "+35 / Sek", type: 'auto' },
@@ -22,6 +23,7 @@ export default {
                 hyperSingularity: { name: "Hyper-Singularität", cost: 140000, sps: 1500, count: 0, desc: "+1.5k / Sek", type: 'auto' },
                 omegaReactor: { name: "Omega-Reaktor", cost: 1600000, sps: 9200, count: 0, desc: "+9.2k / Sek", type: 'auto' },
 
+                // Aktive Klick-Upgrades aus Original-Vorlage
                 photonFinger: { name: "Photonen-Finger", cost: 50, clickBoost: 1, count: 0, desc: "+1 Prisma pro Klick", type: 'click' },
                 plasmaGlove: { name: "Plasma-Handschuh", cost: 350, clickBoost: 5, count: 0, desc: "+5 Prisma pro Klick", type: 'click' },
                 laserPointer: { name: "Tachyonen-Strahl", cost: 2400, clickBoost: 25, count: 0, desc: "+25 Prisma pro Klick", type: 'click' },
@@ -31,7 +33,7 @@ export default {
         };
 
         let animationId;
-        let lastTime = performance.now();
+        let lastTime = performance.now(); // Speichert die exakte Startzeit
 
         // --- Isoliertes Styling ---
         const style = document.createElement('style');
@@ -126,16 +128,6 @@ export default {
                 box-shadow: 0 0 20px rgba(255,0,127,1);
             }
 
-            .pc-clicker-btn.pc-upgrade-pop {
-                animation: pc-popBtn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            }
-
-            @keyframes pc-popBtn {
-                0% { transform: scale(1); }
-                50% { transform: scale(1.12); box-shadow: 0 0 80px rgba(0,255,204,0.9); }
-                100% { transform: scale(1); }
-            }
-
             .pc-shockwave {
                 position: absolute;
                 width: 240px;
@@ -158,18 +150,13 @@ export default {
                 height: 8px;
                 border-radius: 50%;
                 pointer-events: none;
+                animation: pc-flyParticle 0.6s ease-out forwards;
                 z-index: 100;
             }
 
-            .pc-buy-particle {
-                position: absolute;
-                width: 10px;
-                height: 10px;
-                border-radius: 50%;
-                background: #00ffcc;
-                box-shadow: 0 0 12px #00ffcc, 0 0 20px #ff007f;
-                pointer-events: none;
-                z-index: 200;
+            @keyframes pc-flyParticle {
+                0% { transform: translate(0, 0) scale(1.5); opacity: 1; }
+                100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
             }
 
             .pc-tabs {
@@ -227,7 +214,6 @@ export default {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                position: relative;
             }
 
             .pc-upgrade-card:hover:not(.locked) {
@@ -310,57 +296,7 @@ export default {
         const tabAuto = wrapper.querySelector('#tab-auto');
         const tabClick = wrapper.querySelector('#tab-click');
 
-        // --- Visuelle Effekte ---
-        const triggerBuyAnimation = (sourceCard) => {
-            if (!sourceCard) return;
-
-            const wrapperRect = wrapper.getBoundingClientRect();
-            const cardRect = sourceCard.getBoundingClientRect();
-            const btnRect = clickerBtn.getBoundingClientRect();
-
-            // Startpunkt: Mitte der gekauften Karte
-            const startX = (cardRect.left - wrapperRect.left) + cardRect.width / 2;
-            const startY = (cardRect.top - wrapperRect.top) + cardRect.height / 2;
-
-            // Zielpunkt: Mitte des Haupt-Buttons
-            const targetX = (btnRect.left - wrapperRect.left) + btnRect.width / 2;
-            const targetY = (btnRect.top - wrapperRect.top) + btnRect.height / 2;
-
-            // 6-8 fliegende Lichtpartikel erzeugen
-            for (let i = 0; i < 8; i++) {
-                setTimeout(() => {
-                    let p = document.createElement('div');
-                    p.className = 'pc-buy-particle';
-                    p.style.left = `${startX}px`;
-                    p.style.top = `${startY}px`;
-
-                    // Bogenflug berechnen (Streuung)
-                    const curveOffsetX = (Math.random() - 0.5) * 120;
-                    const curveOffsetY = (Math.random() - 0.5) * 120;
-
-                    wrapper.appendChild(p);
-
-                    p.animate([
-                        { transform: 'translate(0, 0) scale(1)', opacity: 1 },
-                        { transform: `translate(${(targetX - startX) / 2 + curveOffsetX}px, ${(targetY - startY) / 2 + curveOffsetY}px) scale(1.6)`, opacity: 0.8, offset: 0.5 },
-                        { transform: `translate(${targetX - startX}px, ${targetY - startY}px) scale(0.2)`, opacity: 0 }
-                    ], {
-                        duration: 550,
-                        easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
-                        fill: 'forwards'
-                    });
-
-                    setTimeout(() => p.remove(), 550);
-                }, i * 40);
-            }
-
-            // Klicker-Button wobbeln lassen, sobald die Partikel eintreffen
-            setTimeout(() => {
-                clickerBtn.classList.add('pc-upgrade-pop');
-                setTimeout(() => clickerBtn.classList.remove('pc-upgrade-pop'), 350);
-            }, 300);
-        };
-
+        // --- Spiellogik ---
         const updateUI = () => {
             scoreEl.innerText = Math.floor(game.score).toLocaleString();
             spsEl.innerText = `Prisma / Sekunde: ${game.sps.toFixed(1)} | Klick-Power: +${game.clickPower}`;
@@ -387,17 +323,13 @@ export default {
             if (game.score >= up.cost) {
                 game.score -= up.cost;
                 up.count++;
-                up.cost *= 1.16;
+                up.cost *= 1.16; // Schneller steigende Kosten für den Suchtfaktor
 
                 if (up.type === 'auto') {
                     game.sps += up.sps;
                 } else if (up.type === 'click') {
                     game.clickPower += up.clickBoost;
                 }
-
-                // Animation beim Kauf auslösen
-                const sourceCard = wrapper.querySelector(`#upgrade-${key}`);
-                triggerBuyAnimation(sourceCard);
 
                 updateUI();
                 initShop();
@@ -437,6 +369,7 @@ export default {
         tabAuto.addEventListener('click', (e) => switchTab('auto', e.target));
         tabClick.addEventListener('click', (e) => switchTab('click', e.target));
 
+        // --- Visuelle Effekte (Isoliert im Wrapper) ---
         const createFloatingText = (x, y, text, color, isCrit) => {
             let el = document.createElement('div');
             el.className = 'pc-floating-text';
@@ -445,7 +378,7 @@ export default {
             el.style.color = color;
             el.style.fontSize = isCrit ? '2rem' : '1.3rem';
             el.innerText = isCrit ? `${text} CRIT!` : text;
-            wrapper.appendChild(el);
+            wrapper.appendChild(el); // Hier wird an den isolierten Wrapper angehängt
             setTimeout(() => el.remove(), 700);
         };
 
@@ -463,18 +396,10 @@ export default {
                 let dx = Math.cos(angle) * distance;
                 let dy = Math.sin(angle) * distance;
 
+                p.style.setProperty('--dx', `${dx}px`);
+                p.style.setProperty('--dy', `${dy}px`);
+
                 wrapper.appendChild(p);
-
-                // Performantes Web Animations API statt CSS Variabler
-                p.animate([
-                    { transform: 'translate(0, 0) scale(1.5)', opacity: 1 },
-                    { transform: `translate(${dx}px, ${dy}px) scale(0)`, opacity: 0 }
-                ], {
-                    duration: 600,
-                    easing: 'ease-out',
-                    fill: 'forwards'
-                });
-
                 setTimeout(() => p.remove(), 600);
             }
         };
@@ -488,6 +413,7 @@ export default {
             const btnRect = clickerBtn.getBoundingClientRect();
             const containerRect = gameContainer.getBoundingClientRect();
 
+            // Berechnet die relative Mitte des Buttons im Container
             const centerX = (btnRect.left - containerRect.left) + btnRect.width / 2;
             const centerY = (btnRect.top - containerRect.top) + btnRect.height / 2;
 
@@ -502,7 +428,7 @@ export default {
         // --- Klick-Logik ---
         clickerBtn.addEventListener('click', (e) => {
             let gain = game.clickPower;
-            let isCrit = Math.random() < 0.15;
+            let isCrit = Math.random() < 0.15; // 15% Chance auf fetten Crit
 
             if (isCrit) {
                 gain *= 5;
@@ -513,6 +439,7 @@ export default {
             game.score += gain;
             game.totalClicks++;
 
+            // Koordinaten relativ zum Wrapper berechnen
             const rect = wrapper.getBoundingClientRect();
             const localX = e.clientX - rect.left;
             const localY = e.clientY - rect.top;
@@ -523,7 +450,7 @@ export default {
             updateUI();
         });
 
-        // --- Game Loop ---
+        // --- Game Loop (Zeitberechnung) ---
         const gameLoop = (time) => {
             let delta = (time - lastTime) / 1000;
             lastTime = time;
@@ -532,6 +459,7 @@ export default {
                 game.score += game.sps * delta;
                 updateUI();
 
+                // Kontinuierliches Speichern des Highscores (Punktestand)
                 services.highscores.saveHighscore('prisma-clix', Math.floor(game.score));
             }
 
@@ -545,7 +473,7 @@ export default {
         // --- Aufräumen (Destroy) ---
         return {
             destroy: () => {
-                cancelAnimationFrame(animationId);
+                cancelAnimationFrame(animationId); // Stoppt den Game Loop
                 services.highscores.saveHighscore('prisma-clix', Math.floor(game.score));
             }
         };

@@ -72,13 +72,16 @@ export class HubView {
         const card = document.createElement('div');
         card.className = 'game-card glass-panel';
 
-        // Highscore aus dem Service laden
         const highscore = services.highscores.getHighscore(manifest.id);
-
         const tagsHtml = manifest.tags.map(tag => `<span class="tag">${tag}</span>`).join('');
 
+        // Prüfen, ob ein Bild vorhanden ist. Falls ja, Bild-Container nutzen, sonst Icon-Container.
+        const imageHtml = manifest.imageUrl
+            ? `<div class="game-image" style="background-image: url('${manifest.imageUrl}');"></div>`
+            : `<div class="game-icon">${manifest.icon}</div>`;
+
         card.innerHTML = `
-            <div class="game-icon">${manifest.icon}</div>
+            ${imageHtml}
             <div class="game-info">
                 <div class="title-row">
                     <h2>${manifest.name}</h2>

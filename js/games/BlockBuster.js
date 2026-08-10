@@ -107,7 +107,8 @@ export default {
         name: 'BlockBuster',
         description: 'Finde Farbpaare auf horizontalen und vertikalen Achsen, räume das Feld leer und jage den Highscore.',
         icon: '🧩',
-        tags: ['Puzzle', 'Arcade', 'Time Attack', 'Strategy']
+        imageUrl: 'js/assets/images/BlockBuster.png',
+        tags: ['Puzzle', 'Time Attack', 'Strategy']
     },
 
     init: (container, services) => {

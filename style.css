@@ -22,7 +22,7 @@ body {
             radial-gradient(circle at 15% 50%, rgba(0, 212, 255, 0.05) 0%, transparent 50%),
             radial-gradient(circle at 85% 30%, rgba(255, 51, 102, 0.05) 0%, transparent 50%);
     color: var(--text-main);
-    font-family: var(--font-family);
+    font-family: var(--font-family), serif;
     overflow: hidden;
     width: 100vw;
     height: 100vh;
@@ -182,11 +182,30 @@ body {
     z-index: 1;
 }
 
+/* Neu: Flexbox für Titel und Highscore auf einer Ebene */
+.title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
 .game-info h2 {
     font-size: 1.4rem;
-    margin-bottom: 0.5rem;
     color: #fff;
     font-weight: 700;
+}
+
+/* Neu: Styling für das Highscore-Badge */
+.highscore-badge {
+    background: rgba(255, 215, 0, 0.1);
+    color: #ffd700;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.1);
 }
 
 .game-info p {

@@ -1,5 +1,6 @@
 import { GameRegistry } from '../core/GameRegistry.js';
 import { GameWrapper } from './GameWrapper.js';
+import { services } from '../core/Services.js';
 
 export class HubView {
     constructor(root, router) {
@@ -13,7 +14,6 @@ export class HubView {
         const container = document.createElement('div');
         container.className = 'hub-container';
 
-        // Hero Sektion mit Suchleiste aufbauen
         const hero = document.createElement('div');
         hero.className = 'hero-section';
         hero.innerHTML = `
@@ -25,11 +25,9 @@ export class HubView {
             </div>
         `;
 
-        // Raster (Grid) für die Spielekarten erstellen
         this.gridContainer = document.createElement('div');
         this.gridContainer.className = 'game-grid';
 
-        // Event-Listener für das Suchfeld (löst bei jedem Tastendruck aus)
         const searchInput = hero.querySelector('.search-input');
         searchInput.addEventListener('input', (e) => {
             this.renderGrid(e.target.value);
@@ -39,16 +37,13 @@ export class HubView {
         container.appendChild(this.gridContainer);
         this.root.appendChild(container);
 
-        // Grid initial mit allen Spielen füllen
         this.renderGrid('');
     }
 
-    // Leert das aktuelle Raster und füllt es basierend auf dem Suchbegriff neu
     renderGrid(searchQuery) {
         this.gridContainer.innerHTML = '';
         const query = searchQuery.toLowerCase().trim();
 
-        // Spiele filtern, wenn der Suchbegriff im Namen, der Beschreibung oder den Tags vorkommt
         const filteredGames = GameRegistry.filter(gameModule => {
             const manifest = gameModule.manifest;
             const inName = manifest.name.toLowerCase().includes(query);
@@ -66,32 +61,34 @@ export class HubView {
             return;
         }
 
-        // Gefilterte Karten in das HTML-Dokument einfügen
         filteredGames.forEach(gameModule => {
             const card = this.createGameCard(gameModule);
             this.gridContainer.appendChild(card);
         });
     }
 
-    // Erstellt ein einzelnes UI-Element (die anklickbare Karte) für ein Spiel
     createGameCard(gameModule) {
         const manifest = gameModule.manifest;
         const card = document.createElement('div');
         card.className = 'game-card glass-panel';
 
-        // Tags dynamisch als HTML zusammenbauen
+        // Highscore aus dem Service laden
+        const highscore = services.highscores.getHighscore(manifest.id);
+
         const tagsHtml = manifest.tags.map(tag => `<span class="tag">${tag}</span>`).join('');
 
         card.innerHTML = `
             <div class="game-icon">${manifest.icon}</div>
             <div class="game-info">
-                <h2>${manifest.name}</h2>
+                <div class="title-row">
+                    <h2>${manifest.name}</h2>
+                    <span class="highscore-badge">🏆 ${highscore}</span>
+                </div>
                 <p>${manifest.description}</p>
             </div>
             <div class="tags">${tagsHtml}</div>
         `;
 
-        // Klick auf die Karte übergibt die Kontrolle an den Router, um das Spiel zu starten
         card.addEventListener('click', () => {
             this.router.navigate((root, router) => new GameWrapper(root, router, gameModule));
         });
@@ -100,6 +97,5 @@ export class HubView {
     }
 
     destroy() {
-        // Der DOM-Inhalt wird vom Router automatisch gelöscht, keine manuellen Event-Listener auf window/document aktiv.
     }
 }

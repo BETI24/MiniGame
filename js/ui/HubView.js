@@ -7,7 +7,74 @@ export class HubView {
         this.root = root;
         this.router = router;
         this.gridContainer = null;
+        this.injectStyles();
         this.render();
+    }
+
+    injectStyles() {
+        if (document.getElementById('hub-view-dynamic-styles')) return;
+        const styleEl = document.createElement('style');
+        styleEl.id = 'hub-view-dynamic-styles';
+        styleEl.innerHTML = `
+            .game-card {
+                position: relative;
+                border-radius: 16px;
+                padding: 2px;
+                /* Saubere weiße Standard-Border im Ruhezustand */
+                background: rgba(255, 255, 255, 0.25);
+                overflow: hidden;
+                transition: transform 0.3s ease, background 0.3s ease;
+                cursor: pointer;
+            }
+
+            /* Container für den animierten Dreh-Effekt */
+            .game-card::before {
+                content: '';
+                position: absolute;
+                top: -150%;
+                left: -150%;
+                right: -150%;
+                bottom: -150%;
+                background: conic-gradient(from 0deg, #00ffff, #ff00ff, #7928ca, #0070f3, #00ffff);
+                opacity: 0;
+                transition: opacity 0.3s ease;
+                z-index: 0;
+            }
+
+            .game-card:hover::before {
+                opacity: 1;
+                /* Startet kurz schnell (0.6s) und geht dann in eine flüssige, dauerhafte Rotation (3s) über */
+                animation: borderSpinStart 0.6s cubic-bezier(0, 0.8, 0.2, 1) 1, borderRotate 3s linear 0.6s infinite;
+            }
+
+            @keyframes borderSpinStart {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+
+            @keyframes borderRotate {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+
+            /* Innerer Bereich deckt das Innere ab, sodass nur der 2px Rand leuchtet */
+            .game-card .card-inner {
+                position: relative;
+                z-index: 1;
+                border-radius: 14px;
+                background: #12121a;
+                width: 100%;
+                height: 100%;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+
+            .game-card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 10px 30px rgba(0, 255, 255, 0.15);
+            }
+        `;
+        document.head.appendChild(styleEl);
     }
 
     render() {
@@ -28,24 +95,19 @@ export class HubView {
 
         // --- DYNAMISCHE WERTE BERECHNEN ---
 
-        // 1. Anzahl der Spiele aus der Registry auslesen (z.B. "04")
         const totalGames = String(GameRegistry.length).padStart(2, '0');
 
-        // 2. Globalen Highscore aus allen Spielen zusammenrechnen
         let globalRecord = 0;
         GameRegistry.forEach(game => {
             globalRecord += services.highscores.getHighscore(game.manifest.id) || 0;
         });
 
-        // Zahl formatieren (macht aus 24080 z.B. 24.080)
         const formattedRecord = globalRecord.toLocaleString('de-DE');
-
 
         const hero = document.createElement('div');
         hero.className = 'hero-section';
         hero.innerHTML = `
             <div class="hero-content">
-                <!-- Linke Seite: Text und Suche -->
                 <div class="hero-left">
                     <div class="hero-text">
                         <p class="eyebrow">Nexus System · Arcade Hub</p>
@@ -58,7 +120,6 @@ export class HubView {
                     </div>
                 </div>
 
-                <!-- Rechte Seite: Dynamisches System Status Panel -->
                 <div class="hero-right">
                     <div class="status-panel glass-panel">
                         <div class="status-header">
@@ -68,12 +129,10 @@ export class HubView {
                         <div class="status-stats">
                             <div class="stat-item">
                                 <span class="stat-label">Aktive Module</span>
-                                <!-- Hier wird die dynamische Anzahl eingesetzt -->
                                 <span class="stat-value">${totalGames}</span>
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Global Record</span>
-                                <!-- Hier wird der berechnete Gesamt-Highscore eingesetzt -->
                                 <span class="stat-value text-cyan">$${formattedRecord}</span>
                             </div>
                         </div>

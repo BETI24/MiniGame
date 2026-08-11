@@ -8,6 +8,7 @@ export class HubView {
         this.router = router;
         this.gridContainer = null;
         this.hideCasino = false;
+        this.heroStats = { moduleCount: null, recordValue: null };
         this.injectStyles();
         this.render();
     }
@@ -94,17 +95,6 @@ export class HubView {
         `;
         container.appendChild(ambientBg);
 
-        // --- DYNAMISCHE WERTE BERECHNEN ---
-
-        const totalGames = String(GameRegistry.length).padStart(2, '0');
-
-        let globalRecord = 0;
-        GameRegistry.forEach(game => {
-            globalRecord += services.highscores.getHighscore(game.manifest.id) || 0;
-        });
-
-        const formattedRecord = globalRecord.toLocaleString('de-DE');
-
         const hero = document.createElement('div');
         hero.className = 'hero-section';
         hero.innerHTML = `
@@ -130,11 +120,11 @@ export class HubView {
                         <div class="status-stats">
                             <div class="stat-item">
                                 <span class="stat-label">Aktive Module</span>
-                                <span class="stat-value">${totalGames}</span>
+                                <span class="stat-value stat-active-count">00</span>
                             </div>
                             <div class="stat-item">
                                 <span class="stat-label">Global Record</span>
-                                <span class="stat-value text-cyan">$${formattedRecord}</span>
+                                <span class="stat-value text-cyan stat-global-record">$0</span>
                             </div>
                         </div>
                         <div class="panel-ring"></div>
@@ -145,6 +135,9 @@ export class HubView {
 
         this.gridContainer = document.createElement('div');
         this.gridContainer.className = 'game-grid';
+
+        this.heroStats.moduleCount = hero.querySelector('.stat-active-count');
+        this.heroStats.recordValue = hero.querySelector('.stat-global-record');
 
         const searchInput = hero.querySelector('.search-input');
         searchInput.addEventListener('input', (e) => {
@@ -202,6 +195,20 @@ export class HubView {
         this.renderGrid('');
     }
 
+    updateHeroStats(filteredGames) {
+        if (!this.heroStats.moduleCount || !this.heroStats.recordValue) return;
+
+        const visibleCount = filteredGames.length;
+        let totalRecord = 0;
+
+        filteredGames.forEach(gameModule => {
+            totalRecord += services.highscores.getHighscore(gameModule.manifest.id) || 0;
+        });
+
+        this.heroStats.moduleCount.textContent = String(visibleCount).padStart(2, '0');
+        this.heroStats.recordValue.textContent = `$${totalRecord.toLocaleString('de-DE')}`;
+    }
+
     renderGrid(searchQuery) {
         this.gridContainer.innerHTML = '';
         const query = searchQuery.toLowerCase().trim();
@@ -218,6 +225,8 @@ export class HubView {
 
             return inName || inDesc || inTags;
         });
+
+        this.updateHeroStats(filteredGames);
 
         if (filteredGames.length === 0) {
             const noResults = document.createElement('div');

@@ -1,146 +1,147 @@
 const MODES = {
-    classic: {
-        label: 'Classic',
-        icon: '↔',
-        short: 'Links oder rechts. Schnell und direkt.',
-        rounds: 12,
-        directions: ['left', 'right'],
-        fakeChance: 0.18,
-        maxFakes: 1,
-        timeoutMs: 950,
-        endless: false
-    },
-    fourway: {
-        label: '4-Way',
-        icon: '✦',
-        short: 'WASD in alle vier Richtungen.',
-        rounds: 15,
-        directions: ['up', 'left', 'down', 'right'],
-        fakeChance: 0.16,
-        maxFakes: 1,
-        timeoutMs: 950,
-        endless: false
-    },
-    focus: {
-        label: 'Focus',
-        icon: '◇',
-        short: 'Viele Fakeouts. Nicht nervös werden.',
-        rounds: 16,
-        directions: ['up', 'left', 'down', 'right'],
-        fakeChance: 0.46,
-        maxFakes: 2,
-        timeoutMs: 900,
-        endless: false
-    },
-    endurance: {
-        label: 'Endurance',
-        icon: '∞',
-        short: '3 Leben. Wird immer schneller.',
-        rounds: null,
-        directions: ['up', 'left', 'down', 'right'],
-        fakeChance: 0.28,
-        maxFakes: 2,
-        timeoutMs: 900,
-        endless: true
-    }
+  classic: {
+    label: "Classic",
+    icon: "↔",
+    short: "Links oder rechts. Schnell und direkt.",
+    rounds: 12,
+    directions: ["left", "right"],
+    fakeChance: 0.18,
+    maxFakes: 1,
+    timeoutMs: 950,
+    endless: false,
+  },
+  fourway: {
+    label: "4-Way",
+    icon: "✦",
+    short: "WASD in alle vier Richtungen.",
+    rounds: 15,
+    directions: ["up", "left", "down", "right"],
+    fakeChance: 0.16,
+    maxFakes: 1,
+    timeoutMs: 950,
+    endless: false,
+  },
+  focus: {
+    label: "Focus",
+    icon: "◇",
+    short: "Viele Fakeouts. Nicht nervös werden.",
+    rounds: 16,
+    directions: ["up", "left", "down", "right"],
+    fakeChance: 0.46,
+    maxFakes: 2,
+    timeoutMs: 900,
+    endless: false,
+  },
+  endurance: {
+    label: "Endurance",
+    icon: "∞",
+    short: "3 Leben. Wird immer schneller.",
+    rounds: null,
+    directions: ["up", "left", "down", "right"],
+    fakeChance: 0.28,
+    maxFakes: 2,
+    timeoutMs: 900,
+    endless: true,
+  },
 };
 
 const INTENSITIES = {
-    relaxed: {
-        label: 'Relaxed',
-        delayMin: 1250,
-        delayMax: 2650,
-        fakeMultiplier: 0.70,
-        timeoutMultiplier: 1.18,
-        scoreMultiplier: 0.85
-    },
-    normal: {
-        label: 'Normal',
-        delayMin: 900,
-        delayMax: 2200,
-        fakeMultiplier: 1.00,
-        timeoutMultiplier: 1.00,
-        scoreMultiplier: 1.00
-    },
-    fast: {
-        label: 'Fast',
-        delayMin: 700,
-        delayMax: 1750,
-        fakeMultiplier: 1.22,
-        timeoutMultiplier: 0.88,
-        scoreMultiplier: 1.15
-    },
-    chaos: {
-        label: 'Chaos',
-        delayMin: 540,
-        delayMax: 1450,
-        fakeMultiplier: 1.48,
-        timeoutMultiplier: 0.78,
-        scoreMultiplier: 1.32
-    }
+  relaxed: {
+    label: "Relaxed",
+    delayMin: 1250,
+    delayMax: 2650,
+    fakeMultiplier: 0.7,
+    timeoutMultiplier: 1.18,
+    scoreMultiplier: 0.85,
+  },
+  normal: {
+    label: "Normal",
+    delayMin: 900,
+    delayMax: 2200,
+    fakeMultiplier: 1.0,
+    timeoutMultiplier: 1.0,
+    scoreMultiplier: 1.0,
+  },
+  fast: {
+    label: "Fast",
+    delayMin: 700,
+    delayMax: 1750,
+    fakeMultiplier: 1.22,
+    timeoutMultiplier: 0.88,
+    scoreMultiplier: 1.15,
+  },
+  chaos: {
+    label: "Chaos",
+    delayMin: 540,
+    delayMax: 1450,
+    fakeMultiplier: 1.48,
+    timeoutMultiplier: 0.78,
+    scoreMultiplier: 1.32,
+  },
 };
 
 const REACTION_TIERS = [
-    { max: 140, label: 'LIGHTNING', bonus: 520 },
-    { max: 180, label: 'PERFECT', bonus: 330 },
-    { max: 230, label: 'FAST', bonus: 170 },
-    { max: 300, label: 'GOOD', bonus: 75 },
-    { max: Infinity, label: 'LATE', bonus: 0 }
+  { max: 140, label: "LIGHTNING", bonus: 520 },
+  { max: 180, label: "PERFECT", bonus: 330 },
+  { max: 230, label: "FAST", bonus: 170 },
+  { max: 300, label: "GOOD", bonus: 75 },
+  { max: Infinity, label: "LATE", bonus: 0 },
 ];
 
 const DIRECTION_META = {
-    up:    { key: 'W', arrow: '↑', keyAlt: '↑', rotation: -45 },
-    left:  { key: 'A', arrow: '←', keyAlt: '←', rotation: -135 },
-    down:  { key: 'S', arrow: '↓', keyAlt: '↓', rotation: 135 },
-    right: { key: 'D', arrow: '→', keyAlt: '→', rotation: 45 }
+  up: { key: "W", arrow: "↑", keyAlt: "↑", rotation: -45 },
+  left: { key: "A", arrow: "←", keyAlt: "←", rotation: -135 },
+  down: { key: "S", arrow: "↓", keyAlt: "↓", rotation: 135 },
+  right: { key: "D", arrow: "→", keyAlt: "→", rotation: 45 },
 };
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const rand = (min, max) => min + Math.random() * (max - min);
 
 export default {
-    manifest: {
-        id: 'reaction-duel',
-        name: 'Reaction Challenge',
-        description: 'Reagiere auf Richtungssignale, ignoriere Fakeouts und verbessere deine Reaktionszeit.',
-        icon: '⚡',
-        tags: ['Reaction', 'Arcade', 'Challenge', 'Highscore']
-    },
+  manifest: {
+    id: "reaction-duel",
+    name: "Reaction Challenge",
+    description:
+      "Reagiere auf Richtungssignale, ignoriere Fakeouts und verbessere deine Reaktionszeit.",
+    icon: "⚡",
+    tags: ["Reaction", "Arcade", "Challenge"],
+  },
 
-    init: (container, services) => {
-        let destroyed = false;
+  init: (container, services) => {
+    let destroyed = false;
 
-        let selectedModeKey = 'classic';
-        let selectedIntensityKey = 'normal';
-        let mode = MODES[selectedModeKey];
-        let intensity = INTENSITIES[selectedIntensityKey];
+    let selectedModeKey = "classic";
+    let selectedIntensityKey = "normal";
+    let mode = MODES[selectedModeKey];
+    let intensity = INTENSITIES[selectedIntensityKey];
 
-        let phase = 'menu';
-        let roundToken = 0;
-        let roundNumber = 0;
-        let completedRounds = 0;
+    let phase = "menu";
+    let roundToken = 0;
+    let roundNumber = 0;
+    let completedRounds = 0;
 
-        let score = 0;
-        let streak = 0;
-        let bestStreak = 0;
-        let lives = 3;
+    let score = 0;
+    let streak = 0;
+    let bestStreak = 0;
+    let lives = 3;
 
-        let attempts = 0;
-        let correct = 0;
-        let fouls = 0;
-        let wrongInputs = 0;
-        let reactionTimes = [];
+    let attempts = 0;
+    let correct = 0;
+    let fouls = 0;
+    let wrongInputs = 0;
+    let reactionTimes = [];
 
-        let currentDirection = 'left';
-        let signalShownAt = 0;
-        let resolved = false;
+    let currentDirection = "left";
+    let signalShownAt = 0;
+    let resolved = false;
 
-        let muted = false;
-        let audioContext = null;
-        const timers = new Set();
+    let muted = false;
+    let audioContext = null;
+    const timers = new Set();
 
-        const style = document.createElement('style');
-        style.textContent = `
+    const style = document.createElement("style");
+    style.textContent = `
             .rc-game {
                 --bg:#070b13;
                 --panel:#111c2b;
@@ -935,9 +936,9 @@ export default {
             }
         `;
 
-        const root = document.createElement('div');
-        root.className = 'rc-game';
-        root.innerHTML = `
+    const root = document.createElement("div");
+    root.className = "rc-game";
+    root.innerHTML = `
             <div class="rc-arena">
                 <div class="rc-zone up"></div>
                 <div class="rc-zone left"></div>
@@ -1058,13 +1059,21 @@ export default {
                         </div>
 
                         <div class="rc-mode-grid">
-                            ${Object.entries(MODES).map(([key, value]) => `
-                                <button class="rc-mode-card ${key === selectedModeKey ? 'selected' : ''}" data-mode="${key}" type="button">
-                                    <div class="rc-mode-icon">${value.icon}</div>
+                            ${Object.entries(MODES)
+                              .map(
+                                ([key, value]) => `
+                                <button class="rc-mode-card ${
+                                  key === selectedModeKey ? "selected" : ""
+                                }" data-mode="${key}" type="button">
+                                    <div class="rc-mode-icon">${
+                                      value.icon
+                                    }</div>
                                     <b>${value.label}</b>
                                     <span>${value.short}</span>
                                 </button>
-                            `).join('')}
+                            `
+                              )
+                              .join("")}
                         </div>
                     </div>
 
@@ -1072,11 +1081,19 @@ export default {
                         <div>
                             <div class="rc-section-label" style="margin-bottom:8px;">Intensität</div>
                             <div class="rc-intensity">
-                                ${Object.entries(INTENSITIES).map(([key, value]) => `
-                                    <button class="rc-intensity-btn ${key === selectedIntensityKey ? 'selected' : ''}" data-intensity="${key}" type="button">
+                                ${Object.entries(INTENSITIES)
+                                  .map(
+                                    ([key, value]) => `
+                                    <button class="rc-intensity-btn ${
+                                      key === selectedIntensityKey
+                                        ? "selected"
+                                        : ""
+                                    }" data-intensity="${key}" type="button">
                                         ${value.label}
                                     </button>
-                                `).join('')}
+                                `
+                                  )
+                                  .join("")}
                             </div>
                         </div>
 
@@ -1108,857 +1125,787 @@ export default {
             </div>
         `;
 
-        container.append(style, root);
+    container.append(style, root);
 
-        const arenaEl = root.querySelector('.rc-arena');
-        const signalEl = root.querySelector('.rc-signal');
-        const arrowEl = root.querySelector('.rc-arrow');
+    const arenaEl = root.querySelector(".rc-arena");
+    const signalEl = root.querySelector(".rc-signal");
+    const arrowEl = root.querySelector(".rc-arrow");
 
-        const statusEl = root.querySelector('.rc-status');
-        const statusMainEl = root.querySelector('.rc-status-main');
-        const statusSubEl = root.querySelector('.rc-status-sub');
+    const statusEl = root.querySelector(".rc-status");
+    const statusMainEl = root.querySelector(".rc-status-main");
+    const statusSubEl = root.querySelector(".rc-status-sub");
 
-        const scoreEl = root.querySelector('.rc-score');
-        const streakEl = root.querySelector('.rc-streak');
-        const bestEl = root.querySelector('.rc-best');
-        const livesEl = root.querySelector('.rc-lives');
-        const livesChipEl = root.querySelector('.rc-lives-chip');
-        const roundLabelEl = root.querySelector('.rc-round-label');
-        const roundValueEl = root.querySelector('.rc-round-value');
+    const scoreEl = root.querySelector(".rc-score");
+    const streakEl = root.querySelector(".rc-streak");
+    const bestEl = root.querySelector(".rc-best");
+    const livesEl = root.querySelector(".rc-lives");
+    const livesChipEl = root.querySelector(".rc-lives-chip");
+    const roundLabelEl = root.querySelector(".rc-round-label");
+    const roundValueEl = root.querySelector(".rc-round-value");
 
-        const controlHintEl = root.querySelector('.rc-control-hint');
-        const resultEl = root.querySelector('.rc-result');
-        const trackFillEl = root.querySelector('.rc-track-fill');
+    const controlHintEl = root.querySelector(".rc-control-hint");
+    const resultEl = root.querySelector(".rc-result");
+    const trackFillEl = root.querySelector(".rc-track-fill");
 
-        const flashEl = root.querySelector('.rc-flash');
-        const audioBtn = root.querySelector('.rc-audio');
+    const flashEl = root.querySelector(".rc-flash");
+    const audioBtn = root.querySelector(".rc-audio");
 
-        const menuOverlay = root.querySelector('.rc-menu');
-        const endOverlay = root.querySelector('.rc-end');
-        const startBtn = root.querySelector('.rc-menu .rc-start');
-        const restartBtn = root.querySelector('.rc-restart');
+    const menuOverlay = root.querySelector(".rc-menu");
+    const endOverlay = root.querySelector(".rc-end");
+    const startBtn = root.querySelector(".rc-menu .rc-start");
+    const restartBtn = root.querySelector(".rc-restart");
 
-        const modeButtons = [...root.querySelectorAll('.rc-mode-card')];
-        const intensityButtons = [...root.querySelectorAll('.rc-intensity-btn')];
-        const touchButtons = [...root.querySelectorAll('.rc-touch-btn')];
+    const modeButtons = [...root.querySelectorAll(".rc-mode-card")];
+    const intensityButtons = [...root.querySelectorAll(".rc-intensity-btn")];
+    const touchButtons = [...root.querySelectorAll(".rc-touch-btn")];
 
-        const endSubEl = root.querySelector('.rc-end-sub');
-        const endScoreEl = root.querySelector('.rc-end-score');
-        const endAverageEl = root.querySelector('.rc-end-average');
-        const endBestEl = root.querySelector('.rc-end-best');
-        const endAccuracyEl = root.querySelector('.rc-end-accuracy');
-        const endStreakEl = root.querySelector('.rc-end-streak');
+    const endSubEl = root.querySelector(".rc-end-sub");
+    const endScoreEl = root.querySelector(".rc-end-score");
+    const endAverageEl = root.querySelector(".rc-end-average");
+    const endBestEl = root.querySelector(".rc-end-best");
+    const endAccuracyEl = root.querySelector(".rc-end-accuracy");
+    const endStreakEl = root.querySelector(".rc-end-streak");
 
-        const clearTimers = () => {
-            timers.forEach(id => clearTimeout(id));
-            timers.clear();
-        };
+    const clearTimers = () => {
+      timers.forEach((id) => clearTimeout(id));
+      timers.clear();
+    };
 
-        const schedule = (fn, delay) => {
-            const id = setTimeout(() => {
-                timers.delete(id);
-                if (!destroyed) fn();
-            }, delay);
+    const schedule = (fn, delay) => {
+      const id = setTimeout(() => {
+        timers.delete(id);
+        if (!destroyed) fn();
+      }, delay);
 
-            timers.add(id);
-            return id;
-        };
+      timers.add(id);
+      return id;
+    };
 
-        const ensureAudio = () => {
-            if (muted) return null;
+    const ensureAudio = () => {
+      if (muted) return null;
 
-            try {
-                if (!audioContext) {
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                }
+      try {
+        if (!audioContext) {
+          audioContext = new (window.AudioContext ||
+            window.webkitAudioContext)();
+        }
 
-                if (audioContext.state === 'suspended') {
-                    audioContext.resume();
-                }
+        if (audioContext.state === "suspended") {
+          audioContext.resume();
+        }
 
-                return audioContext;
-            } catch {
-                return null;
-            }
-        };
+        return audioContext;
+      } catch {
+        return null;
+      }
+    };
 
-        const tone = (frequency, duration = 0.055, volume = 0.033, type = 'sine') => {
-            if (muted) return;
+    const tone = (
+      frequency,
+      duration = 0.055,
+      volume = 0.033,
+      type = "sine"
+    ) => {
+      if (muted) return;
 
-            const ac = ensureAudio();
-            if (!ac) return;
+      const ac = ensureAudio();
+      if (!ac) return;
 
-            const oscillator = ac.createOscillator();
-            const gain = ac.createGain();
+      const oscillator = ac.createOscillator();
+      const gain = ac.createGain();
 
-            oscillator.type = type;
-            oscillator.frequency.setValueAtTime(frequency, ac.currentTime);
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, ac.currentTime);
 
-            gain.gain.setValueAtTime(volume, ac.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + duration);
+      gain.gain.setValueAtTime(volume, ac.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + duration);
 
-            oscillator.connect(gain);
-            gain.connect(ac.destination);
+      oscillator.connect(gain);
+      gain.connect(ac.destination);
 
-            oscillator.start();
-            oscillator.stop(ac.currentTime + duration);
-        };
+      oscillator.start();
+      oscillator.stop(ac.currentTime + duration);
+    };
 
-        const playGo = direction => {
-            const frequencies = {
-                up: 980,
-                left: 720,
-                down: 610,
-                right: 860
-            };
+    const playGo = (direction) => {
+      const frequencies = {
+        up: 980,
+        left: 720,
+        down: 610,
+        right: 860,
+      };
 
-            tone(frequencies[direction], 0.065, 0.042, 'square');
-        };
+      tone(frequencies[direction], 0.065, 0.042, "square");
+    };
 
-        const playFake = () => tone(260, 0.045, 0.018, 'triangle');
-        const playSuccess = () => {
-            tone(650, 0.05, 0.03);
-            schedule(() => tone(890, 0.08, 0.035), 45);
-        };
-        const playFail = () => tone(225, 0.08, 0.03, 'sawtooth');
+    const playFake = () => tone(260, 0.045, 0.018, "triangle");
+    const playSuccess = () => {
+      tone(650, 0.05, 0.03);
+      schedule(() => tone(890, 0.08, 0.035), 45);
+    };
+    const playFail = () => tone(225, 0.08, 0.03, "sawtooth");
 
-        const getBestReaction = () =>
-            reactionTimes.length
-                ? Math.min(...reactionTimes)
-                : null;
+    const getBestReaction = () =>
+      reactionTimes.length ? Math.min(...reactionTimes) : null;
 
-        const getAverageReaction = () =>
-            reactionTimes.length
-                ? reactionTimes.reduce((sum, value) => sum + value, 0) / reactionTimes.length
-                : null;
+    const getAverageReaction = () =>
+      reactionTimes.length
+        ? reactionTimes.reduce((sum, value) => sum + value, 0) /
+          reactionTimes.length
+        : null;
 
-        const getReactionTier = ms =>
-            REACTION_TIERS.find(tier => ms <= tier.max) ??
-            REACTION_TIERS[REACTION_TIERS.length - 1];
+    const getReactionTier = (ms) =>
+      REACTION_TIERS.find((tier) => ms <= tier.max) ??
+      REACTION_TIERS[REACTION_TIERS.length - 1];
 
-        const setStatus = (main, sub = '', kind = 'wait') => {
-            statusEl.className = `rc-status ${kind}`;
-            statusMainEl.textContent = main;
-            statusSubEl.textContent = sub;
-        };
+    const setStatus = (main, sub = "", kind = "wait") => {
+      statusEl.className = `rc-status ${kind}`;
+      statusMainEl.textContent = main;
+      statusSubEl.textContent = sub;
+    };
 
-        const hideSignal = () => {
-            signalEl.className = 'rc-signal';
-            arenaEl.className = 'rc-arena';
-        };
+    const hideSignal = () => {
+      signalEl.className = "rc-signal";
+      arenaEl.className = "rc-arena";
+    };
 
-        const showSignal = direction => {
-            hideSignal();
+    const showSignal = (direction) => {
+      hideSignal();
 
-            arrowEl.textContent = DIRECTION_META[direction].arrow;
-            signalEl.classList.add('visible');
-            arenaEl.classList.add(`active-${direction}`);
-        };
+      arrowEl.textContent = DIRECTION_META[direction].arrow;
+      signalEl.classList.add("visible");
+      arenaEl.classList.add(`active-${direction}`);
+    };
 
-        const showFake = () => {
-            hideSignal();
-            signalEl.classList.add('fake');
-            playFake();
+    const showFake = () => {
+      hideSignal();
+      signalEl.classList.add("fake");
+      playFake();
 
-            schedule(() => {
-                if (phase === 'waiting') {
-                    hideSignal();
-                }
-            }, 160);
-        };
+      schedule(() => {
+        if (phase === "waiting") {
+          hideSignal();
+        }
+      }, 160);
+    };
 
-        const doFlash = kind => {
-            flashEl.className = `rc-flash ${kind}`;
+    const doFlash = (kind) => {
+      flashEl.className = `rc-flash ${kind}`;
 
-            schedule(() => {
-                flashEl.className = 'rc-flash';
-            }, 285);
-        };
+      schedule(() => {
+        flashEl.className = "rc-flash";
+      }, 285);
+    };
 
-        const renderControls = () => {
-            const directions = mode.directions;
+    const renderControls = () => {
+      const directions = mode.directions;
 
-            controlHintEl.innerHTML = directions.map(direction => `
+      controlHintEl.innerHTML =
+        directions
+          .map(
+            (direction) => `
                 <span class="rc-key" data-hint="${direction}">
                     ${DIRECTION_META[direction].key}
                 </span>
-            `).join('') + `
+            `
+          )
+          .join("") +
+        `
                 <span class="rc-fake-hint"><b>◇</b> = warten</span>
             `;
-        };
+    };
 
-        const highlightControl = direction => {
-            if (!direction) {
-                renderControls();
-                return;
-            }
+    const highlightControl = (direction) => {
+      if (!direction) {
+        renderControls();
+        return;
+      }
 
-            const meta = DIRECTION_META[direction];
-            controlHintEl.innerHTML = `
+      const meta = DIRECTION_META[direction];
+      controlHintEl.innerHTML = `
                 <div class="rc-action-key">
                     ${meta.key}
                     <span>${meta.keyAlt}</span>
                 </div>
             `;
-        };
-
-        const getEnduranceRamp = () => {
-            if (!mode.endless) return 0;
-            return Math.min(0.42, Math.floor(Math.max(0, completedRounds) / 5) * 0.045);
-        };
-
-        const currentTimeout = () => {
-            const ramp = getEnduranceRamp();
-
-            return Math.max(
-                430,
-                Math.round(
-                    mode.timeoutMs *
-                    intensity.timeoutMultiplier *
-                    (1 - ramp)
-                )
-            );
-        };
-
-        const currentDelayRange = () => {
-            const ramp = getEnduranceRamp();
-
-            return {
-                min: Math.max(
-                    390,
-                    intensity.delayMin * (1 - ramp * 0.70)
-                ),
-                max: Math.max(
-                    760,
-                    intensity.delayMax * (1 - ramp)
-                )
-            };
-        };
-
-        const currentFakeChance = () =>
-            clamp(
-                mode.fakeChance *
-                intensity.fakeMultiplier +
-                getEnduranceRamp() * 0.42,
-                0,
-                0.88
-            );
-
-        const calculateScore = reactionMs => {
-            const tier = getReactionTier(reactionMs);
-            const speedScore = Math.max(120, 770 - reactionMs * 1.55);
-            const streakMultiplier = 1 + Math.min(1.7, streak * 0.14);
-
-            return Math.round(
-                (speedScore + tier.bonus) *
-                streakMultiplier *
-                intensity.scoreMultiplier
-            );
-        };
-
-        const updateHud = () => {
-            scoreEl.textContent = Math.round(score).toLocaleString('de-DE');
-            streakEl.textContent = `x${streak}`;
-
-            const best = getBestReaction();
-            bestEl.textContent = best === null ? '—' : `${Math.round(best)} ms`;
-
-            livesChipEl.style.display = mode.endless ? '' : 'none';
-            livesEl.textContent = '♥'.repeat(Math.max(0, lives)) || '0';
-
-            if (mode.endless) {
-                roundLabelEl.textContent = 'Welle';
-                roundValueEl.textContent = roundNumber;
-                trackFillEl.style.width = `${clamp((completedRounds % 20) / 20 * 100, 0, 100)}%`;
-            } else {
-                roundLabelEl.textContent = 'Runde';
-                roundValueEl.textContent = `${Math.min(roundNumber, mode.rounds)} / ${mode.rounds}`;
-                trackFillEl.style.width = `${clamp(completedRounds / mode.rounds * 100, 0, 100)}%`;
-            }
-        };
-
-        const missRound = (reason, reactionMs = null) => {
-            if (phase === 'result' || phase === 'ended' || phase === 'menu') return;
-
-            resolved = true;
-            phase = 'result';
-
-            attempts++;
-            completedRounds++;
-            streak = 0;
-
-            if (reason === 'foul') {
-                fouls++;
-                score = Math.max(0, score - Math.round(130 * intensity.scoreMultiplier));
-            }
-
-            if (reason === 'wrong') {
-                wrongInputs++;
-                score = Math.max(0, score - Math.round(95 * intensity.scoreMultiplier));
-            }
-
-            if (mode.endless) {
-                lives--;
-            }
-
-            hideSignal();
-            highlightControl(null);
-            doFlash(reason === 'foul' ? 'foul' : 'fail');
-            playFail();
-
-            if (reason === 'foul') {
-                setStatus(
-                    'ZU FRÜH!',
-                    'Warte auf einen echten Pfeil. Goldene ◇ sind Fakeouts.',
-                    'foul'
-                );
-                resultEl.textContent = 'Foul · Runde zählt als Fehler';
-            } else if (reason === 'wrong') {
-                setStatus(
-                    'FALSCHE RICHTUNG!',
-                    `${DIRECTION_META[currentDirection].arrow} bedeutet ${DIRECTION_META[currentDirection].key} oder ${DIRECTION_META[currentDirection].keyAlt}.`,
-                    'fail'
-                );
-                resultEl.textContent = reactionMs === null
-                    ? 'Falsche Taste'
-                    : `Falsche Taste nach ${Math.round(reactionMs)} ms`;
-            } else {
-                setStatus(
-                    'ZU LANGSAM!',
-                    `Du hattest ${currentTimeout()} ms Zeit.`,
-                    'fail'
-                );
-                resultEl.textContent = 'Keine Reaktion innerhalb des Zeitfensters';
-            }
-
-            updateHud();
-            scheduleNext();
-        };
-
-        const successRound = reactionMs => {
-            if (phase !== 'signal' || resolved) return;
-
-            resolved = true;
-            phase = 'result';
-
-            attempts++;
-            correct++;
-            completedRounds++;
-            reactionTimes.push(reactionMs);
-
-            streak++;
-            bestStreak = Math.max(bestStreak, streak);
-
-            const tier = getReactionTier(reactionMs);
-            const gained = calculateScore(reactionMs);
-            score += gained;
-
-            hideSignal();
-            highlightControl(null);
-            doFlash('success');
-            playSuccess();
-
-            setStatus(
-                tier.label,
-                `${Math.round(reactionMs)} ms · +${gained.toLocaleString('de-DE')} Punkte`,
-                'success'
-            );
-
-            resultEl.textContent =
-                `Reaktion ${Math.round(reactionMs)} ms · Streak x${streak}`;
-
-            updateHud();
-            scheduleNext();
-        };
-
-        const isRunFinished = () => {
-            if (mode.endless) {
-                return lives <= 0;
-            }
-
-            return completedRounds >= mode.rounds;
-        };
-
-        const scheduleNext = () => {
-            const token = roundToken;
-
-            schedule(() => {
-                if (destroyed || token !== roundToken) return;
-
-                if (isRunFinished()) {
-                    endRun();
-                } else {
-                    beginRound();
-                }
-            }, 980);
-        };
-
-        const scheduleFakeouts = (token, actualDelay) => {
-            const chance = currentFakeChance();
-
-            let fakeCount = 0;
-
-            if (Math.random() < chance) {
-                fakeCount = 1;
-            }
-
-            const canDoubleFake =
-                mode.maxFakes >= 2 ||
-                selectedIntensityKey === 'chaos';
-
-            if (
-                canDoubleFake &&
-                Math.random() < chance * 0.42
-            ) {
-                fakeCount = 2;
-            }
-
-            if (!fakeCount || actualDelay < 760) return;
-
-            const earliest = 190;
-            const latest = Math.max(earliest + 120, actualDelay - 245);
-            const times = [];
-
-            for (let i = 0; i < fakeCount; i++) {
-                let time = rand(earliest, latest);
-
-                if (times.some(other => Math.abs(other - time) < 250)) {
-                    time = clamp(time + 285, earliest, latest);
-                }
-
-                times.push(time);
-            }
-
-            times.sort((a, b) => a - b);
-
-            times.forEach(time => {
-                schedule(() => {
-                    if (
-                        destroyed ||
-                        token !== roundToken ||
-                        phase !== 'waiting'
-                    ) {
-                        return;
-                    }
-
-                    showFake();
-                }, time);
-            });
-        };
-
-        const showRealSignal = token => {
-            if (
-                destroyed ||
-                token !== roundToken ||
-                phase !== 'waiting'
-            ) {
-                return;
-            }
-
-            phase = 'signal';
-            resolved = false;
-
-            currentDirection =
-                mode.directions[
-                    Math.floor(Math.random() * mode.directions.length)
-                ];
-
-            signalShownAt = performance.now();
-
-            showSignal(currentDirection);
-            highlightControl(currentDirection);
-
-            setStatus(
-                'JETZT!',
-                `Drücke ${DIRECTION_META[currentDirection].key} oder ${DIRECTION_META[currentDirection].keyAlt}`,
-                'go'
-            );
-
-            playGo(currentDirection);
-
-            const timeout = currentTimeout();
-            const timeoutToken = roundToken;
-
-            schedule(() => {
-                if (
-                    destroyed ||
-                    timeoutToken !== roundToken ||
-                    phase !== 'signal' ||
-                    resolved
-                ) {
-                    return;
-                }
-
-                missRound('timeout');
-            }, timeout);
-        };
-
-        const beginRound = () => {
-            clearTimers();
-
-            roundToken++;
-            roundNumber++;
-
-            phase = 'prep';
-            resolved = false;
-
-            hideSignal();
-            highlightControl(null);
-
-            resultEl.textContent =
-                'Goldenes ◇ = Fakeout · nichts drücken';
-
-            updateHud();
-
-            setStatus(
-                'BEREIT?',
-                mode.directions.length === 2
-                    ? 'A / D oder ← / →'
-                    : 'WASD oder Pfeiltasten',
-                'wait'
-            );
-
-            const token = roundToken;
-
-            schedule(() => {
-                if (
-                    destroyed ||
-                    token !== roundToken ||
-                    phase !== 'prep'
-                ) {
-                    return;
-                }
-
-                phase = 'waiting';
-
-                setStatus(
-                    'WARTEN…',
-                    'Noch nicht drücken.',
-                    'wait'
-                );
-
-                const range = currentDelayRange();
-                const actualDelay = rand(range.min, range.max);
-
-                scheduleFakeouts(token, actualDelay);
-
-                schedule(() => {
-                    showRealSignal(token);
-                }, actualDelay);
-            }, rand(440, 650));
-        };
-
-        const handleDirection = direction => {
-            ensureAudio();
-
-            if (
-                phase === 'menu' ||
-                phase === 'ended' ||
-                phase === 'result'
-            ) {
-                return;
-            }
-
-            if (
-                !mode.directions.includes(direction)
-            ) {
-                return;
-            }
-
-            if (
-                phase === 'prep' ||
-                phase === 'waiting'
-            ) {
-                missRound('foul');
-                return;
-            }
-
-            if (phase !== 'signal' || resolved) return;
-
-            const reactionMs =
-                performance.now() -
-                signalShownAt;
-
-            if (direction !== currentDirection) {
-                missRound('wrong', reactionMs);
-                return;
-            }
-
-            successRound(reactionMs);
-        };
-
-        const finalScore = () => {
-            const average = getAverageReaction();
-            const best = getBestReaction();
-
-            let value = Math.round(score);
-
-            if (
-                !mode.endless &&
-                completedRounds >= mode.rounds
-            ) {
-                value += 1100;
-            }
-
-            if (
-                average !== null &&
-                average < 230
-            ) {
-                value += Math.round((230 - average) * 10);
-            }
-
-            if (
-                best !== null &&
-                best < 170
-            ) {
-                value += 600;
-            }
-
-            value -= fouls * 70;
-            return Math.max(0, Math.round(value));
-        };
-
-        const endRun = () => {
-            clearTimers();
-            roundToken++;
-
-            phase = 'ended';
-            resolved = true;
-
-            hideSignal();
-            highlightControl(null);
-
-            const average = getAverageReaction();
-            const best = getBestReaction();
-
-            const accuracy =
-                attempts > 0
-                    ? Math.round(correct / attempts * 100)
-                    : 0;
-
-            const final = finalScore();
-
-            endSubEl.textContent = mode.endless
-                ? `${completedRounds} Wellen · ${intensity.label} · ${fouls} Fouls`
-                : `${mode.label} · ${correct}/${mode.rounds} Treffer · ${intensity.label}`;
-
-            endScoreEl.textContent =
-                final.toLocaleString('de-DE');
-
-            endAverageEl.textContent =
-                average === null
-                    ? '—'
-                    : `${Math.round(average)} ms`;
-
-            endBestEl.textContent =
-                best === null
-                    ? '—'
-                    : `${Math.round(best)} ms`;
-
-            endAccuracyEl.textContent =
-                `${accuracy}%`;
-
-            endStreakEl.textContent =
-                bestStreak;
-
-            services
-                ?.highscores
-                ?.saveHighscore?.(
-                    `reaction-duel-${selectedModeKey}`,
-                    final
-                );
-
-            endOverlay.classList.remove('hidden');
-        };
-
-        const startRun = () => {
-            clearTimers();
-            ensureAudio();
-
-            mode = MODES[selectedModeKey];
-            intensity = INTENSITIES[selectedIntensityKey];
-
-            roundToken++;
-            roundNumber = 0;
-            completedRounds = 0;
-
-            score = 0;
-            streak = 0;
-            bestStreak = 0;
-            lives = 3;
-
-            attempts = 0;
-            correct = 0;
-            fouls = 0;
-            wrongInputs = 0;
-            reactionTimes = [];
-
-            resolved = false;
-
-            menuOverlay.classList.add('hidden');
-            endOverlay.classList.add('hidden');
-
-            renderControls();
-            updateHud();
-            beginRound();
-        };
-
-        const directionFromKey = key => {
-            switch (key.toLowerCase()) {
-                case 'w':
-                case 'arrowup':
-                    return 'up';
-
-                case 'a':
-                case 'arrowleft':
-                    return 'left';
-
-                case 's':
-                case 'arrowdown':
-                    return 'down';
-
-                case 'd':
-                case 'arrowright':
-                    return 'right';
-
-                default:
-                    return null;
-            }
-        };
-
-        const onKeyDown = event => {
-            const direction =
-                directionFromKey(event.key);
-
-            if (!direction) return;
-
-            event.preventDefault();
-            handleDirection(direction);
-        };
-
-        modeButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                selectedModeKey =
-                    button.dataset.mode;
-
-                mode =
-                    MODES[selectedModeKey];
-
-                modeButtons.forEach(other => {
-                    other.classList.toggle(
-                        'selected',
-                        other === button
-                    );
-                });
-
-                startBtn.textContent =
-                    `${mode.label} Challenge starten`;
-            });
+    };
+
+    const getEnduranceRamp = () => {
+      if (!mode.endless) return 0;
+      return Math.min(
+        0.42,
+        Math.floor(Math.max(0, completedRounds) / 5) * 0.045
+      );
+    };
+
+    const currentTimeout = () => {
+      const ramp = getEnduranceRamp();
+
+      return Math.max(
+        430,
+        Math.round(mode.timeoutMs * intensity.timeoutMultiplier * (1 - ramp))
+      );
+    };
+
+    const currentDelayRange = () => {
+      const ramp = getEnduranceRamp();
+
+      return {
+        min: Math.max(390, intensity.delayMin * (1 - ramp * 0.7)),
+        max: Math.max(760, intensity.delayMax * (1 - ramp)),
+      };
+    };
+
+    const currentFakeChance = () =>
+      clamp(
+        mode.fakeChance * intensity.fakeMultiplier + getEnduranceRamp() * 0.42,
+        0,
+        0.88
+      );
+
+    const calculateScore = (reactionMs) => {
+      const tier = getReactionTier(reactionMs);
+      const speedScore = Math.max(120, 770 - reactionMs * 1.55);
+      const streakMultiplier = 1 + Math.min(1.7, streak * 0.14);
+
+      return Math.round(
+        (speedScore + tier.bonus) * streakMultiplier * intensity.scoreMultiplier
+      );
+    };
+
+    const updateHud = () => {
+      scoreEl.textContent = Math.round(score).toLocaleString("de-DE");
+      streakEl.textContent = `x${streak}`;
+
+      const best = getBestReaction();
+      bestEl.textContent = best === null ? "—" : `${Math.round(best)} ms`;
+
+      livesChipEl.style.display = mode.endless ? "" : "none";
+      livesEl.textContent = "♥".repeat(Math.max(0, lives)) || "0";
+
+      if (mode.endless) {
+        roundLabelEl.textContent = "Welle";
+        roundValueEl.textContent = roundNumber;
+        trackFillEl.style.width = `${clamp(
+          ((completedRounds % 20) / 20) * 100,
+          0,
+          100
+        )}%`;
+      } else {
+        roundLabelEl.textContent = "Runde";
+        roundValueEl.textContent = `${Math.min(roundNumber, mode.rounds)} / ${
+          mode.rounds
+        }`;
+        trackFillEl.style.width = `${clamp(
+          (completedRounds / mode.rounds) * 100,
+          0,
+          100
+        )}%`;
+      }
+    };
+
+    const missRound = (reason, reactionMs = null) => {
+      if (phase === "result" || phase === "ended" || phase === "menu") return;
+
+      resolved = true;
+      phase = "result";
+
+      attempts++;
+      completedRounds++;
+      streak = 0;
+
+      if (reason === "foul") {
+        fouls++;
+        score = Math.max(
+          0,
+          score - Math.round(130 * intensity.scoreMultiplier)
+        );
+      }
+
+      if (reason === "wrong") {
+        wrongInputs++;
+        score = Math.max(0, score - Math.round(95 * intensity.scoreMultiplier));
+      }
+
+      if (mode.endless) {
+        lives--;
+      }
+
+      hideSignal();
+      highlightControl(null);
+      doFlash(reason === "foul" ? "foul" : "fail");
+      playFail();
+
+      if (reason === "foul") {
+        setStatus(
+          "ZU FRÜH!",
+          "Warte auf einen echten Pfeil. Goldene ◇ sind Fakeouts.",
+          "foul"
+        );
+        resultEl.textContent = "Foul · Runde zählt als Fehler";
+      } else if (reason === "wrong") {
+        setStatus(
+          "FALSCHE RICHTUNG!",
+          `${DIRECTION_META[currentDirection].arrow} bedeutet ${DIRECTION_META[currentDirection].key} oder ${DIRECTION_META[currentDirection].keyAlt}.`,
+          "fail"
+        );
+        resultEl.textContent =
+          reactionMs === null
+            ? "Falsche Taste"
+            : `Falsche Taste nach ${Math.round(reactionMs)} ms`;
+      } else {
+        setStatus(
+          "ZU LANGSAM!",
+          `Du hattest ${currentTimeout()} ms Zeit.`,
+          "fail"
+        );
+        resultEl.textContent = "Keine Reaktion innerhalb des Zeitfensters";
+      }
+
+      updateHud();
+      scheduleNext();
+    };
+
+    const successRound = (reactionMs) => {
+      if (phase !== "signal" || resolved) return;
+
+      resolved = true;
+      phase = "result";
+
+      attempts++;
+      correct++;
+      completedRounds++;
+      reactionTimes.push(reactionMs);
+
+      streak++;
+      bestStreak = Math.max(bestStreak, streak);
+
+      const tier = getReactionTier(reactionMs);
+      const gained = calculateScore(reactionMs);
+      score += gained;
+
+      hideSignal();
+      highlightControl(null);
+      doFlash("success");
+      playSuccess();
+
+      setStatus(
+        tier.label,
+        `${Math.round(reactionMs)} ms · +${gained.toLocaleString(
+          "de-DE"
+        )} Punkte`,
+        "success"
+      );
+
+      resultEl.textContent = `Reaktion ${Math.round(
+        reactionMs
+      )} ms · Streak x${streak}`;
+
+      updateHud();
+      scheduleNext();
+    };
+
+    const isRunFinished = () => {
+      if (mode.endless) {
+        return lives <= 0;
+      }
+
+      return completedRounds >= mode.rounds;
+    };
+
+    const scheduleNext = () => {
+      const token = roundToken;
+
+      schedule(() => {
+        if (destroyed || token !== roundToken) return;
+
+        if (isRunFinished()) {
+          endRun();
+        } else {
+          beginRound();
+        }
+      }, 980);
+    };
+
+    const scheduleFakeouts = (token, actualDelay) => {
+      const chance = currentFakeChance();
+
+      let fakeCount = 0;
+
+      if (Math.random() < chance) {
+        fakeCount = 1;
+      }
+
+      const canDoubleFake =
+        mode.maxFakes >= 2 || selectedIntensityKey === "chaos";
+
+      if (canDoubleFake && Math.random() < chance * 0.42) {
+        fakeCount = 2;
+      }
+
+      if (!fakeCount || actualDelay < 760) return;
+
+      const earliest = 190;
+      const latest = Math.max(earliest + 120, actualDelay - 245);
+      const times = [];
+
+      for (let i = 0; i < fakeCount; i++) {
+        let time = rand(earliest, latest);
+
+        if (times.some((other) => Math.abs(other - time) < 250)) {
+          time = clamp(time + 285, earliest, latest);
+        }
+
+        times.push(time);
+      }
+
+      times.sort((a, b) => a - b);
+
+      times.forEach((time) => {
+        schedule(() => {
+          if (destroyed || token !== roundToken || phase !== "waiting") {
+            return;
+          }
+
+          showFake();
+        }, time);
+      });
+    };
+
+    const showRealSignal = (token) => {
+      if (destroyed || token !== roundToken || phase !== "waiting") {
+        return;
+      }
+
+      phase = "signal";
+      resolved = false;
+
+      currentDirection =
+        mode.directions[Math.floor(Math.random() * mode.directions.length)];
+
+      signalShownAt = performance.now();
+
+      showSignal(currentDirection);
+      highlightControl(currentDirection);
+
+      setStatus(
+        "JETZT!",
+        `Drücke ${DIRECTION_META[currentDirection].key} oder ${DIRECTION_META[currentDirection].keyAlt}`,
+        "go"
+      );
+
+      playGo(currentDirection);
+
+      const timeout = currentTimeout();
+      const timeoutToken = roundToken;
+
+      schedule(() => {
+        if (
+          destroyed ||
+          timeoutToken !== roundToken ||
+          phase !== "signal" ||
+          resolved
+        ) {
+          return;
+        }
+
+        missRound("timeout");
+      }, timeout);
+    };
+
+    const beginRound = () => {
+      clearTimers();
+
+      roundToken++;
+      roundNumber++;
+
+      phase = "prep";
+      resolved = false;
+
+      hideSignal();
+      highlightControl(null);
+
+      resultEl.textContent = "Goldenes ◇ = Fakeout · nichts drücken";
+
+      updateHud();
+
+      setStatus(
+        "BEREIT?",
+        mode.directions.length === 2
+          ? "A / D oder ← / →"
+          : "WASD oder Pfeiltasten",
+        "wait"
+      );
+
+      const token = roundToken;
+
+      schedule(() => {
+        if (destroyed || token !== roundToken || phase !== "prep") {
+          return;
+        }
+
+        phase = "waiting";
+
+        setStatus("WARTEN…", "Noch nicht drücken.", "wait");
+
+        const range = currentDelayRange();
+        const actualDelay = rand(range.min, range.max);
+
+        scheduleFakeouts(token, actualDelay);
+
+        schedule(() => {
+          showRealSignal(token);
+        }, actualDelay);
+      }, rand(440, 650));
+    };
+
+    const handleDirection = (direction) => {
+      ensureAudio();
+
+      if (phase === "menu" || phase === "ended" || phase === "result") {
+        return;
+      }
+
+      if (!mode.directions.includes(direction)) {
+        return;
+      }
+
+      if (phase === "prep" || phase === "waiting") {
+        missRound("foul");
+        return;
+      }
+
+      if (phase !== "signal" || resolved) return;
+
+      const reactionMs = performance.now() - signalShownAt;
+
+      if (direction !== currentDirection) {
+        missRound("wrong", reactionMs);
+        return;
+      }
+
+      successRound(reactionMs);
+    };
+
+    const finalScore = () => {
+      const average = getAverageReaction();
+      const best = getBestReaction();
+
+      let value = Math.round(score);
+
+      if (!mode.endless && completedRounds >= mode.rounds) {
+        value += 1100;
+      }
+
+      if (average !== null && average < 230) {
+        value += Math.round((230 - average) * 10);
+      }
+
+      if (best !== null && best < 170) {
+        value += 600;
+      }
+
+      value -= fouls * 70;
+      return Math.max(0, Math.round(value));
+    };
+
+    const endRun = () => {
+      clearTimers();
+      roundToken++;
+
+      phase = "ended";
+      resolved = true;
+
+      hideSignal();
+      highlightControl(null);
+
+      const average = getAverageReaction();
+      const best = getBestReaction();
+
+      const accuracy =
+        attempts > 0 ? Math.round((correct / attempts) * 100) : 0;
+
+      const final = finalScore();
+
+      endSubEl.textContent = mode.endless
+        ? `${completedRounds} Wellen · ${intensity.label} · ${fouls} Fouls`
+        : `${mode.label} · ${correct}/${mode.rounds} Treffer · ${intensity.label}`;
+
+      endScoreEl.textContent = final.toLocaleString("de-DE");
+
+      endAverageEl.textContent =
+        average === null ? "—" : `${Math.round(average)} ms`;
+
+      endBestEl.textContent = best === null ? "—" : `${Math.round(best)} ms`;
+
+      endAccuracyEl.textContent = `${accuracy}%`;
+
+      endStreakEl.textContent = bestStreak;
+
+      services?.highscores?.saveHighscore?.(
+        `reaction-duel-${selectedModeKey}`,
+        final
+      );
+
+      endOverlay.classList.remove("hidden");
+    };
+
+    const startRun = () => {
+      clearTimers();
+      ensureAudio();
+
+      mode = MODES[selectedModeKey];
+      intensity = INTENSITIES[selectedIntensityKey];
+
+      roundToken++;
+      roundNumber = 0;
+      completedRounds = 0;
+
+      score = 0;
+      streak = 0;
+      bestStreak = 0;
+      lives = 3;
+
+      attempts = 0;
+      correct = 0;
+      fouls = 0;
+      wrongInputs = 0;
+      reactionTimes = [];
+
+      resolved = false;
+
+      menuOverlay.classList.add("hidden");
+      endOverlay.classList.add("hidden");
+
+      renderControls();
+      updateHud();
+      beginRound();
+    };
+
+    const directionFromKey = (key) => {
+      switch (key.toLowerCase()) {
+        case "w":
+        case "arrowup":
+          return "up";
+
+        case "a":
+        case "arrowleft":
+          return "left";
+
+        case "s":
+        case "arrowdown":
+          return "down";
+
+        case "d":
+        case "arrowright":
+          return "right";
+
+        default:
+          return null;
+      }
+    };
+
+    const onKeyDown = (event) => {
+      const direction = directionFromKey(event.key);
+
+      if (!direction) return;
+
+      event.preventDefault();
+      handleDirection(direction);
+    };
+
+    modeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedModeKey = button.dataset.mode;
+
+        mode = MODES[selectedModeKey];
+
+        modeButtons.forEach((other) => {
+          other.classList.toggle("selected", other === button);
         });
 
-        intensityButtons.forEach(button => {
-            button.addEventListener('click', () => {
-                selectedIntensityKey =
-                    button.dataset.intensity;
+        startBtn.textContent = `${mode.label} Challenge starten`;
+      });
+    });
 
-                intensity =
-                    INTENSITIES[selectedIntensityKey];
+    intensityButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedIntensityKey = button.dataset.intensity;
 
-                intensityButtons.forEach(other => {
-                    other.classList.toggle(
-                        'selected',
-                        other === button
-                    );
-                });
-            });
+        intensity = INTENSITIES[selectedIntensityKey];
+
+        intensityButtons.forEach((other) => {
+          other.classList.toggle("selected", other === button);
         });
+      });
+    });
 
-        touchButtons.forEach(button => {
-            button.addEventListener('pointerdown', event => {
-                event.preventDefault();
+    touchButtons.forEach((button) => {
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
 
-                let direction =
-                    button.dataset.touch;
+        let direction = button.dataset.touch;
 
-                // Classic bleibt auf Touch intuitiv: obere linke/rechte
-                // Hälfte fungiert ebenfalls als links/rechts.
-                if (
-                    mode.directions.length === 2 &&
-                    (direction === 'up' || direction === 'down')
-                ) {
-                    const rect =
-                        button.getBoundingClientRect();
+        // Classic bleibt auf Touch intuitiv: obere linke/rechte
+        // Hälfte fungiert ebenfalls als links/rechts.
+        if (
+          mode.directions.length === 2 &&
+          (direction === "up" || direction === "down")
+        ) {
+          const rect = button.getBoundingClientRect();
 
-                    const center =
-                        rect.left + rect.width / 2;
+          const center = rect.left + rect.width / 2;
 
-                    direction =
-                        event.clientX < center
-                            ? 'left'
-                            : 'right';
-                }
+          direction = event.clientX < center ? "left" : "right";
+        }
 
-                if (
-                    !mode.directions.includes(direction)
-                ) {
-                    if (mode.directions.length === 2) {
-                        direction =
-                            event.clientX <
-                            window.innerWidth / 2
-                                ? 'left'
-                                : 'right';
-                    } else {
-                        return;
-                    }
-                }
+        if (!mode.directions.includes(direction)) {
+          if (mode.directions.length === 2) {
+            direction =
+              event.clientX < window.innerWidth / 2 ? "left" : "right";
+          } else {
+            return;
+          }
+        }
 
-                handleDirection(direction);
-            });
-        });
+        handleDirection(direction);
+      });
+    });
 
-        audioBtn.addEventListener('click', () => {
-            muted = !muted;
+    audioBtn.addEventListener("click", () => {
+      muted = !muted;
 
-            audioBtn.textContent =
-                `Sound: ${muted ? 'Aus' : 'An'}`;
+      audioBtn.textContent = `Sound: ${muted ? "Aus" : "An"}`;
 
-            if (!muted) {
-                ensureAudio();
-                tone(640, 0.05, 0.025);
-            }
-        });
+      if (!muted) {
+        ensureAudio();
+        tone(640, 0.05, 0.025);
+      }
+    });
 
-        startBtn.addEventListener('click', startRun);
-        restartBtn.addEventListener('click', startRun);
+    startBtn.addEventListener("click", startRun);
+    restartBtn.addEventListener("click", startRun);
 
-        window.addEventListener('keydown', onKeyDown);
+    window.addEventListener("keydown", onKeyDown);
 
-        renderControls();
-        updateHud();
+    renderControls();
+    updateHud();
 
-        return {
-            destroy: () => {
-                destroyed = true;
-                clearTimers();
+    return {
+      destroy: () => {
+        destroyed = true;
+        clearTimers();
 
-                window.removeEventListener(
-                    'keydown',
-                    onKeyDown
-                );
+        window.removeEventListener("keydown", onKeyDown);
 
-                try {
-                    audioContext?.close?.();
-                } catch {}
+        try {
+          audioContext?.close?.();
+        } catch {}
 
-                style.remove();
-            }
-        };
-    }
+        style.remove();
+      },
+    };
+  },
 };
 
-export {
-    MODES,
-    INTENSITIES,
-    REACTION_TIERS,
-    DIRECTION_META
-};
+export { MODES, INTENSITIES, REACTION_TIERS, DIRECTION_META };

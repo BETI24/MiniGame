@@ -4,7 +4,7 @@ export default {
         name: 'Neon Breach: Cyber Survival',
         description: 'Ein extrem süchtig machender Neon-Zombieshooter mit ausbalancierten Bossen, Low-HP-Alarmeffekten, Web-Audio-Sounds, Granaten und Waffen-Drops.',
         icon: '⚡',
-        imageUrl: 'js/assets/images/ZombieShooter.png',
+        imageUrl: 'js/assets/images/zombie.png',
         tags: ['Action', 'Shooter', 'Neon', 'Arcade']
     },
     init: (container, services) => {

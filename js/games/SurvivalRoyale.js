@@ -33,7 +33,7 @@ export default{
     let dead=false,raf=0,last=performance.now(),running=false,ended=false;
     let presetKey='standard',diffKey='normal',preset=PRESETS[presetKey],diff=DIFFICULTY[diffKey];
     let W=1,H=1,dpr=1,worldSize=preset.size,time=0,kills=0,damageDone=0,placement=0;
-    let cam={x:0,y:0},mouse={x:0,y:0,wx:0,wy:0,down:false},keys={w:false,a:false,s:false,d:false,shift:false};
+    let cam={x:0,y:0,zoom:1.45,targetZoom:1.45},mouse={x:0,y:0,wx:0,wy:0,down:false},keys={w:false,a:false,s:false,d:false,shift:false};
     let player=null,bots=[],bullets=[],loot=[],objects=[],houses=[],crates=[],fx=[],feed=[],zone=null,nextId=1;
     let muted=false,audio=null;
 
@@ -130,11 +130,78 @@ export default{
     .br-sound{bottom:12px}
     .br-pick{display:none}
     .br-help{top:12px}
+
+    .br-scope-hud{
+      position:absolute;z-index:10;left:50%;top:12px;transform:translateX(-50%);
+      display:flex;gap:7px;align-items:center;pointer-events:none
+    }
+    .br-scope-chip{
+      width:34px;height:34px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      border:2px solid #1d2322;background:#3a443bd9;
+      color:#aeb9ae;font-size:.62rem;font-weight:950;
+      box-shadow:0 3px 8px #0003
+    }
+    .br-scope-chip.on{
+      width:42px;height:42px;
+      color:#fff;border-color:#e9efe8;background:#596454e8;
+      box-shadow:0 0 0 3px #ffffff16
+    }
+
+    .br-gear{
+      width:204px;
+      bottom:66px;
+      gap:6px;
+      padding:7px;
+      background:#1b211bdd;
+      border:2px solid #101410;
+      border-radius:3px
+    }
+    .br-gear-slot{
+      min-height:64px;
+      padding:9px 11px;
+      border-width:2px
+    }
+    .br-gear-key{
+      left:7px;top:6px;font-size:.65rem
+    }
+    .br-gear-name{
+      margin-left:24px;
+      font-size:.86rem
+    }
+    .br-gear-ammo{
+      margin-left:24px;
+      margin-top:5px;
+      font-size:.72rem
+    }
+    .br-fists-icon{
+      width:34px;height:34px;right:12px;top:14px
+    }
+    .br-fists-icon:before,.br-fists-icon:after{
+      width:14px;height:21px
+    }
+    .br-ammo-panel{
+      padding:8px;
+      gap:6px
+    }
+    .br-ammo-cell{
+      min-height:30px;
+      padding:5px 7px;
+      font-size:.66rem
+    }
+    .br-ammo-dot{
+      width:11px;height:11px
+    }
+    .br-medbox{
+      padding:9px 10px;
+      font-size:.72rem
+    }
+
     @media(max-width:800px){
       .br-top{right:7px}.br-alive-panel{width:86px}.br-feed{right:7px;width:210px}
       .br-map{width:116px;height:116px;bottom:112px}
       .br-zone-card{left:7px;bottom:234px}
-      .br-gear{right:7px;bottom:58px;width:118px}
+      .br-gear{right:7px;bottom:58px;width:150px}
       .br-bottom{width:min(380px,calc(100% - 160px));bottom:8px}
       .br-sound{display:none}
     }
@@ -152,6 +219,13 @@ export default{
       </div>
 
       <div class="br-zone-card">☢ <span class="ztxt">Waiting</span></div>
+
+      <div class="br-scope-hud">
+        <div class="br-scope-chip scope1 on">1x</div>
+        <div class="br-scope-chip scope2">2x</div>
+        <div class="br-scope-chip scope4">4x</div>
+        <div class="br-scope-chip scope8">8x</div>
+      </div>
 
       <div class="br-help">WASD Move · Mouse Aim · LMB Attack · E Loot · R Reload · 1 Fists · 2/3 Weapons · Q Medkit</div>
       <div class="br-feed"></div>
@@ -218,11 +292,12 @@ export default{
     const aliveEl=$('.alive'),killsEl=$('.kills'),zoneEl=$('.ztxt'),hpEl=$('.br-hp'),armEl=$('.br-arm'),pickEl=$('.br-pick'),feedEl=$('.br-feed'),useEl=$('.br-use'),useFill=$('.br-use-f');
     const slots=[$('.s0'),$('.s1')],fistsEl=$('.fists'),medEl=$('.br-med'),hpNumberEl=$('.br-hp-number'),
       ammoEls={'9mm':$('.am9'),'12g':$('.am12'),'556':$('.am556'),'762':$('.am762')},
+      scopeEls={1:$('.scope1'),2:$('.scope2'),4:$('.scope4'),8:$('.scope8')},
       menu=$('.menu'),end=$('.end');
     const rand=(a,b)=>a+Math.random()*(b-a), rint=(a,b)=>Math.floor(rand(a,b+1)), clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
     const names=['Lucky','Nova','Crow','Echo','Moss','Viper','Rex','Pixel','Ghost','Bolt','Mango','Frost','Mako','Wolf','Jinx','Ace','Luna','Drift','Quill','Zero'];let nameI=0;
     const makeGun=id=>({id,mag:WEAPONS[id].mag,reload:0,cool:0});
-    const makeChar=(x,y,isP=false)=>({id:nextId++,x,y,r:isP?CFG.playerR:CFG.botR,isP,name:isP?'YOU':names[nameI++%names.length],hp:100,armor:0,alive:true,angle:0,color:isP?'#efc178':`hsl(${rint(0,359)} 55% 67%)`,guns:[null,null],slot:-1,ammo:{'9mm':0,'12g':0,'556':0,'762':0},med:1,using:false,useT:0,meleeCool:0,ai:isP?null:{think:rand(.1,.5),target:null,move:null,strafe:Math.random()<.5?-1:1}});
+    const makeChar=(x,y,isP=false)=>({id:nextId++,x,y,r:isP?CFG.playerR:CFG.botR,isP,name:isP?'YOU':names[nameI++%names.length],hp:100,armor:0,alive:true,angle:0,color:isP?'#efc178':`hsl(${rint(0,359)} 55% 67%)`,guns:[null,null],slot:-1,ammo:{'9mm':0,'12g':0,'556':0,'762':0},med:1,scope:1,using:false,useT:0,meleeCool:0,ai:isP?null:{think:rand(.1,.5),target:null,move:null,strafe:Math.random()<.5?-1:1}});
     const weapon=e=>e.slot<0?null:e.guns[e.slot], fmt=t=>`${Math.floor(t/60)}:${String(Math.floor(t)%60).padStart(2,'0')}`;
     const ensureAudio=()=>{if(muted)return null;try{if(!audio)audio=new(window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();return audio}catch{return null}};
     const tone=(f,d=.035,v=.015,type='square')=>{const a=ensureAudio();if(!a)return;const o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.value=f;g.gain.value=v;g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+d);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+d)};
@@ -238,6 +313,27 @@ export default{
     function move(e,dx,dy){let nx=clamp(e.x+dx,e.r,worldSize-e.r);if(!blocked(e,nx,e.y))e.x=nx;let ny=clamp(e.y+dy,e.r,worldSize-e.r);if(!blocked(e,e.x,ny))e.y=ny}
     function openPoint(){for(let n=0;n<120;n++){const p={x:rand(70,worldSize-70),y:rand(70,worldSize-70)};if(!objects.some(o=>o.solid&&dist(p,o)<o.r+35)&&!crates.some(c=>c.on&&dist(p,c)<c.r+28)&&!houses.some(h=>p.x>h.x-30&&p.x<h.x+h.w+30&&p.y>h.y-30&&p.y<h.y+h.h+30))return p}return{x:rand(70,worldSize-70),y:rand(70,worldSize-70)}}
     function makeHouse(x,y,w,h){const t=13,d=50,walls=[{x,y,w,h:t},{x,y:y+h-t,w,h:t},{x,y,w:t,h},{x:x+w-t,y,w:t,h}];const side=rint(0,3);if(side===0){walls.splice(0,1,{x,y,w:w/2-d/2,h:t},{x:x+w/2+d/2,y,w:w/2-d/2,h:t})}if(side===2){walls.splice(1,1,{x,y:y+h-t,w:w/2-d/2,h:t},{x:x+w/2+d/2,y:y+h-t,w:w/2-d/2,h:t})}return{x,y,w,h,walls,warehouse:Math.random()<.28}}
+
+    function scopeViewMultiplier(scope){
+      if(scope===2)return 1.5;
+      if(scope===4)return 2.0;
+      if(scope===8)return 2.5;
+      return 1.0;
+    }
+
+    function scopeZoom(scope){
+      // Start ist absichtlich nah herangezoomt.
+      // 2x = 50% mehr Sichtfläche, 4x = 100%, 8x = 150%.
+      return 1.45/scopeViewMultiplier(scope);
+    }
+
+    function randomScope(){
+      const roll=Math.random();
+      if(roll<.64)return 2;
+      if(roll<.91)return 4;
+      return 8;
+    }
+
     function addLoot(type,x,y,data={}){loot.push({id:nextId++,type,x,y,on:true,...data})}
 
     function randomWeaponId(){
@@ -255,9 +351,10 @@ export default{
     function spawnLootRoll(x,y,crateDrop=false){
       const z=Math.random();
 
-      if(z<(crateDrop?.34:.30)){
+      if(z<(crateDrop?.31:.27)){
         const gun=randomWeaponId();
         addLoot('gun',x,y,{gun});
+
         if(crateDrop && Math.random()<.62){
           const a=WEAPONS[gun].ammo;
           addLoot('ammo',x+rand(-18,18),y+rand(-18,18),{
@@ -265,13 +362,18 @@ export default{
             amount:a==='12g'?rint(6,13):rint(15,32)
           });
         }
-      }else if(z<.67){
+      }else if(z<.59){
         const a=['9mm','12g','556','762'][rint(0,3)];
-        addLoot('ammo',x,y,{ammo:a,amount:a==='12g'?rint(6,14):rint(15,36)});
-      }else if(z<.82){
+        addLoot('ammo',x,y,{
+          ammo:a,
+          amount:a==='12g'?rint(6,14):rint(15,36)
+        });
+      }else if(z<.72){
         addLoot('med',x,y,{amount:1});
-      }else{
+      }else if(z<.90){
         addLoot('armor',x,y,{amount:rint(22,48)});
+      }else{
+        addLoot('scope',x,y,{scope:randomScope()});
       }
     }
 
@@ -507,7 +609,7 @@ export default{
 
     function shoot(e,ang=e.angle){if(!e.alive||e.using)return;const s=weapon(e);if(!s){melee(e);return;}const d=WEAPONS[s.id];if(s.cool>0||s.reload>0)return;if(s.mag<=0){if(!e.isP)reload(e);return}s.mag--;s.cool=1/d.rate;const pellets=d.pellets||1,mx=e.x+Math.cos(ang)*(e.r+14),my=e.y+Math.sin(ang)*(e.r+14);for(let p=0;p<pellets;p++){const a=ang+rand(-d.spread,d.spread);bullets.push({id:nextId++,owner:e.id,weaponId:s.id,x:mx,y:my,vx:Math.cos(a)*d.speed,vy:Math.sin(a)*d.speed,dmg:d.damage,life:d.range/d.speed,c:d.color})}fxBurst(mx,my,'#ffe18a',4);if(e.isP)tone(s.id==='shotgun'?135:s.id==='dmr'?170:220,.03,.018)}
     function nearLoot(e,r=CFG.pickup){let best=null,bd=1e9;for(const l of loot)if(l.on){const d=dist(e,l);if(d<r&&d<bd){best=l;bd=d}}return best}
-    function lootName(l){if(l.type==='gun')return WEAPONS[l.gun].name;if(l.type==='ammo')return `${l.amount} ${l.ammo}`;if(l.type==='med')return'Medkit';return`Armor +${l.amount}`}
+    function lootName(l){if(l.type==='gun')return WEAPONS[l.gun].name;if(l.type==='ammo')return `${l.amount} ${l.ammo}`;if(l.type==='med')return'Medkit';if(l.type==='scope')return`${l.scope}x Scope`;return`Armor +${l.amount}`}
     function pick(e,l){
       if(!l||!l.on)return;
 
@@ -534,17 +636,31 @@ export default{
       }else if(l.type==='med'){
         e.med=Math.min(5,e.med+l.amount);
         l.on=false;
+      }else if(l.type==='scope'){
+        if(l.scope>(e.scope||1)){
+          e.scope=l.scope;
+          l.on=false;
+
+          if(e.isP){
+            cam.targetZoom=scopeZoom(e.scope);
+            tone(780,.05,.016,'sine');
+          }
+        }else{
+          return;
+        }
       }else{
         e.armor=Math.min(100,e.armor+l.amount);
         l.on=false;
       }
 
-      if(e.isP)tone(670,.025,.01,'triangle');
+      if(e.isP && l.type!=='scope'){
+        tone(670,.025,.01,'triangle');
+      }
     }
     function useMed(e){if(e.med>0&&e.hp<100&&!e.using){e.using=true;e.useT=CFG.medTime}}
-    function updatePlayer(dt){if(!player?.alive)return;updateTimers(player,dt);let dx=(keys.d?1:0)-(keys.a?1:0),dy=(keys.s?1:0)-(keys.w?1:0),len=Math.hypot(dx,dy);if(len){if(player.using){player.using=false;player.useT=0}const sp=CFG.move*(keys.shift?1.22:1);move(player,dx/len*sp*dt,dy/len*sp*dt)}mouse.wx=cam.x+mouse.x;mouse.wy=cam.y+mouse.y;player.angle=Math.atan2(mouse.wy-player.y,mouse.wx-player.x);if(mouse.down)shoot(player);if(!inside(player))damage(player,zone.dmg*dt,null,'zone')}
+    function updatePlayer(dt){if(!player?.alive)return;updateTimers(player,dt);let dx=(keys.d?1:0)-(keys.a?1:0),dy=(keys.s?1:0)-(keys.w?1:0),len=Math.hypot(dx,dy);if(len){if(player.using){player.using=false;player.useT=0}const sp=CFG.move*(keys.shift?1.22:1);move(player,dx/len*sp*dt,dy/len*sp*dt)}mouse.wx=cam.x+(mouse.x-W/2)/cam.zoom;mouse.wy=cam.y+(mouse.y-H/2)/cam.zoom;player.angle=Math.atan2(mouse.wy-player.y,mouse.wx-player.x);if(mouse.down)shoot(player);if(!inside(player))damage(player,zone.dmg*dt,null,'zone')}
     function nearestEnemy(b,max=620){let best=null,bd=max;for(const e of alive())if(e.id!==b.id){const d=dist(b,e);if(d<bd&&!lineBlocked(b.x,b.y,e.x,e.y)){best=e;bd=d}}return best?{e:best,d:bd}:null}
-    function aiLoot(b){let best=null,bs=-1e9;for(const l of loot)if(l.on){const d=dist(b,l);if(d>430)continue;let s=-d*.15;if(l.type==='gun'){const cur=weapon(b),order={pistol:1,smg:2,shotgun:2,rifle:3,dmr:4};s+=(order[l.gun]-(cur?order[cur.id]:0))*90}else if(l.type==='armor')s+=90-b.armor;else if(l.type==='med')s+=b.med<2?65:5;else s+=20;if(s>bs){best=l;bs=s}}return bs>5?best:null}
+    function aiLoot(b){let best=null,bs=-1e9;for(const l of loot)if(l.on){const d=dist(b,l);if(d>430)continue;let s=-d*.15;if(l.type==='gun'){const cur=weapon(b),order={pistol:1,smg:2,shotgun:2,rifle:3,dmr:4};s+=(order[l.gun]-(cur?order[cur.id]:0))*90}else if(l.type==='armor')s+=90-b.armor;else if(l.type==='med')s+=b.med<2?65:5;else if(l.type==='scope')s+=(l.scope>(b.scope||1)?32:-30);else s+=20;if(s>bs){best=l;bs=s}}return bs>5?best:null}
     function moveToward(b,x,y,dt,m=1){const dx=x-b.x,dy=y-b.y,l=Math.max(1,Math.hypot(dx,dy)),sp=CFG.move*diff.speed*m;const ox=b.x,oy=b.y;move(b,dx/l*sp*dt,dy/l*sp*dt);if(Math.hypot(b.x-ox,b.y-oy)<.2)move(b,-dy/l*sp*dt*b.ai.strafe,dx/l*sp*dt*b.ai.strafe)}
     function updateBot(b,dt){if(!b.alive)return;updateTimers(b,dt);if(!inside(b))damage(b,zone.dmg*dt,null,'zone');if(!b.alive)return;if(b.using)return;const zd=Math.hypot(b.x-zone.x,b.y-zone.y);if(zd>zone.r-30){moveToward(b,zone.x,zone.y,dt,1.08);b.angle=Math.atan2(zone.y-b.y,zone.x-b.x);return}
       const en=nearestEnemy(b,620);if(en){const s=weapon(b),def=WEAPONS[s.id],ideal=s.id==='shotgun'?145:s.id==='smg'?220:s.id==='pistol'?290:s.id==='rifle'?400:500,dx=en.e.x-b.x,dy=en.e.y-b.y,l=Math.max(1,en.d),nx=dx/l,ny=dy/l;let mx=-ny*b.ai.strafe*.7,my=nx*b.ai.strafe*.7;if(en.d>ideal*1.1){mx+=nx;my+=ny}else if(en.d<ideal*.62){mx-=nx;my-=ny}const ml=Math.max(1,Math.hypot(mx,my)),sp=CFG.move*diff.speed*.9;move(b,mx/ml*sp*dt,my/ml*sp*dt);b.angle=Math.atan2(dy,dx)+rand(-diff.aim,diff.aim)*clamp(en.d/450,.6,1.2);if(en.d<def.range*.86)shoot(b,b.angle);if(s.mag<=0)reload(b);return}
@@ -693,10 +809,14 @@ export default{
     function updateFx(dt){for(let i=fx.length-1;i>=0;i--){const p=fx[i];p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;if(p.life<=0)fx.splice(i,1)}for(const f of feed)f.t-=dt;const n=feed.length;feed=feed.filter(f=>f.t>0);if(n!==feed.length)feedEl.innerHTML=feed.map(x=>`<div>${x.s}</div>`).join('')}
     function updateCam(){
       if(!player)return;
-      // Kamera folgt dem Spieler exakt. Dadurch bleibt der Spieler auch am Kartenrand
-      // in der Bildschirmmitte, statt dass die Kamera dort stehen bleibt.
-      cam.x=player.x-W/2;
-      cam.y=player.y-H/2;
+
+      cam.x=player.x;
+      cam.y=player.y;
+
+      cam.targetZoom=scopeZoom(player.scope||1);
+      cam.zoom+=(
+        cam.targetZoom-cam.zoom
+      )*.10;
     }
     function updateHud(){
       if(!player)return;
@@ -745,6 +865,13 @@ export default{
         ammoEls[type].textContent=player.ammo[type];
       }
 
+      for(const level of [1,2,4,8]){
+        scopeEls[level].classList.toggle(
+          'on',
+          (player.scope||1)===level
+        );
+      }
+
       const l=nearLoot(player);
       pickEl.classList.toggle('show',!!l);
       if(l)pickEl.textContent='E · '+lootName(l);
@@ -756,7 +883,7 @@ export default{
           clamp(1-player.useT/CFG.medTime,0,1)*100+'%';
       }
     }
-    const scr=(x,y)=>({x:x-cam.x,y:y-cam.y});
+    const scr=(x,y)=>({x:W/2+(x-cam.x)*cam.zoom,y:H/2+(y-cam.y)*cam.zoom});
     function drawHeldWeapon(e,g){
       ctx.save();
       ctx.rotate(e.angle);
@@ -854,102 +981,130 @@ export default{
     }
 
     function draw(){
-      // Außerhalb der Map ist dunkler Rand sichtbar. Das ist wichtig, weil die
-      // Kamera nun immer exakt auf dem Spieler zentriert bleibt.
+      // Screen-Hintergrund außerhalb der Map.
+      ctx.setTransform(dpr,0,0,dpr,0,0);
       ctx.fillStyle='#182019';
       ctx.fillRect(0,0,W,H);
 
-      const worldTopLeft=scr(0,0);
+      // Alles in der Spielwelt wird gemeinsam transformiert.
+      // Dadurch bleibt das Grid an Weltkoordinaten fix und Scope-Zoom skaliert
+      // wirklich die komplette Welt statt einzelne Elemente.
       ctx.save();
-      ctx.beginPath();
-      ctx.rect(worldTopLeft.x,worldTopLeft.y,worldSize,worldSize);
-      ctx.clip();
+      ctx.translate(W/2,H/2);
+      ctx.scale(cam.zoom,cam.zoom);
+      ctx.translate(-cam.x,-cam.y);
 
+      // Boden
       ctx.fillStyle='#70a043';
-      ctx.fillRect(worldTopLeft.x,worldTopLeft.y,worldSize,worldSize);
+      ctx.fillRect(0,0,worldSize,worldSize);
 
-      const gs=150,ox=worldTopLeft.x-(0%gs),oy=worldTopLeft.y-(0%gs);
-      ctx.strokeStyle='#315e272d';
-      ctx.lineWidth=1;
+      // Fest in der Welt verankertes Grid.
+      const gs=150;
+      ctx.strokeStyle='#315e2733';
+      ctx.lineWidth=1/cam.zoom;
       ctx.beginPath();
-      let gx=worldTopLeft.x + Math.floor((cam.x)/gs)*gs - cam.x;
-      while(gx>0)gx-=gs;
-      for(let x=gx;x<W;x+=gs){ctx.moveTo(x,0);ctx.lineTo(x,H)}
-      let gy=worldTopLeft.y + Math.floor((cam.y)/gs)*gs - cam.y;
-      while(gy>0)gy-=gs;
-      for(let y=gy;y<H;y+=gs){ctx.moveTo(0,y);ctx.lineTo(W,y)}
+
+      for(let x=0;x<=worldSize;x+=gs){
+        ctx.moveTo(x,0);
+        ctx.lineTo(x,worldSize);
+      }
+
+      for(let y=0;y<=worldSize;y+=gs){
+        ctx.moveTo(0,y);
+        ctx.lineTo(worldSize,y);
+      }
+
       ctx.stroke();
 
+      // Zone
       if(zone){
-        const z=scr(zone.x,zone.y);
         ctx.fillStyle='#c62f1b35';
         ctx.beginPath();
-        ctx.rect(worldTopLeft.x,worldTopLeft.y,worldSize,worldSize);
-        ctx.arc(z.x,z.y,zone.r,0,Math.PI*2,true);
+        ctx.rect(0,0,worldSize,worldSize);
+        ctx.arc(zone.x,zone.y,zone.r,0,Math.PI*2,true);
         ctx.fill('evenodd');
-        ctx.strokeStyle=zone.state==='shrink'?'#ff604d':'#ffffffaa';
-        ctx.lineWidth=3;
+
+        ctx.strokeStyle=
+          zone.state==='shrink'
+            ?'#ff604d'
+            :'#ffffffaa';
+
+        ctx.lineWidth=3/cam.zoom;
         ctx.beginPath();
-        ctx.arc(z.x,z.y,zone.r,0,Math.PI*2);
+        ctx.arc(zone.x,zone.y,zone.r,0,Math.PI*2);
         ctx.stroke();
+
         if(zone.state==='wait'&&zone.stage>=0){
-          const q=scr(zone.tx,zone.ty);
-          ctx.setLineDash([7,7]);
+          ctx.setLineDash([7/cam.zoom,7/cam.zoom]);
           ctx.strokeStyle='#ffffff66';
+          ctx.lineWidth=2/cam.zoom;
           ctx.beginPath();
-          ctx.arc(q.x,q.y,zone.tr,0,Math.PI*2);
+          ctx.arc(zone.tx,zone.ty,zone.tr,0,Math.PI*2);
           ctx.stroke();
           ctx.setLineDash([]);
         }
       }
 
+      // Gebäude
       for(const h of houses){
-        const p=scr(h.x,h.y);
-        if(p.x>W||p.y>H||p.x+h.w<0||p.y+h.h<0)continue;
         ctx.fillStyle=h.warehouse?'#314455':'#b56b3c';
-        ctx.fillRect(p.x,p.y,h.w,h.h);
+        ctx.fillRect(h.x,h.y,h.w,h.h);
+
+        if(!h.warehouse){
+          ctx.strokeStyle='rgba(83,43,24,.35)';
+          ctx.lineWidth=1/cam.zoom;
+
+          for(let yy=h.y+16;yy<h.y+h.h;yy+=18){
+            ctx.beginPath();
+            ctx.moveTo(h.x,yy);
+            ctx.lineTo(h.x+h.w,yy);
+            ctx.stroke();
+          }
+        }
+
         ctx.fillStyle='#4b2420';
-        for(const w of h.walls)ctx.fillRect(w.x-cam.x,w.y-cam.y,w.w,w.h);
+
+        for(const w of h.walls){
+          ctx.fillRect(w.x,w.y,w.w,w.h);
+        }
       }
 
-      for(const l of loot)if(l.on){
-        const p=scr(l.x,l.y);
-        if(p.x<-20||p.y<-20||p.x>W+20||p.y>H+20)continue;
-        const ammoColor={
-          '9mm':'#f3d35c',
-          '12g':'#e96852',
-          '556':'#6fcd69',
-          '762':'#7195e7'
-        };
+      // Loot
+      const ammoColor={
+        '9mm':'#f3d35c',
+        '12g':'#e96852',
+        '556':'#6fcd69',
+        '762':'#7195e7'
+      };
 
-        const c=
-          l.type==='gun'
-            ?WEAPONS[l.gun].color
-            :l.type==='ammo'
-              ?ammoColor[l.ammo]
-              :l.type==='med'
-                ?'#6bdd7e'
-                :'#5cc8ef';
+      for(const l of loot){
+        if(!l.on)continue;
 
         ctx.save();
-        ctx.translate(p.x,p.y);
+        ctx.translate(l.x,l.y);
 
         if(l.type==='gun'){
-          // Waffen liegen wie bei Surviv.io gut lesbar in einem dunklen Kreis.
-          ctx.fillStyle='rgba(45,48,49,.92)';
-          ctx.strokeStyle='rgba(16,19,20,.85)';
+          // Deutlicher dunkler Ring hinter Bodenwaffen.
+          ctx.fillStyle='rgba(45,48,49,.94)';
+          ctx.strokeStyle='rgba(16,19,20,.90)';
           ctx.lineWidth=3;
           ctx.beginPath();
-          ctx.arc(0,0,19,0,Math.PI*2);
+          ctx.arc(0,0,21,0,Math.PI*2);
           ctx.fill();
           ctx.stroke();
 
           const wp=WEAPONS[l.gun];
-          const lengths={pistol:20,smg:24,shotgun:32,rifle:29,dmr:35};
+          const lengths={
+            pistol:20,
+            smg:24,
+            shotgun:33,
+            rifle:30,
+            dmr:36
+          };
           const len=lengths[l.gun];
 
           ctx.rotate(-.48);
-          ctx.strokeStyle='#14191d';
+          ctx.strokeStyle='#13191d';
           ctx.lineWidth=6;
           ctx.lineCap='round';
           ctx.beginPath();
@@ -964,37 +1119,78 @@ export default{
           ctx.lineTo(len*.50,0);
           ctx.stroke();
         }else if(l.type==='ammo'){
-          // Farbige Ammo-Packs: dunkler Rahmen, kräftige Mitte und kleine Patronenstriche.
-          ctx.fillStyle='#353939';
+          const c=ammoColor[l.ammo];
+
+          // Surviv.io-artige Ammo-Packs: dunkle Außenbox + klare Kaliberfarbe.
+          ctx.fillStyle='#383c3b';
           ctx.strokeStyle='#171a1a';
           ctx.lineWidth=2;
-          ctx.fillRect(-11,-11,22,22);
-          ctx.strokeRect(-11,-11,22,22);
+          ctx.fillRect(-12,-12,24,24);
+          ctx.strokeRect(-12,-12,24,24);
 
           ctx.fillStyle=c;
-          ctx.fillRect(-8,-8,16,16);
+          ctx.fillRect(-9,-9,18,18);
 
-          ctx.strokeStyle='rgba(30,35,34,.70)';
+          ctx.strokeStyle='rgba(24,31,27,.75)';
           ctx.lineWidth=2;
-          for(let bx=-4;bx<=4;bx+=4){
+
+          for(let bx=-5;bx<=5;bx+=5){
             ctx.beginPath();
-            ctx.moveTo(bx,-5);
-            ctx.lineTo(bx,5);
+            ctx.moveTo(bx,-6);
+            ctx.lineTo(bx,6);
             ctx.stroke();
           }
 
           ctx.fillStyle='#111';
-          ctx.font='900 6px system-ui';
+          ctx.font='900 7px system-ui';
           ctx.textAlign='center';
           ctx.textBaseline='middle';
-          ctx.fillText(l.ammo==='556'?'5':l.ammo==='762'?'7':l.ammo==='12g'?'12':'9',0,0);
+          ctx.fillText(
+            l.ammo==='556'
+              ?'5'
+              :l.ammo==='762'
+                ?'7'
+                :l.ammo==='12g'
+                  ?'12'
+                  :'9',
+            0,
+            0
+          );
+        }else if(l.type==='scope'){
+          const scopeColor=
+            l.scope===8
+              ?'#ffcf55'
+              :l.scope===4
+                ?'#d98cff'
+                :'#d7e2e5';
+
+          ctx.fillStyle='rgba(48,53,51,.96)';
+          ctx.strokeStyle='#161b19';
+          ctx.lineWidth=3;
+          ctx.beginPath();
+          ctx.arc(0,0,17,0,Math.PI*2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.strokeStyle=scopeColor;
+          ctx.lineWidth=3;
+          ctx.beginPath();
+          ctx.arc(0,0,11,0,Math.PI*2);
+          ctx.stroke();
+
+          ctx.fillStyle=scopeColor;
+          ctx.font='950 9px system-ui';
+          ctx.textAlign='center';
+          ctx.textBaseline='middle';
+          ctx.fillText(`${l.scope}x`,0,0);
         }else if(l.type==='med'){
           ctx.fillStyle='#f5f7f8';
           ctx.strokeStyle='#3b403d';
           ctx.lineWidth=2;
           ctx.fillRect(-10,-10,20,20);
           ctx.strokeRect(-10,-10,20,20);
-          ctx.fillStyle=c;
+
+          ctx.fillStyle='#6bdd7e';
           ctx.fillRect(-3,-7,6,14);
           ctx.fillRect(-7,-3,14,6);
         }else{
@@ -1005,7 +1201,8 @@ export default{
           ctx.arc(0,0,12,0,Math.PI*2);
           ctx.fill();
           ctx.stroke();
-          ctx.fillStyle=c;
+
+          ctx.fillStyle='#5cc8ef';
           ctx.beginPath();
           ctx.arc(0,0,7,0,Math.PI*2);
           ctx.fill();
@@ -1014,31 +1211,69 @@ export default{
         ctx.restore();
       }
 
-      for(const o of objects){
-        const p=scr(o.x,o.y);
-        if(p.x<-o.r*2||p.y<-o.r*2||p.x>W+o.r*2||p.y>H+o.r*2)continue;
+      // Sichtbare, zerstörbare Kisten.
+      for(const c of crates){
+        if(!c.on)continue;
+
         ctx.save();
-        ctx.translate(p.x,p.y);
+        ctx.translate(c.x,c.y);
+        ctx.rotate(c.rotation);
+
+        const rr=c.r*c.scale;
+        const size=rr*1.72;
+
+        ctx.fillStyle='#a96e37';
+        ctx.strokeStyle='#56351f';
+        ctx.lineWidth=3;
+        ctx.fillRect(-size/2,-size/2,size,size);
+        ctx.strokeRect(-size/2,-size/2,size,size);
+
+        ctx.strokeStyle='#d6a15f';
+        ctx.lineWidth=4;
+        ctx.beginPath();
+        ctx.moveTo(-size*.36,-size*.36);
+        ctx.lineTo(size*.36,size*.36);
+        ctx.moveTo(size*.36,-size*.36);
+        ctx.lineTo(-size*.36,size*.36);
+        ctx.stroke();
+
+        ctx.fillStyle='#624022';
+        ctx.fillRect(-size*.09,-size*.5,size*.18,size);
+
+        ctx.restore();
+      }
+
+      // Natur-Objekte
+      for(const o of objects){
+        ctx.save();
+        ctx.translate(o.x,o.y);
+
         if(o.type==='tree'){
-          // Breiterer, klarerer Baumstamm in der Mitte.
-          ctx.fillStyle='#49331f';
-          ctx.strokeStyle='#342416';
+          // Breiter Stamm in der Mitte.
+          ctx.fillStyle='#4d341f';
+          ctx.strokeStyle='#332214';
           ctx.lineWidth=2;
           ctx.beginPath();
-          ctx.arc(0,0,o.r*.54,0,Math.PI*2);
+          ctx.arc(0,0,o.r*.55,0,Math.PI*2);
           ctx.fill();
           ctx.stroke();
 
           ctx.fillStyle='#315827';
+
           for(let i=0;i<9;i++){
             const a=i/9*Math.PI*2;
             ctx.beginPath();
-            ctx.arc(Math.cos(a)*o.r*.53,Math.sin(a)*o.r*.53,o.r*.43,0,Math.PI*2);
+            ctx.arc(
+              Math.cos(a)*o.r*.54,
+              Math.sin(a)*o.r*.54,
+              o.r*.43,
+              0,
+              Math.PI*2
+            );
             ctx.fill();
           }
 
-          // Stamm noch einmal leicht über dem Laub hervorheben.
-          ctx.fillStyle='#4e351f';
+          ctx.fillStyle='#523720';
           ctx.beginPath();
           ctx.arc(0,0,o.r*.43,0,Math.PI*2);
           ctx.fill();
@@ -1050,40 +1285,56 @@ export default{
           ctx.arc(0,0,o.r,0,Math.PI*2);
           ctx.fill();
           ctx.stroke();
+
           ctx.fillStyle='#ffffff44';
           ctx.beginPath();
-          ctx.arc(-o.r*.25,-o.r*.28,o.r*.28,0,Math.PI*2);
+          ctx.arc(
+            -o.r*.25,
+            -o.r*.28,
+            o.r*.28,
+            0,
+            Math.PI*2
+          );
           ctx.fill();
         }else{
           ctx.fillStyle='#365d29';
+
           for(let i=0;i<7;i++){
             const a=i/7*Math.PI*2;
             ctx.beginPath();
-            ctx.arc(Math.cos(a)*o.r*.32,Math.sin(a)*o.r*.32,o.r*.45,0,Math.PI*2);
+            ctx.arc(
+              Math.cos(a)*o.r*.32,
+              Math.sin(a)*o.r*.32,
+              o.r*.45,
+              0,
+              Math.PI*2
+            );
             ctx.fill();
           }
         }
+
         ctx.restore();
       }
 
+      // Bullets
+      ctx.shadowBlur=0;
+
       for(const bl of bullets){
-        const p=scr(bl.x,bl.y);
         ctx.fillStyle=bl.c;
         ctx.shadowBlur=6;
         ctx.shadowColor=bl.c;
         ctx.beginPath();
-        ctx.arc(p.x,p.y,2.2,0,Math.PI*2);
+        ctx.arc(bl.x,bl.y,2.2,0,Math.PI*2);
         ctx.fill();
       }
+
       ctx.shadowBlur=0;
 
       const drawChar=e=>{
         if(!e.alive)return;
-        const p=scr(e.x,e.y);
-        if(p.x<-70||p.y<-70||p.x>W+70||p.y>H+70)return;
 
         ctx.save();
-        ctx.translate(p.x,p.y);
+        ctx.translate(e.x,e.y);
 
         if(e.armor>0){
           ctx.strokeStyle='#69cdecaa';
@@ -1112,43 +1363,65 @@ export default{
         if(!e.isP){
           ctx.fillStyle='#0008';
           ctx.fillRect(-18,-e.r-12,36,4);
+
           ctx.fillStyle='#ef6469';
-          ctx.fillRect(-18,-e.r-12,36*clamp(e.hp/100,0,1),4);
+          ctx.fillRect(
+            -18,
+            -e.r-12,
+            36*clamp(e.hp/100,0,1),
+            4
+          );
         }
 
         if(e.isP){
           const active=weapon(e);
-
-          // Hinweis direkt über dem Spieler, sobald er wirklich auf Loot steht.
           const pickup=nearLoot(e,42);
+
           if(pickup){
             ctx.font='900 11px system-ui';
             ctx.fillStyle='#ffffff';
             ctx.strokeStyle='#0b1118';
             ctx.lineWidth=4;
-            ctx.strokeText(`E · PICK UP ${lootName(pickup)}`,0,-e.r-40);
-            ctx.fillText(`E · PICK UP ${lootName(pickup)}`,0,-e.r-40);
+            const label=`E · PICK UP ${lootName(pickup)}`;
+            ctx.strokeText(label,0,-e.r-41);
+            ctx.fillText(label,0,-e.r-41);
           }
 
           if(active){
             const def=WEAPONS[active.id];
 
-            // Leeres Magazin: nicht mehr automatisch nachladen.
-            if(active.mag<=0 && active.reload<=0){
+            if(active.mag<=0&&active.reload<=0){
               const reserve=e.ammo[def.ammo];
-              const reloadText=reserve>0?'R · TO RELOAD':'NO AMMO';
-              const y=pickup?-e.r-58:-e.r-40;
+              const reloadText=
+                reserve>0
+                  ?'R · TO RELOAD'
+                  :'NO AMMO';
+
+              const yy=
+                pickup
+                  ?-e.r-59
+                  :-e.r-41;
+
               ctx.font='950 11px system-ui';
-              ctx.fillStyle=reserve>0?'#ffffff':'#ff8c9d';
+              ctx.fillStyle=
+                reserve>0
+                  ?'#ffffff'
+                  :'#ff8c9d';
+
               ctx.strokeStyle='#0b1118';
               ctx.lineWidth=4;
-              ctx.strokeText(reloadText,0,y);
-              ctx.fillText(reloadText,0,y);
+              ctx.strokeText(reloadText,0,yy);
+              ctx.fillText(reloadText,0,yy);
             }
 
-            // Weißer Reload-Kreis mit Countdown und visueller Progression.
             if(active.reload>0){
-              const progress=clamp(1-active.reload/def.reload,0,1);
+              const progress=
+                clamp(
+                  1-active.reload/def.reload,
+                  0,
+                  1
+                );
+
               const radius=e.r+13;
 
               ctx.strokeStyle='rgba(255,255,255,.18)';
@@ -1174,9 +1447,21 @@ export default{
               ctx.fillStyle='#ffffff';
               ctx.strokeStyle='#0a1016';
               ctx.lineWidth=3;
-              const countdown=`${Math.max(0,active.reload).toFixed(1)}s`;
-              ctx.strokeText(countdown,0,-radius-10);
-              ctx.fillText(countdown,0,-radius-10);
+
+              const countdown=
+                `${Math.max(0,active.reload).toFixed(1)}s`;
+
+              ctx.strokeText(
+                countdown,
+                0,
+                -radius-10
+              );
+
+              ctx.fillText(
+                countdown,
+                0,
+                -radius-10
+              );
             }
           }
         }
@@ -1185,20 +1470,30 @@ export default{
       };
 
       bots.forEach(drawChar);
-      if(player)drawChar(player);
+
+      if(player){
+        drawChar(player);
+      }
 
       for(const p of fx){
-        const s=scr(p.x,p.y);
-        ctx.globalAlpha=clamp(p.life/p.max,0,1);
+        ctx.globalAlpha=
+          clamp(
+            p.life/p.max,
+            0,
+            1
+          );
+
         ctx.fillStyle=p.c;
         ctx.beginPath();
-        ctx.arc(s.x,s.y,2.5,0,Math.PI*2);
+        ctx.arc(p.x,p.y,2.5,0,Math.PI*2);
         ctx.fill();
       }
+
       ctx.globalAlpha=1;
 
       ctx.restore();
 
+      // Zone-Schadenoverlay bleibt Screen-space.
       if(player?.alive&&!inside(player)){
         ctx.fillStyle='#bf321424';
         ctx.fillRect(0,0,W,H);
@@ -1228,6 +1523,18 @@ export default{
         mctx.fillRect(h.x*sx,h.y*sy,h.w*sx,h.h*sy);
       }
 
+      mctx.fillStyle='#986637';
+      for(const c of crates){
+        if(c.on){
+          mctx.fillRect(
+            c.x*sx-1,
+            c.y*sy-1,
+            2,
+            2
+          );
+        }
+      }
+
       mctx.strokeStyle='#fff';
       mctx.lineWidth=1.2;
       mctx.beginPath();
@@ -1253,7 +1560,7 @@ export default{
     function update(dt){if(!running||ended)return;time+=dt;updateZone(dt);updatePlayer(dt);bots.forEach(b=>updateBot(b,dt));updateBullets(dt);updateFx(dt);updateCam();updateHud();if(player?.alive&&alive().length===1){placement=1;finish(true)}}
     function scoreFinal(win){return Math.max(0,Math.round(kills*800+damageDone*2+(preset.bots+2-placement)*120+(win?3000:0)))}
     function finish(win){if(ended)return;ended=true;running=false;mouse.down=false;if(!placement)placement=win?1:alive().length+1;const s=scoreFinal(win);services?.highscores?.saveHighscore?.(`survival-royale-${presetKey}`,s);$('.br-end-title').textContent=win?'WINNER WINNER!':`PLACED #${placement}`;$('.br-end-title').style.color=win?'#70e385':'#ff667d';$('.br-end-sub').textContent=`${PRESETS[presetKey].label} · ${DIFFICULTY[diffKey].label}`;$('.ep').textContent='#'+placement;$('.ek').textContent=kills;$('.ed').textContent=Math.round(damageDone);$('.et').textContent=fmt(time);$('.es').textContent=s.toLocaleString('de-DE');end.classList.remove('hide')}
-    function start(){preset=PRESETS[presetKey];diff=DIFFICULTY[diffKey];worldSize=preset.size;time=0;kills=0;damageDone=0;placement=0;nextId=1;bullets=[];fx=[];feed=[];generate();spawn();initZone();running=true;ended=false;menu.classList.add('hide');end.classList.add('hide');updateCam();updateHud();addFeed(`${preset.bots+1} players entered the match`)}
+    function start(){preset=PRESETS[presetKey];diff=DIFFICULTY[diffKey];worldSize=preset.size;cam.zoom=1.45;cam.targetZoom=1.45;time=0;kills=0;damageDone=0;placement=0;nextId=1;bullets=[];fx=[];feed=[];generate();spawn();initZone();running=true;ended=false;menu.classList.add('hide');end.classList.add('hide');updateCam();updateHud();addFeed(`${preset.bots+1} players entered the match`)}
     function loop(t){if(dead)return;const dt=Math.min(.033,Math.max(0,(t-last)/1000));last=t;update(dt);draw();raf=requestAnimationFrame(loop)}
 
     $$('.br-opt[data-p]').forEach(b=>b.onclick=()=>{presetKey=b.dataset.p;$$('.br-opt[data-p]').forEach(x=>x.classList.toggle('sel',x===b))});

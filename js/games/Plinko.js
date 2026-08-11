@@ -40,6 +40,7 @@ const RISK_PROFILES = {
 const ROW_OPTIONS = [8, 10, 12, 14, 16];
 
 const CONFIG = {
+    targetRtp: 0.99,
     startingCredits: 1000,
     minBet: 5,
     maxBet: 250,
@@ -616,7 +617,7 @@ export default {
                 </div>
 
                 <div class="pl-help">
-                    Virtuelle Credits ohne Echtgeld. Mehr Rows und höheres Risk erzeugen extremere Multiplikatoren.
+                    Virtuelle Credits ohne Echtgeld · theoretische RTP 99%. Jeder Drop erhält beim Start einen zufälligen 50/50 Links/Rechts-Pfad; Ergebnis und Multiplikator sind vor der Animation festgelegt.
                 </div>
             </div>
 
@@ -707,11 +708,91 @@ export default {
 
         const currentProfile = () => RISK_PROFILES[riskKey];
 
-        const currentMultipliers = () =>
-            currentProfile().multipliers[rows];
+        const binomialCoefficient = (n, k) => {
+            if (k < 0 || k > n) return 0;
+            const smaller = Math.min(k, n - k);
+            let result = 1;
 
-        const formatNumber = value =>
-            Math.round(value).toLocaleString('de-DE');
+            for (let i = 1; i <= smaller; i++) {
+                result = result * (n - smaller + i) / i;
+            }
+
+            return result;
+        };
+
+        const slotProbability = (rowCount, slotIndex) =>
+            binomialCoefficient(rowCount, slotIndex) / Math.pow(2, rowCount);
+
+        // Das Ergebnis entsteht wie bei einem klassischen Galton-/Plinko-Board
+        // aus einer Reihe unabhängiger 50/50-Entscheidungen: links oder rechts.
+        // Die sichtbaren Multiplikatoren werden pro Risk/Rows so skaliert,
+        // dass ihr theoretischer Erwartungswert exakt bei CONFIG.targetRtp liegt.
+        const rtpAdjustedMultipliers = (profileKey, rowCount) => {
+            const raw = RISK_PROFILES[profileKey].multipliers[rowCount];
+            const probabilities = raw.map((_, index) =>
+                slotProbability(rowCount, index)
+            );
+
+            const rawRtp = raw.reduce(
+                (sum, multiplier, index) =>
+                    sum + multiplier * probabilities[index],
+                0
+            );
+
+            const scale = CONFIG.targetRtp / rawRtp;
+            const adjusted = raw.map(multiplier =>
+                Math.max(0.01, Math.round(multiplier * scale * 100) / 100)
+            );
+
+            // Rundung auf zwei Nachkommastellen verändert den Erwartungswert minimal.
+            // Da alle Row-Optionen gerade sind, existiert genau ein mittlerer Slot.
+            // Dieser wird um den winzigen Rest korrigiert, damit die RTP wieder 99% ist.
+            const roundedRtp = adjusted.reduce(
+                (sum, multiplier, index) =>
+                    sum + multiplier * probabilities[index],
+                0
+            );
+
+            const centerIndex = rowCount / 2;
+            const correction =
+                (CONFIG.targetRtp - roundedRtp) / probabilities[centerIndex];
+
+            adjusted[centerIndex] = Math.max(
+                0.01,
+                Math.round((adjusted[centerIndex] + correction) * 10000) / 10000
+            );
+
+            return adjusted;
+        };
+
+        const currentMultipliers = () =>
+            rtpAdjustedMultipliers(riskKey, rows);
+
+        const currentTheoreticalRtp = () => {
+            const multipliers = currentMultipliers();
+
+            return multipliers.reduce(
+                (sum, multiplier, index) =>
+                    sum + multiplier * slotProbability(rows, index),
+                0
+            );
+        };
+
+        const formatNumber = value => {
+            const rounded = Math.round(value * 100) / 100;
+
+            return rounded.toLocaleString('de-DE', {
+                minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
+                maximumFractionDigits: 2
+            });
+        };
+
+        const formatMultiplier = value => {
+            const rounded = Math.round(value * 100) / 100;
+            return Number.isInteger(rounded)
+                ? rounded.toFixed(0)
+                : rounded.toFixed(2).replace(/0$/, '');
+        };
 
         const updateHud = () => {
             creditsEl.textContent = formatNumber(credits);
@@ -731,7 +812,7 @@ export default {
                 credits < bet ||
                 balls.length >= CONFIG.maxBalls;
 
-            riskLabelEl.textContent = currentProfile().label;
+            riskLabelEl.textContent = `${currentProfile().label} · RTP ${(currentTheoreticalRtp() * 100).toFixed(2)}%`;
             rowsLabelEl.textContent = rows;
         };
 
@@ -801,17 +882,22 @@ export default {
 
             board.pegs = [];
 
+            // Standard-Plinko-Pyramide: Zeile 1 besitzt einen Peg,
+            // jede weitere Zeile genau einen mehr. Bei N Reihen entstehen
+            // dadurch N+1 mögliche Endslots.
             for (let row = 0; row < rows; row++) {
-                const count = row + 3;
+                const count = row + 1;
                 const y = board.top + (row + 1) * board.pegGapY;
                 const rowWidth = (count - 1) * board.pegGapX;
                 const startX = board.centerX - rowWidth / 2;
 
                 for (let col = 0; col < count; col++) {
                     board.pegs.push({
+                        id: `${row}-${col}`,
                         x: startX + col * board.pegGapX,
                         y,
-                        row
+                        row,
+                        col
                     });
                 }
             }
@@ -837,43 +923,66 @@ export default {
             });
         };
 
-        const pegHit = (ball, peg) => {
-            const dx = ball.x - peg.x;
-            const dy = ball.y - peg.y;
-            const minDist = CONFIG.ballRadius + CONFIG.pegRadius;
-            const distSq = dx * dx + dy * dy;
+        const createDropOutcome = () => {
+            const directions = [];
+            let rightCount = 0;
 
-            if (distSq >= minDist * minDist) return false;
+            for (let row = 0; row < rows; row++) {
+                const goRight = Math.random() < 0.5;
+                directions.push(goRight ? 1 : -1);
 
-            const dist = Math.max(0.001, Math.sqrt(distSq));
-            const nx = dx / dist;
-            const ny = dy / dist;
-
-            const overlap = minDist - dist;
-
-            ball.x += nx * overlap;
-            ball.y += ny * overlap;
-
-            const velocityAlongNormal = ball.vx * nx + ball.vy * ny;
-
-            if (velocityAlongNormal < 0) {
-                ball.vx -= (1 + CONFIG.restitution) * velocityAlongNormal * nx;
-                ball.vy -= (1 + CONFIG.restitution) * velocityAlongNormal * ny;
+                if (goRight) rightCount++;
             }
 
-            const horizontalKick =
-                (ball.x >= peg.x ? 1 : -1) *
-                rand(18, 52);
+            const slotIndex = rightCount;
+            const waypoints = [
+                {
+                    x: board.centerX,
+                    y: board.top - 25,
+                    peg: false
+                }
+            ];
 
-            ball.vx += horizontalKick;
+            let rightsBefore = 0;
+            const contactOffset =
+                (CONFIG.ballRadius + CONFIG.pegRadius) * 0.78;
 
-            if (ball.lastPegId !== peg.id) {
-                ball.lastPegId = peg.id;
-                ball.lastPegTime = performance.now();
-                tone(360 + peg.row * 18 + Math.random() * 70, 0.025, 0.008, 'triangle');
+            for (let row = 0; row < rows; row++) {
+                // Nach i Entscheidungen kann die Kugel genau i+1 unterschiedliche
+                // Pegs der nächsten Ebene erreichen. rightsBefore bestimmt, welchen.
+                const pegX =
+                    board.centerX +
+                    (rightsBefore - row / 2) * board.pegGapX;
+
+                const pegY =
+                    board.top +
+                    (row + 1) * board.pegGapY;
+
+                const direction = directions[row];
+
+                waypoints.push({
+                    x: pegX + direction * contactOffset,
+                    y: pegY - 1,
+                    peg: true,
+                    row,
+                    direction
+                });
+
+                if (direction > 0) rightsBefore++;
             }
 
-            return true;
+            waypoints.push({
+                x: board.slots[slotIndex].x,
+                y: board.slotY - 3,
+                peg: false,
+                final: true
+            });
+
+            return {
+                directions,
+                slotIndex,
+                waypoints
+            };
         };
 
         const getSlotIndexForX = x => {
@@ -925,7 +1034,7 @@ export default {
 
             card.innerHTML = `
                 <div class="pl-result-top">
-                    <span class="pl-result-multi">${multiplier}×</span>
+                    <span class="pl-result-multi">${formatMultiplier(multiplier)}×</span>
                     <span class="pl-result-value">${net >= 0 ? '+' : ''}${formatNumber(net)}</span>
                 </div>
                 <div class="pl-result-sub">${formatNumber(stake)} → ${formatNumber(payout)}</div>
@@ -943,11 +1052,19 @@ export default {
         };
 
         const resolveBall = ball => {
-            const slotIndex = getSlotIndexForX(ball.x);
-            const slot = board.slots[slotIndex];
-            const multiplier = slot.multiplier;
+            // Die Animation entscheidet niemals nachträglich über den Gewinn.
+            // slotIndex wurde bereits beim Drop aus dem 50/50-Pfad bestimmt.
+            const slotIndex = clamp(
+                ball.slotIndex ?? getSlotIndexForX(ball.x),
+                0,
+                board.slots.length - 1
+            );
 
-            const payout = Math.round(ball.bet * multiplier);
+            const slot = board.slots[slotIndex];
+            const multiplier = ball.multiplier ?? slot.multiplier;
+
+            const payout =
+                Math.round(ball.bet * multiplier * 100) / 100;
             credits += payout;
             totalReturned += payout;
 
@@ -980,7 +1097,7 @@ export default {
                 type: 'text',
                 x: slot.x,
                 y: board.slotY - 8,
-                text: `${multiplier}×`,
+                text: `${formatMultiplier(multiplier)}×`,
                 life: 0.72,
                 maxLife: 0.72,
                 color
@@ -1031,17 +1148,25 @@ export default {
             totalDropped += bet;
             ballsDropped++;
 
-            const jitter = rand(-1.8, 1.8);
+            const outcome = createDropOutcome();
+            const segmentDuration = clamp(
+                0.108 - rows * 0.00115,
+                0.086,
+                0.100
+            );
 
             balls.push({
                 id: nextBallId++,
-                x: board.centerX + jitter,
-                y: board.top - 22,
-                vx: rand(-7, 7),
-                vy: 0,
+                x: outcome.waypoints[0].x,
+                y: outcome.waypoints[0].y,
                 bet,
-                lastPegId: null,
-                lastPegTime: 0,
+                slotIndex: outcome.slotIndex,
+                multiplier: board.slots[outcome.slotIndex].multiplier,
+                directions: outcome.directions,
+                waypoints: outcome.waypoints,
+                segmentIndex: 0,
+                segmentElapsed: 0,
+                segmentDuration,
                 resolved: false
             });
 
@@ -1055,42 +1180,91 @@ export default {
             const resolvedIds = new Set();
 
             for (const ball of balls) {
-                ball.vy += CONFIG.gravity * delta;
+                if (ball.resolved) continue;
 
-                ball.x += ball.vx * delta;
-                ball.y += ball.vy * delta;
+                const from =
+                    ball.waypoints[ball.segmentIndex];
 
-                const leftBound = board.left - 8;
-                const rightBound = board.right + 8;
+                const to =
+                    ball.waypoints[ball.segmentIndex + 1];
 
-                if (ball.x - CONFIG.ballRadius < leftBound) {
-                    ball.x = leftBound + CONFIG.ballRadius;
-                    ball.vx = Math.abs(ball.vx) * CONFIG.sideBounce;
-                }
-
-                if (ball.x + CONFIG.ballRadius > rightBound) {
-                    ball.x = rightBound - CONFIG.ballRadius;
-                    ball.vx = -Math.abs(ball.vx) * CONFIG.sideBounce;
-                }
-
-                for (let pass = 0; pass < 2; pass++) {
-                    for (let i = 0; i < board.pegs.length; i++) {
-                        const peg = board.pegs[i];
-
-                        if (
-                            Math.abs(ball.y - peg.y) > board.pegGapY * 0.55 ||
-                            Math.abs(ball.x - peg.x) > board.pegGapX * 0.7
-                        ) {
-                            continue;
-                        }
-
-                        peg.id = i;
-                        pegHit(ball, peg);
-                    }
-                }
-
-                if (ball.y >= board.slotY - 4) {
+                if (!from || !to) {
                     resolveBall(ball);
+                    ball.resolved = true;
+                    resolvedIds.add(ball.id);
+                    continue;
+                }
+
+                ball.segmentElapsed += delta;
+
+                const t = clamp(
+                    ball.segmentElapsed / ball.segmentDuration,
+                    0,
+                    1
+                );
+
+                // Horizontal weich, vertikal leicht beschleunigend. Ein kleiner
+                // Bogen lässt die vorbestimmte Route weiterhin wie einen Bounce wirken.
+                const smoothX =
+                    t * t * (3 - 2 * t);
+
+                const gravityT =
+                    0.28 * t + 0.72 * t * t;
+
+                const direction =
+                    to.direction ??
+                    ball.directions[Math.min(ball.segmentIndex, ball.directions.length - 1)] ??
+                    1;
+
+                const arc =
+                    Math.sin(Math.PI * t) *
+                    Math.min(4.5, board.pegGapY * 0.075);
+
+                ball.x =
+                    from.x +
+                    (to.x - from.x) * smoothX +
+                    direction * Math.sin(Math.PI * t) * 1.4;
+
+                ball.y =
+                    from.y +
+                    (to.y - from.y) * gravityT -
+                    arc;
+
+                if (t < 1) continue;
+
+                ball.x = to.x;
+                ball.y = to.y;
+                ball.segmentElapsed = 0;
+                ball.segmentIndex++;
+
+                if (to.peg) {
+                    const pegColor =
+                        to.direction > 0
+                            ? '#89f2ff'
+                            : '#c4e9ff';
+
+                    effects.push({
+                        type: 'ring',
+                        x: to.x - to.direction * (CONFIG.ballRadius + CONFIG.pegRadius) * 0.78,
+                        y: to.y + 1,
+                        radius: 2,
+                        maxRadius: 9,
+                        life: 0.18,
+                        maxLife: 0.18,
+                        color: pegColor
+                    });
+
+                    tone(
+                        360 + to.row * 18 + Math.random() * 55,
+                        0.024,
+                        0.007,
+                        'triangle'
+                    );
+                }
+
+                if (to.final) {
+                    resolveBall(ball);
+                    ball.resolved = true;
                     resolvedIds.add(ball.id);
                 }
             }
@@ -1235,10 +1409,10 @@ export default {
             ctx.strokeStyle = 'rgba(49,220,255,.11)';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.moveTo(board.centerX - board.pegGapX, board.top + board.pegGapY * 0.55);
-            ctx.lineTo(board.centerX - halfBottomWidth, bottomPegY + board.pegGapY * 0.45);
-            ctx.moveTo(board.centerX + board.pegGapX, board.top + board.pegGapY * 0.55);
-            ctx.lineTo(board.centerX + halfBottomWidth, bottomPegY + board.pegGapY * 0.45);
+            ctx.moveTo(board.centerX, board.top + board.pegGapY * 0.52);
+            ctx.lineTo(board.centerX - halfBottomWidth, bottomPegY + board.pegGapY * 0.48);
+            ctx.moveTo(board.centerX, board.top + board.pegGapY * 0.52);
+            ctx.lineTo(board.centerX + halfBottomWidth, bottomPegY + board.pegGapY * 0.48);
             ctx.stroke();
 
             ctx.strokeStyle = 'rgba(49,220,255,.18)';
@@ -1340,9 +1514,7 @@ export default {
                 ctx.textBaseline = 'middle';
 
                 const label =
-                    slot.multiplier >= 100
-                        ? `${slot.multiplier}x`
-                        : `${slot.multiplier}×`;
+                    `${formatMultiplier(slot.multiplier)}×`;
 
                 const fontSize =
                     Math.max(8, Math.min(12, slot.width * 0.25));
@@ -1519,6 +1691,8 @@ export default {
 
         riskButtons.forEach(button => {
             button.addEventListener('click', () => {
+                if (balls.length > 0 || autoMode) return;
+
                 riskKey = button.dataset.risk;
                 updateRiskSelection();
             });
@@ -1526,6 +1700,8 @@ export default {
 
         rowButtons.forEach(button => {
             button.addEventListener('click', () => {
+                if (balls.length > 0 || autoMode) return;
+
                 rows = Number(button.dataset.rows);
                 updateRowsSelection();
             });

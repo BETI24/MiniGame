@@ -170,7 +170,50 @@ export default{
       if(player?.alive&&!inside(player)){ctx.fillStyle='#bf321424';ctx.fillRect(0,0,W,H)}
       drawMini();
     }
-    function drawMini(){const r=mini.getBoundingClientRect(),mw=r.width,mh=r.height,md=Math.min(2,devicePixelRatio||1);if(mini.width!==Math.round(mw*md)){mini.width=Math.round(mw*md);mini.height=Math.round(mh*md);mctx.setTransform(md,0,0,md,0,0)}const sx=mw/worldSize,sy=mh/worldSize;mctx.fillStyle='#70a043';mctx.fillRect(0,0,mw,mh);mctx.fillStyle='#7e5133';for(const h of houses)mctx.fillRect(h.x*sx,h.y*sy,h.w*sx,h.h*sy);mctx.strokeStyle='#fff';mctx.lineWidth=1.2;mctx.beginPath();mctx.arc(zone.x*sx,zone.y*sy,zone.r*sx,0,Math.PI*2);mctx.stroke();if(player?.alive){mctx.fillStyle='#24dcff';mctx.beginPath();mctx.arc(player.x*sx,player.y*sy,3,0,Math.PI*2);mctx.fill()}for(const b of bots)if(b.alive&&player&&dist(player,b)<210){mctx.fillStyle='#f25d70';mctx.beginPath();mctx.arc(b.x*sx,b.y*sy,2,0,Math.PI*2);mctx.fill()}}
+    function drawMini(){
+      const r=mini.getBoundingClientRect(),mw=r.width,mh=r.height,md=Math.min(2,devicePixelRatio||1);
+      if(mini.width!==Math.round(mw*md)){
+        mini.width=Math.round(mw*md);
+        mini.height=Math.round(mh*md);
+        mctx.setTransform(md,0,0,md,0,0);
+      }
+
+      mctx.fillStyle='#70a043';
+      mctx.fillRect(0,0,mw,mh);
+
+      // Vor Matchstart existieren Zone und Player noch nicht.
+      // Die Minimap darf trotzdem gerendert werden, ohne auf null.x zuzugreifen.
+      if(!zone || !player) return;
+
+      const sx=mw/worldSize,sy=mh/worldSize;
+
+      mctx.fillStyle='#7e5133';
+      for(const h of houses){
+        mctx.fillRect(h.x*sx,h.y*sy,h.w*sx,h.h*sy);
+      }
+
+      mctx.strokeStyle='#fff';
+      mctx.lineWidth=1.2;
+      mctx.beginPath();
+      mctx.arc(zone.x*sx,zone.y*sy,zone.r*sx,0,Math.PI*2);
+      mctx.stroke();
+
+      if(player.alive){
+        mctx.fillStyle='#24dcff';
+        mctx.beginPath();
+        mctx.arc(player.x*sx,player.y*sy,3,0,Math.PI*2);
+        mctx.fill();
+      }
+
+      for(const b of bots){
+        if(b.alive && dist(player,b)<210){
+          mctx.fillStyle='#f25d70';
+          mctx.beginPath();
+          mctx.arc(b.x*sx,b.y*sy,2,0,Math.PI*2);
+          mctx.fill();
+        }
+      }
+    }
     function update(dt){if(!running||ended)return;time+=dt;updateZone(dt);updatePlayer(dt);bots.forEach(b=>updateBot(b,dt));updateBullets(dt);updateFx(dt);updateCam();updateHud();if(player?.alive&&alive().length===1){placement=1;finish(true)}}
     function scoreFinal(win){return Math.max(0,Math.round(kills*800+damageDone*2+(preset.bots+2-placement)*120+(win?3000:0)))}
     function finish(win){if(ended)return;ended=true;running=false;mouse.down=false;if(!placement)placement=win?1:alive().length+1;const s=scoreFinal(win);services?.highscores?.saveHighscore?.(`survival-royale-${presetKey}`,s);$('.br-end-title').textContent=win?'WINNER WINNER!':`PLACED #${placement}`;$('.br-end-title').style.color=win?'#70e385':'#ff667d';$('.br-end-sub').textContent=`${PRESETS[presetKey].label} · ${DIFFICULTY[diffKey].label}`;$('.ep').textContent='#'+placement;$('.ek').textContent=kills;$('.ed').textContent=Math.round(damageDone);$('.et').textContent=fmt(time);$('.es').textContent=s.toLocaleString('de-DE');end.classList.remove('hide')}

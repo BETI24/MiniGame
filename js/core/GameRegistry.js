@@ -9,7 +9,6 @@ import BlockBuster from "../games/BlockBuster.js";
 import PrismaDefense from "../games/PrismaDefense.js";
 import zombies from "../games/zombies.js";
 import IslandConquest from "../games/IslandConquest.js";
-import ReactionDuel from "../games/ReactionDuel.js";
 import Plinko from "../games/Plinko.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
@@ -26,6 +25,5 @@ export const GameRegistry = [
   PrismaDefense,
   IslandConquest,
   zombies,
-  ReactionDuel,
   Plinko,
 ];

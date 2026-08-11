@@ -7,6 +7,7 @@ import PrismaClix from "../games/PrismaClix.js";
 import Mines from '../games/Mines.js';
 import BlockBuster from '../games/BlockBuster.js';
 import PrismaDefense from "../games/PrismaDefense.js";
+import zombies from "../games/zombies.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
@@ -19,5 +20,6 @@ export const GameRegistry = [
     PrismaClix,
     Mines,
     BlockBuster,
-    PrismaDefense
+    PrismaDefense,
+    zombies
 ];

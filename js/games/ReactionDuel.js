@@ -225,50 +225,72 @@ export default {
             .rc-topbar {
                 position:absolute;
                 z-index:14;
-                left:14px;
-                right:14px;
+                left:50%;
                 top:14px;
-                display:grid;
-                grid-template-columns:1fr auto 1fr;
-                gap:9px;
-                align-items:start;
+                transform:translateX(-50%);
+                width:min(620px,calc(100% - 150px));
                 pointer-events:none;
             }
 
             .rc-top-side {
-                display:flex;
-                gap:8px;
-                flex-wrap:wrap;
+                display:contents;
             }
 
-            .rc-top-side.right { justify-content:flex-end; }
-
-            .rc-chip,
-            .rc-round-chip {
-                padding:8px 11px;
-                min-width:104px;
-                border-radius:12px;
-                border:1px solid rgba(255,255,255,.08);
-                background:rgba(13,22,36,.82);
+            .rc-topbar::before {
+                content:'';
+                position:absolute;
+                inset:0;
+                border-radius:14px;
+                border:1px solid rgba(255,255,255,.075);
+                background:rgba(11,19,31,.72);
                 backdrop-filter:blur(10px);
             }
 
+            .rc-chip,
             .rc-round-chip {
-                min-width:126px;
+                position:relative;
+                z-index:1;
+                min-width:0;
+                padding:9px 15px;
+                border:0;
+                border-radius:0;
+                background:transparent;
                 text-align:center;
             }
 
+            .rc-topbar {
+                display:grid;
+                grid-template-columns:repeat(5,minmax(0,1fr));
+                align-items:center;
+            }
+
+            .rc-chip + .rc-chip,
+            .rc-round-chip,
+            .rc-top-side.right .rc-chip:first-child {
+                border-left:1px solid rgba(255,255,255,.07);
+            }
+
+            .rc-round-chip {
+                min-width:0;
+                order:3;
+            }
+
+            .rc-top-side:first-child .rc-chip:nth-child(1) { order:1; }
+            .rc-top-side:first-child .rc-chip:nth-child(2) { order:2; }
+            .rc-top-side.right .rc-chip:nth-child(1) { order:4; }
+            .rc-top-side.right .rc-chip:nth-child(2) { order:5; }
+
             .rc-chip-label {
-                color:#72879f;
-                font-size:.61rem;
+                color:#6f849c;
+                font-size:.56rem;
                 font-weight:850;
                 text-transform:uppercase;
-                letter-spacing:.08em;
+                letter-spacing:.07em;
             }
 
             .rc-chip-value {
                 margin-top:2px;
-                font-size:.98rem;
+                font-size:.94rem;
                 font-weight:950;
             }
 
@@ -280,24 +302,24 @@ export default {
             .rc-center {
                 position:absolute;
                 left:50%;
-                top:50%;
+                top:49%;
                 transform:translate(-50%,-50%);
                 z-index:8;
                 display:flex;
                 flex-direction:column;
                 align-items:center;
-                width:min(560px,84vw);
+                width:min(700px,88vw);
                 pointer-events:none;
             }
 
             .rc-status {
-                margin-bottom:16px;
+                margin-bottom:13px;
                 text-align:center;
-                min-height:58px;
+                min-height:50px;
             }
 
             .rc-status-main {
-                font-size:clamp(1.35rem,3vw,2.1rem);
+                font-size:clamp(1.15rem,2.4vw,1.72rem);
                 font-weight:950;
                 letter-spacing:.03em;
             }
@@ -305,7 +327,7 @@ export default {
             .rc-status-sub {
                 margin-top:5px;
                 color:var(--muted);
-                font-size:.78rem;
+                font-size:.66rem;
             }
 
             .rc-status.wait .rc-status-main { color:#9fb0c2; }
@@ -315,12 +337,12 @@ export default {
             .rc-status.foul .rc-status-main { color:var(--gold); }
 
             .rc-signal {
-                width:144px;
-                height:144px;
+                width:228px;
+                height:228px;
                 display:flex;
                 align-items:center;
                 justify-content:center;
-                border-radius:30px;
+                border-radius:42px;
                 border:2px solid rgba(255,255,255,.08);
                 background:rgba(9,16,27,.88);
                 box-shadow:0 18px 58px rgba(0,0,0,.30);
@@ -351,15 +373,15 @@ export default {
             }
 
             .rc-arrow {
-                font-size:4.6rem;
+                font-size:8.4rem;
                 line-height:1;
                 font-weight:950;
-                filter:drop-shadow(0 0 14px currentColor);
+                filter:drop-shadow(0 0 20px currentColor);
             }
 
             .rc-fake-mark {
                 display:none;
-                font-size:4rem;
+                font-size:7rem;
                 line-height:1;
                 font-weight:950;
                 transform:rotate(45deg);
@@ -370,7 +392,7 @@ export default {
             .rc-signal.fake .rc-fake-mark { display:block; }
 
             .rc-control-hint {
-                margin-top:18px;
+                margin-top:14px;
                 display:flex;
                 align-items:center;
                 justify-content:center;
@@ -401,6 +423,29 @@ export default {
                 box-shadow:0 0 16px rgba(49,220,255,.34);
             }
 
+
+            .rc-action-key {
+                min-width:82px;
+                height:58px;
+                padding:0 16px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap:10px;
+                border-radius:13px;
+                border:1px solid var(--cyan2);
+                background:var(--cyan2);
+                color:#06121a;
+                font-size:1.45rem;
+                font-weight:950;
+                box-shadow:0 0 22px rgba(49,220,255,.28), inset 0 -3px 0 rgba(0,0,0,.14);
+            }
+
+            .rc-action-key span {
+                font-size:1rem;
+                opacity:.72;
+            }
+
             .rc-fake-hint {
                 margin-left:9px;
                 color:#8095ac;
@@ -413,16 +458,16 @@ export default {
             .rc-bottom {
                 position:absolute;
                 left:50%;
-                bottom:20px;
+                bottom:18px;
                 transform:translateX(-50%);
                 z-index:13;
-                width:min(610px,calc(100% - 32px));
+                width:min(520px,calc(100% - 36px));
                 text-align:center;
                 pointer-events:none;
             }
 
             .rc-track {
-                height:8px;
+                height:5px;
                 overflow:hidden;
                 border-radius:99px;
                 background:rgba(255,255,255,.055);
@@ -488,7 +533,7 @@ export default {
                 z-index:24;
                 right:14px;
                 top:82px;
-                padding:8px 10px;
+                padding:7px 9px;
                 border-radius:10px;
                 border:1px solid rgba(255,255,255,.08);
                 background:rgba(13,22,36,.80);
@@ -865,21 +910,28 @@ export default {
             }
 
             @media (max-width:600px) {
-                .rc-topbar { left:7px; right:7px; top:7px; gap:4px; }
-                .rc-top-side { gap:4px; }
-                .rc-chip { min-width:0; padding:7px 8px; }
-                .rc-chip-label { font-size:.52rem; }
-                .rc-chip-value { font-size:.76rem; }
-                .rc-round-chip { min-width:78px; padding:7px; }
+                .rc-topbar {
+                    top:7px;
+                    width:calc(100% - 92px);
+                }
+                .rc-chip,.rc-round-chip { padding:7px 5px; }
+                .rc-chip-label { font-size:.47rem; }
+                .rc-chip-value { font-size:.72rem; }
                 .rc-mode-grid { grid-template-columns:1fr; }
                 .rc-settings-row { grid-template-columns:1fr; }
                 .rc-control-copy { text-align:left; }
                 .rc-how-flow { grid-template-columns:1fr; }
                 .rc-how-arrow { transform:rotate(90deg); }
-                .rc-center { top:48%; }
-                .rc-signal { width:118px; height:118px; }
-                .rc-arrow { font-size:3.8rem; }
-                .rc-fake-mark { font-size:3.4rem; }
+                .rc-center { top:49%; }
+                .rc-signal { width:168px; height:168px; border-radius:32px; }
+                .rc-arrow { font-size:6.1rem; }
+                .rc-fake-mark { font-size:5.2rem; }
+                .rc-top-side:first-child .rc-chip:nth-child(2) { display:none; }
+                .rc-topbar { grid-template-columns:repeat(4,minmax(0,1fr)); }
+                .rc-round-chip { order:2; }
+                .rc-top-side.right .rc-chip:nth-child(1) { order:3; }
+                .rc-top-side.right .rc-chip:nth-child(2) { order:4; }
+                .rc-result { font-size:.62rem; }
             }
         `;
 
@@ -1231,17 +1283,23 @@ export default {
                     ${DIRECTION_META[direction].key}
                 </span>
             `).join('') + `
-                <span class="rc-fake-hint"><b>◇</b> = nicht drücken</span>
+                <span class="rc-fake-hint"><b>◇</b> = warten</span>
             `;
         };
 
         const highlightControl = direction => {
-            root.querySelectorAll('[data-hint]').forEach(key => {
-                key.classList.toggle(
-                    'active',
-                    key.dataset.hint === direction
-                );
-            });
+            if (!direction) {
+                renderControls();
+                return;
+            }
+
+            const meta = DIRECTION_META[direction];
+            controlHintEl.innerHTML = `
+                <div class="rc-action-key">
+                    ${meta.key}
+                    <span>${meta.keyAlt}</span>
+                </div>
+            `;
         };
 
         const getEnduranceRamp = () => {
@@ -1511,8 +1569,8 @@ export default {
             highlightControl(currentDirection);
 
             setStatus(
-                `${DIRECTION_META[currentDirection].arrow} ${DIRECTION_META[currentDirection].key}`,
-                'JETZT reagieren!',
+                'JETZT!',
+                `Drücke ${DIRECTION_META[currentDirection].key} oder ${DIRECTION_META[currentDirection].keyAlt}`,
                 'go'
             );
 

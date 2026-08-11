@@ -2,7 +2,7 @@ export default {
     manifest: {
         id: 'zombie-shooter',
         name: 'Neon Breach: Cyber Survival',
-        description: 'Ein extrem süchtig machender Neon-Zombieshooter mit ausbalancierten Bossen, Low-HP-Alarmeffekten, Web-Audio-Sounds, Granaten und Waffen-Drops.',
+        description: 'Ein extrem süchtig machender Neon-Zombieshooter mit dezentem Sidebar-Design, ausbalancierten Bossen, Low-HP-Alarmeffekten, Web-Audio-Sounds, Granaten und Waffen-Drops.',
         icon: '⚡',
         imageUrl: 'js/assets/images/zombie.png',
         tags: ['Action', 'Shooter', 'Neon', 'Arcade']
@@ -22,13 +22,20 @@ export default {
                 height: 100%;
                 width: 100%;
                 display: flex;
-                flex-direction: column;
+                flex-direction: row;
                 align-items: center;
                 justify-content: center;
                 position: relative;
+                gap: 15px;
             }
             .nb-wrapper * {
                 box-sizing: border-box;
+            }
+            .nb-game-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
             }
             .nb-hud {
                 display: flex;
@@ -49,21 +56,78 @@ export default {
                 display: block;
                 transition: transform 0.05s ease;
             }
+            .nb-sidebar {
+                width: 180px;
+                background: #090910;
+                border: 2px solid #2a2a3c;
+                box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+                padding: 15px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                font-size: 13px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            .nb-sidebar h3 {
+                margin: 0 0 5px 0;
+                font-size: 14px;
+                color: #888899;
+                text-align: center;
+                border-bottom: 1px solid #2a2a3c;
+                padding-bottom: 5px;
+                text-shadow: none;
+            }
+            .nb-key-group {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+            }
+            .nb-key-title {
+                color: #aaaaaa;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            .nb-key-desc {
+                color: #666677;
+                font-size: 11px;
+            }
         `;
         container.appendChild(style);
 
         const wrapper = document.createElement('div');
         wrapper.className = 'nb-wrapper';
         wrapper.innerHTML = `
-            <div class="nb-hud">
-                <div>Welle: <span id="nb-wave">1</span></div>
-                <div>Schild: <span id="nb-hp">100</span></div>
-                <div>Waffe: <span id="nb-weapon" style="color: #ffff00;">Standard</span></div>
-                <div>Granaten: <span id="nb-grenades" style="color: #00ff00;">0</span></div>
-                <div>Score: <span id="nb-score">0</span></div>
-                <div>Combo: <span id="nb-combo">1x</span></div>
+            <div class="nb-sidebar">
+                <h3>Steuerung</h3>
+                <div class="nb-key-group">
+                    <span class="nb-key-title">[ W ] [ A ] [ S ] [ D ]</span>
+                    <span class="nb-key-desc">Bewegung</span>
+                </div>
+                <div class="nb-key-group">
+                    <span class="nb-key-title">Maus + Linksklick</span>
+                    <span class="nb-key-desc">Zielen & Dauerfeuer</span>
+                </div>
+                <div class="nb-key-group">
+                    <span class="nb-key-title">[ LEERTASTE ]</span>
+                    <span class="nb-key-desc">Bombe / Granate platzieren</span>
+                </div>
+                <div class="nb-key-group">
+                    <span class="nb-key-title">[ R ]</span>
+                    <span class="nb-key-desc">Neustart (nach Game Over)</span>
+                </div>
             </div>
-            <canvas id="nb-canvas" width="800" height="550" class="nb-canvas"></canvas>
+            <div class="nb-game-container">
+                <div class="nb-hud">
+                    <div>Welle: <span id="nb-wave">1</span></div>
+                    <div>Schild: <span id="nb-hp">100</span></div>
+                    <div>Waffe: <span id="nb-weapon" style="color: #ffff00;">Standard</span></div>
+                    <div>Granaten: <span id="nb-grenades" style="color: #00ff00;">0</span></div>
+                    <div>Score: <span id="nb-score">0</span></div>
+                    <div>Combo: <span id="nb-combo">1x</span></div>
+                </div>
+                <canvas id="nb-canvas" width="800" height="550" class="nb-canvas"></canvas>
+            </div>
         `;
         container.appendChild(wrapper);
 
@@ -169,7 +233,6 @@ export default {
                 gain.gain.linearRampToValueAtTime(0.005, now + 0.2);
                 osc.start(now); osc.stop(now + 0.2);
             } else if (type === 'lowHpHeartbeat') {
-                // Pulsierender Herzschlag-Sound bei niedrigem Leben
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(120, now);
                 osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
@@ -343,7 +406,6 @@ export default {
             }
         };
 
-        // Ausgewogener Schwierigkeitsgrad (Mittelwert aus den vorherigen Versionen)
         const getBossConfig = (tier) => {
             switch(tier) {
                 case 1:
@@ -361,10 +423,8 @@ export default {
             if (gameOver) return;
             gameTime++;
 
-            // Low-HP Sound-Puls und Timer wenn HP < 30
             if (player.hp < 30 && player.hp > 0) {
                 lowHpTimer++;
-                // Herzschlag-Sound alle ca. 45 Frames (~0.75 Sekunden) abspielen
                 if (lowHpTimer % 45 === 0) {
                     playSound('lowHpHeartbeat');
                 }
@@ -401,7 +461,6 @@ export default {
 
             player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
 
-            // Granaten-Timer aktualisieren & Piepen
             for (let i = activeGrenades.length - 1; i >= 0; i--) {
                 let g = activeGrenades[i];
                 g.timer--;
@@ -430,7 +489,6 @@ export default {
                 }
             }
 
-            // Spieler-Schusslogik mit Waffen-Sounds
             player.shootTimer++;
             if (mouse.down && player.shootTimer >= player.fireRate) {
                 player.shootTimer = 0;
@@ -456,7 +514,6 @@ export default {
                 }
             }
 
-            // Kugeln updaten
             for (let i = bullets.length - 1; i >= 0; i--) {
                 let b = bullets[i];
                 b.x += b.vx; b.y += b.vy;
@@ -499,7 +556,6 @@ export default {
                 }
             }
 
-            // Boss-Projektile updaten
             for (let i = bossBullets.length - 1; i >= 0; i--) {
                 let bb = bossBullets[i];
                 bb.x += bb.vx; bb.y += bb.vy;
@@ -533,7 +589,6 @@ export default {
                         z.attackTimer = 0;
                         let bossCfg = getBossConfig(z.tier);
 
-                        // Mittlerer, dynamischer Schwierigkeitsgrad mit coolen Mustern
                         if (bossCfg.pattern === 'spread') {
                             for (let aOffset of [-0.4, -0.2, 0, 0.2, 0.4]) {
                                 let shootAngle = zAngle + aOffset;
@@ -630,7 +685,6 @@ export default {
             for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
             for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
 
-            // Roter, pulsierender Bildschirm-Effekt bei niedrigem Leben (< 30 HP)
             if (player.hp < 30 && player.hp > 0 && !gameOver) {
                 let pulseAlpha = 0.12 + Math.sin(gameTime / 6) * 0.08;
                 ctx.save();
@@ -656,7 +710,6 @@ export default {
                 ctx.shadowBlur = 0;
             });
 
-            // Granaten am Anfang grün, blinken weißlich beim Piepen
             activeGrenades.forEach(g => {
                 let isWhiteBlink = Math.floor(g.timer / 30) % 2 === 0;
                 ctx.shadowBlur = 18; ctx.shadowColor = isWhiteBlink ? '#ffffff' : '#00ff00';
@@ -752,7 +805,6 @@ export default {
 
                 ctx.restore();
 
-                // HP-Balken
                 if (z.type === 'boss') {
                     ctx.fillStyle = 'rgba(255,0,0,0.5)';
                     ctx.fillRect(z.x - 35, z.y - z.radius - 10, 70, 5);

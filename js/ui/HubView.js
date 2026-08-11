@@ -7,6 +7,7 @@ export class HubView {
         this.root = root;
         this.router = router;
         this.gridContainer = null;
+        this.hideCasino = false;
         this.injectStyles();
         this.render();
     }
@@ -150,6 +151,50 @@ export class HubView {
             this.renderGrid(e.target.value);
         });
 
+        // Toggle-Button für Casino-Ausblendung (sichtbar oben rechts)
+        const heroRight = hero.querySelector('.hero-right');
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'toggle-casino-btn';
+        toggleBtn.innerText = this.hideCasino ? 'Hier klicken für Spaß' : 'Für Langweiler';
+        toggleBtn.setAttribute('aria-pressed', String(this.hideCasino));
+        toggleBtn.addEventListener('click', () => {
+            this.hideCasino = !this.hideCasino;
+            toggleBtn.innerText = this.hideCasino ? 'Hier klicken für Spaß ☀️' : 'Für Langweiler';
+            toggleBtn.setAttribute('aria-pressed', String(this.hideCasino));
+            this.renderGrid(searchInput.value);
+        });
+        // Einfügen in heroRight (alternativ: fixed position via CSS)
+        heroRight.insertBefore(toggleBtn, heroRight.firstChild);
+
+        // Füge ergänzende Styles, falls noch nicht vorhanden
+        if (!document.getElementById('toggle-casino-styles')) {
+            const s = document.createElement('style');
+            s.id = 'toggle-casino-styles';
+            s.innerHTML = `
+                .toggle-casino-btn {
+                    position: fixed;
+                    top: 1.5rem;
+                    right: 2rem;
+                    z-index: 60;
+                    background: rgba(20,20,30,0.6);
+                    color: var(--text-main);
+                    border: 1px solid rgba(255,255,255,0.06);
+                    padding: 0.6rem 1rem;
+                    border-radius: 12px;
+                    backdrop-filter: blur(10px);
+                    cursor:pointer;
+                    font-weight:700;
+                    box-shadow: 0 6px 20px rgba(0,212,255,0.12);
+                }
+                .toggle-casino-btn[aria-pressed="true"] {
+                    background: var(--accent-color);
+                    color: #0b0b0e;
+                    border-color: rgba(0,0,0,0.1);
+                }
+            `;
+            document.head.appendChild(s);
+        }
+
         container.appendChild(hero);
         container.appendChild(this.gridContainer);
         this.root.appendChild(container);
@@ -163,6 +208,10 @@ export class HubView {
 
         const filteredGames = GameRegistry.filter(gameModule => {
             const manifest = gameModule.manifest;
+            // Wenn Casino ausgeblendet wird, diese Spiele überspringen
+            if (this.hideCasino && manifest.tags.some(tag => tag.toLowerCase() === 'casino')) {
+                return false;
+            }
             const inName = manifest.name.toLowerCase().includes(query);
             const inDesc = manifest.description.toLowerCase().includes(query);
             const inTags = manifest.tags.some(tag => tag.toLowerCase().includes(query));

@@ -4,6 +4,7 @@ export default {
         name: 'Prisma Defense',
         description: 'Verteidige deinen Quanten-Kern gegen ankommende Neon-Viren. Baue Türme und überlebe so lange wie möglich.',
         icon: '🛡️',
+        imageUrl: 'js/assets/images/PrismaDefense.png',
         tags: ['Tower Defense', 'Action', 'Neon']
     },
     init: (container, services) => {

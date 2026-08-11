@@ -1,23 +1,25 @@
-import NeonClicker from '../games/NeonClicker.js';
-import ShapeDodger from '../games/ShapeDodger.js';
-import ShapeDodgerV2 from '../games/ShapeDodgerV2.js';
+import NeonClicker from "../games/NeonClicker.js";
+import ShapeDodger from "../games/ShapeDodger.js";
+import ShapeDodgerV2 from "../games/ShapeDodgerV2.js";
 import Blackjack from "../games/Blackjack.js";
 import Crash from "../games/Crash.js";
 import PrismaClix from "../games/PrismaClix.js";
-import Mines from '../games/Mines.js';
-import BlockBuster from '../games/BlockBuster.js';
+import Mines from "../games/Mines.js";
+import BlockBuster from "../games/BlockBuster.js";
 import PrismaDefense from "../games/PrismaDefense.js";
+import IslandConquest from "../games/IslandConquest.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
 export const GameRegistry = [
-    NeonClicker,
-    ShapeDodger,
-    ShapeDodgerV2,
-    Blackjack,
-    Crash,
-    PrismaClix,
-    Mines,
-    BlockBuster,
-    PrismaDefense
+  NeonClicker,
+  ShapeDodger,
+  ShapeDodgerV2,
+  Blackjack,
+  Crash,
+  PrismaClix,
+  Mines,
+  BlockBuster,
+  PrismaDefense,
+  IslandConquest,
 ];

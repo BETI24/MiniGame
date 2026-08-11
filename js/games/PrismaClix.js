@@ -16,7 +16,6 @@ export default {
             sps: 0,
             currentTab: 'auto',
             upgrades: {
-                // Automatisierung (SPS) aus Original-Vorlage
                 nanoDrone: { name: "Nano-Drohne", cost: 15, sps: 0.6, count: 0, desc: "+0.6 / Sek", type: 'auto' },
                 prismLaser: { name: "Prisma-Laser", cost: 110, sps: 4.5, count: 0, desc: "+4.5 / Sek", type: 'auto' },
                 quantumCore: { name: "Quanten-Kern", cost: 1200, sps: 35, count: 0, desc: "+35 / Sek", type: 'auto' },
@@ -24,7 +23,6 @@ export default {
                 hyperSingularity: { name: "Hyper-Singularität", cost: 140000, sps: 1500, count: 0, desc: "+1.5k / Sek", type: 'auto' },
                 omegaReactor: { name: "Omega-Reaktor", cost: 1600000, sps: 9200, count: 0, desc: "+9.2k / Sek", type: 'auto' },
 
-                // Aktive Klick-Upgrades aus Original-Vorlage
                 photonFinger: { name: "Photonen-Finger", cost: 50, clickBoost: 1, count: 0, desc: "+1 Prisma pro Klick", type: 'click' },
                 plasmaGlove: { name: "Plasma-Handschuh", cost: 350, clickBoost: 5, count: 0, desc: "+5 Prisma pro Klick", type: 'click' },
                 laserPointer: { name: "Tachyonen-Strahl", cost: 2400, clickBoost: 25, count: 0, desc: "+25 Prisma pro Klick", type: 'click' },
@@ -34,7 +32,7 @@ export default {
         };
 
         let animationId;
-        let lastTime = performance.now(); // Speichert die exakte Startzeit
+        let lastTime = performance.now();
 
         // --- Isoliertes Styling ---
         const style = document.createElement('style');
@@ -58,6 +56,12 @@ export default {
                 box-sizing: border-box;
             }
 
+            @keyframes pc-bgPan {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+            }
+
             .pc-game-container {
                 flex: 1;
                 display: flex;
@@ -65,7 +69,9 @@ export default {
                 align-items: center;
                 justify-content: center;
                 position: relative;
-                background: radial-gradient(circle, #181828 0%, #08080c 100%);
+                background: linear-gradient(-45deg, #0d0d1a, #1a1025, #101c25, #08080c);
+                background-size: 400% 400%;
+                animation: pc-bgPan 12s ease infinite;
                 overflow: hidden;
             }
 
@@ -82,13 +88,13 @@ export default {
 
             .pc-stats {
                 position: absolute;
-                top: 30px;
+                top: 40px;
                 text-align: center;
                 z-index: 5;
             }
 
             .pc-score {
-                font-size: 4rem;
+                font-size: 4.5rem;
                 font-weight: 900;
                 background: linear-gradient(45deg, #00ffcc, #ff007f, #ffff00);
                 -webkit-background-clip: text;
@@ -104,20 +110,20 @@ export default {
             }
 
             .pc-sps {
-                font-size: 1.1rem;
+                font-size: 1.2rem;
                 color: #a0a0c0;
                 margin-top: 5px;
                 font-weight: 600;
             }
 
             .pc-clicker-btn {
-                width: 240px;
-                height: 240px;
+                width: 260px;
+                height: 260px;
                 border-radius: 50%;
                 background: radial-gradient(circle, #ff007f 0%, #7f00ff 50%, #00ffff 100%);
                 border: 6px solid #ffffff;
                 cursor: pointer;
-                box-shadow: 0 0 60px rgba(255,0,127,0.7), inset 0 0 30px rgba(255,255,255,0.6);
+                box-shadow: 0 0 80px rgba(255,0,127,0.8), inset 0 0 40px rgba(255,255,255,0.7);
                 transition: transform 0.08s cubic-bezier(0.175, 0.885, 0.32, 1.275);
                 position: relative;
                 outline: none;
@@ -126,15 +132,15 @@ export default {
 
             .pc-clicker-btn:active {
                 transform: scale(0.85) rotate(5deg);
-                box-shadow: 0 0 20px rgba(255,0,127,1);
+                box-shadow: 0 0 30px rgba(255,0,127,1);
             }
 
             .pc-shockwave {
                 position: absolute;
-                width: 240px;
-                height: 240px;
+                width: 260px;
+                height: 260px;
                 border-radius: 50%;
-                border: 3px solid #00ffcc;
+                border: 4px solid #00ffcc;
                 pointer-events: none;
                 animation: pc-expandWave 0.5s ease-out forwards;
                 z-index: 4;
@@ -142,13 +148,13 @@ export default {
 
             @keyframes pc-expandWave {
                 0% { transform: scale(1); opacity: 1; }
-                100% { transform: scale(2.5); opacity: 0; }
+                100% { transform: scale(2.8); opacity: 0; }
             }
 
             .pc-particle {
                 position: absolute;
-                width: 8px;
-                height: 8px;
+                width: 10px;
+                height: 10px;
                 border-radius: 50%;
                 pointer-events: none;
                 animation: pc-flyParticle 0.6s ease-out forwards;
@@ -158,6 +164,28 @@ export default {
             @keyframes pc-flyParticle {
                 0% { transform: translate(0, 0) scale(1.5); opacity: 1; }
                 100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+            }
+
+            .pc-orb {
+                position: absolute;
+                width: 50px;
+                height: 50px;
+                border-radius: 50%;
+                background: radial-gradient(circle, #fff 0%, #ffd700 60%, #ff8c00 100%);
+                box-shadow: 0 0 30px #ffd700;
+                cursor: pointer;
+                z-index: 50;
+                animation: pc-orbFloat 3s ease-in-out infinite, pc-orbPopIn 0.3s ease-out forwards;
+            }
+
+            @keyframes pc-orbPopIn {
+                0% { transform: scale(0); }
+                100% { transform: scale(1); }
+            }
+
+            @keyframes pc-orbFloat {
+                0%, 100% { transform: translateY(0) scale(1); }
+                50% { transform: translateY(-20px) scale(1.1); }
             }
 
             .pc-tabs {
@@ -250,16 +278,16 @@ export default {
             }
 
             @keyframes pc-shake {
-                0% { transform: translate(2px, 2px) rotate(0deg); }
-                20% { transform: translate(-4px, 1px) rotate(-1deg); }
-                40% { transform: translate(2px, -3px) rotate(1deg); }
-                60% { transform: translate(-2px, 3px) rotate(0deg); }
-                80% { transform: translate(-4px, 2px) rotate(-1deg); }
-                100% { transform: translate(1px, -2px) rotate(1deg); }
+                0% { transform: translate(3px, 3px) rotate(0deg); }
+                20% { transform: translate(-5px, 2px) rotate(-1deg); }
+                40% { transform: translate(3px, -4px) rotate(1deg); }
+                60% { transform: translate(-3px, 4px) rotate(0deg); }
+                80% { transform: translate(-5px, 3px) rotate(-1deg); }
+                100% { transform: translate(2px, -3px) rotate(1deg); }
             }
 
             .pc-shake-active {
-                animation: pc-shake 0.18s ease-in-out;
+                animation: pc-shake 0.15s ease-in-out;
             }
         `;
         container.appendChild(style);
@@ -300,7 +328,7 @@ export default {
         // --- Spiellogik ---
         const updateUI = () => {
             scoreEl.innerText = Math.floor(game.score).toLocaleString();
-            spsEl.innerText = `Prisma / Sekunde: ${game.sps.toFixed(1)} | Klick-Power: +${game.clickPower}`;
+            spsEl.innerText = `Prisma / Sek: ${game.sps.toFixed(1)} | Klick-Power: +${game.clickPower}`;
 
             for (let key in game.upgrades) {
                 let up = game.upgrades[key];
@@ -324,7 +352,7 @@ export default {
             if (game.score >= up.cost) {
                 game.score -= up.cost;
                 up.count++;
-                up.cost *= 1.16; // Schneller steigende Kosten für den Suchtfaktor
+                up.cost *= 1.18;
 
                 if (up.type === 'auto') {
                     game.sps += up.sps;
@@ -370,22 +398,24 @@ export default {
         tabAuto.addEventListener('click', (e) => switchTab('auto', e.target));
         tabClick.addEventListener('click', (e) => switchTab('click', e.target));
 
-        // --- Visuelle Effekte (Isoliert im Wrapper) ---
+        // --- Visuelle Effekte ---
         const createFloatingText = (x, y, text, color, isCrit) => {
             let el = document.createElement('div');
             el.className = 'pc-floating-text';
             el.style.left = `${x - 20}px`;
             el.style.top = `${y - 20}px`;
             el.style.color = color;
-            el.style.fontSize = isCrit ? '2rem' : '1.3rem';
+            el.style.fontSize = isCrit ? '2.5rem' : '1.5rem';
             el.innerText = isCrit ? `${text} CRIT!` : text;
-            wrapper.appendChild(el); // Hier wird an den isolierten Wrapper angehängt
+            wrapper.appendChild(el);
             setTimeout(() => el.remove(), 700);
         };
 
-        const createParticleBurst = (x, y) => {
+        const createParticleBurst = (x, y, isCrit) => {
             const colors = ['#00ffcc', '#ff007f', '#ffff00', '#ffffff', '#7f00ff'];
-            for (let i = 0; i < 12; i++) {
+            const amount = isCrit ? 25 : 12;
+
+            for (let i = 0; i < amount; i++) {
                 let p = document.createElement('div');
                 p.className = 'pc-particle';
                 p.style.left = `${x}px`;
@@ -393,7 +423,7 @@ export default {
                 p.style.background = colors[Math.floor(Math.random() * colors.length)];
 
                 let angle = Math.random() * Math.PI * 2;
-                let distance = 50 + Math.random() * 90;
+                let distance = 50 + Math.random() * (isCrit ? 150 : 90);
                 let dx = Math.cos(angle) * distance;
                 let dy = Math.sin(angle) * distance;
 
@@ -407,29 +437,59 @@ export default {
 
         const triggerScreenShake = () => {
             gameContainer.classList.add('pc-shake-active');
-            setTimeout(() => gameContainer.classList.remove('pc-shake-active'), 180);
+            setTimeout(() => gameContainer.classList.remove('pc-shake-active'), 150);
         };
 
         const createShockwave = () => {
             const btnRect = clickerBtn.getBoundingClientRect();
             const containerRect = gameContainer.getBoundingClientRect();
-
-            // Berechnet die relative Mitte des Buttons im Container
             const centerX = (btnRect.left - containerRect.left) + btnRect.width / 2;
             const centerY = (btnRect.top - containerRect.top) + btnRect.height / 2;
 
             let wave = document.createElement('div');
             wave.className = 'pc-shockwave';
-            wave.style.left = `${centerX - 120}px`;
-            wave.style.top = `${centerY - 120}px`;
+            wave.style.left = `${centerX - 130}px`;
+            wave.style.top = `${centerY - 130}px`;
             gameContainer.appendChild(wave);
             setTimeout(() => wave.remove(), 500);
         };
 
+        // --- Zufalls-Event (Goldener Orb) ---
+        const spawnBonusOrb = () => {
+            let orb = document.createElement('div');
+            orb.className = 'pc-orb';
+
+            orb.style.left = 10 + Math.random() * 70 + '%';
+            orb.style.top = 15 + Math.random() * 65 + '%';
+
+            gameContainer.appendChild(orb);
+
+            orb.addEventListener('click', (e) => {
+                e.stopPropagation();
+                let bonus = (game.sps * 45) + (game.clickPower * 100) + 100;
+                game.score += bonus;
+
+                const rect = wrapper.getBoundingClientRect();
+                const localX = e.clientX - rect.left;
+                const localY = e.clientY - rect.top;
+
+                createFloatingText(localX, localY, `+${Math.floor(bonus)} BONUS!`, '#ffff00', true);
+                createParticleBurst(localX, localY, true);
+                triggerScreenShake();
+
+                orb.remove();
+                updateUI();
+            });
+
+            setTimeout(() => {
+                if (orb.parentNode) orb.remove();
+            }, 4000);
+        };
+
         // --- Klick-Logik ---
         clickerBtn.addEventListener('click', (e) => {
+            let isCrit = Math.random() < 0.15;
             let gain = game.clickPower;
-            let isCrit = Math.random() < 0.15; // 15% Chance auf fetten Crit
 
             if (isCrit) {
                 gain *= 5;
@@ -440,18 +500,17 @@ export default {
             game.score += gain;
             game.totalClicks++;
 
-            // Koordinaten relativ zum Wrapper berechnen
             const rect = wrapper.getBoundingClientRect();
             const localX = e.clientX - rect.left;
             const localY = e.clientY - rect.top;
 
             createFloatingText(localX, localY, `+${Math.floor(gain).toLocaleString()}`, isCrit ? '#ffff00' : '#00ffcc', isCrit);
-            createParticleBurst(localX, localY);
+            createParticleBurst(localX, localY, isCrit);
 
             updateUI();
         });
 
-        // --- Game Loop (Zeitberechnung) ---
+        // --- Game Loop ---
         const gameLoop = (time) => {
             let delta = (time - lastTime) / 1000;
             lastTime = time;
@@ -459,9 +518,13 @@ export default {
             if (game.sps > 0) {
                 game.score += game.sps * delta;
                 updateUI();
-
-                // Kontinuierliches Speichern des Highscores (Punktestand)
                 services.highscores.saveHighscore('prisma-clix', Math.floor(game.score));
+            }
+
+            if (Math.random() < 0.002) {
+                if (!gameContainer.querySelector('.pc-orb')) {
+                    spawnBonusOrb();
+                }
             }
 
             animationId = requestAnimationFrame(gameLoop);
@@ -474,7 +537,7 @@ export default {
         // --- Aufräumen (Destroy) ---
         return {
             destroy: () => {
-                cancelAnimationFrame(animationId); // Stoppt den Game Loop
+                cancelAnimationFrame(animationId);
                 services.highscores.saveHighscore('prisma-clix', Math.floor(game.score));
             }
         };

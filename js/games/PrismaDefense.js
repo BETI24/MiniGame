@@ -7,54 +7,139 @@ export default {
         tags: ['Tower Defense', 'Action', 'Neon']
     },
     init: (container, services) => {
+        // --- Einzigartige, saubere Weg-Generierung ohne Überschneidungen ---
+        const generateRandomPath = () => {
+            const cols = 16;
+            const rows = 12;
+            let current = { x: 0, y: Math.floor(Math.random() * 6) + 3 };
+            let path = [{ ...current }];
+            let visited = new Set([`${current.x},${current.y}`]);
+            const targetX = cols - 1;
+
+            while (current.x < targetX) {
+                let options = [];
+                let possibleMoves = [
+                    { x: current.x + 1, y: current.y },
+                    { x: current.x, y: current.y + 1 },
+                    { x: current.x, y: current.y - 1 }
+                ];
+
+                for (let m of possibleMoves) {
+                    if (m.x >= 0 && m.x < cols && m.y >= 1 && m.y < rows - 1) {
+                        let key = `${m.x},${m.y}`;
+                        if (!visited.has(key)) {
+                            let weight = (m.x > current.x) ? 3 : 1;
+                            for (let i = 0; i < weight; i++) options.push(m);
+                        }
+                    }
+                }
+
+                if (options.length === 0) {
+                    let forced = { x: current.x + 1, y: current.y };
+                    if (forced.x < cols && !visited.has(`${forced.x},${forced.y}`)) {
+                        current = forced;
+                        path.push({ ...current });
+                        visited.add(`${current.x},${current.y}`);
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+
+                let next = options[Math.floor(Math.random() * options.length)];
+                current = next;
+                path.push({ ...current });
+                visited.add(`${current.x},${current.y}`);
+            }
+
+            let last = path[path.length - 1];
+            if (last.x < targetX) {
+                for (let x = last.x + 1; x <= targetX; x++) {
+                    path.push({ x: x, y: last.y });
+                }
+            }
+            return path;
+        };
+
         // --- Spielzustand ---
         let game = {
             score: 0,
-            prisma: 150,
-            health: 20,
-            maxHealth: 20,
+            prisma: 200,
+            health: 25,
+            maxHealth: 25,
             wave: 1,
+            waveActive: true,
+            enemiesInWave: 4,
+            enemiesSpawned: 0,
+            waveTimer: 0,
             selectedTower: 'blaster',
+            selectedInstance: null,
             towersData: {
                 blaster: {
-                    name: "Prisma-Blaster", cost: 50, range: 120, damage: 15, cooldown: 600, color: '#00ffcc',
+                    name: "Prisma-Blaster", cost: 40, range: 120, damage: 18, cooldown: 600, color: '#00ffcc',
                     desc: "Verlässlicher Allrounder mit moderater Schussrate.", shape: 'square', pShape: 'bullet', exp: 'normal',
                     svg: '<svg width="40" height="40"><rect x="5" y="5" width="30" height="30" fill="#161622" stroke="#00ffcc" stroke-width="2"/><circle cx="20" cy="20" r="8" fill="#00ffcc"/></svg>'
                 },
                 rapid: {
-                    name: "Ionen-Gatling", cost: 120, range: 100, damage: 5, cooldown: 120, color: '#0088ff',
+                    name: "Ionen-Gatling", cost: 100, range: 100, damage: 6, cooldown: 120, color: '#0088ff',
                     desc: "Feuert extrem schnell. Perfekt gegen schwache, schnelle Viren.", shape: 'triangle', pShape: 'dash', exp: 'small',
                     svg: '<svg width="40" height="40"><polygon points="20,5 35,35 5,35" fill="#161622" stroke="#0088ff" stroke-width="2"/><circle cx="20" cy="23" r="6" fill="#0088ff"/></svg>'
                 },
                 sniper: {
-                    name: "Quanten-Sniper", cost: 150, range: 300, damage: 60, cooldown: 1800, color: '#ff007f',
+                    name: "Quanten-Sniper", cost: 130, range: 300, damage: 70, cooldown: 1800, color: '#ff007f',
                     desc: "Hohe Reichweite und kritischer Schaden, aber langsame Feuerrate.", shape: 'diamond', pShape: 'laser', exp: 'normal',
                     svg: '<svg width="40" height="40"><polygon points="20,5 35,20 20,35 5,20" fill="#161622" stroke="#ff007f" stroke-width="2"/><circle cx="20" cy="20" r="5" fill="#ff007f"/></svg>'
                 },
                 heavy: {
-                    name: "Plasma-Kanone", cost: 250, range: 150, damage: 140, cooldown: 2500, color: '#ff4400',
+                    name: "Plasma-Kanone", cost: 220, range: 150, damage: 160, cooldown: 2500, color: '#ff4400',
                     desc: "Verschießt langsame, aber verheerende Plasma-Ladungen.", shape: 'hexagon', pShape: 'orb', exp: 'massive',
                     svg: '<svg width="40" height="40"><polygon points="12,5 28,5 35,20 28,35 12,35 5,20" fill="#161622" stroke="#ff4400" stroke-width="2"/><circle cx="20" cy="20" r="10" fill="#ff4400"/></svg>'
                 },
+                tesla: {
+                    name: "Tesla-Spule", cost: 160, range: 120, damage: 12, cooldown: 3000, color: '#ffff33', isTesla: true,
+                    desc: "Verschießt elektrische Projektile, die Kettenblitze mit Stun auslösen (erhöhter Schaden).", shape: 'star', pShape: 'dash', exp: 'small',
+                    svg: '<svg width="40" height="40"><polygon points="20,5 25,15 35,15 27,22 30,32 20,26 10,32 13,22 5,15 15,15" fill="#161622" stroke="#ffff33" stroke-width="2"/></svg>'
+                },
+                frost: {
+                    name: "Frost-Emitter", cost: 180, range: 130, damage: 8, cooldown: 1100, color: '#00ffff', isFrost: true,
+                    desc: "Verschießt eiskalte Energieimpulse, die Gegner verlangsamen.", shape: 'octagon', pShape: 'bullet', exp: 'normal',
+                    svg: '<svg width="40" height="40"><rect x="8" y="8" width="24" height="24" transform="rotate(45 20 20)" fill="#161622" stroke="#00ffff" stroke-width="2"/><circle cx="20" cy="20" r="6" fill="#00ffff"/></svg>'
+                },
+                mortar: {
+                    name: "Mörser-Batterie", cost: 280, range: 350, damage: 70, cooldown: 3500, color: '#ff00ff', isMortar: true,
+                    desc: "Artilleriegeschütz, das Projektile auf das anvisierte Zielgelände feuert und Flächenschaden verursacht.", shape: 'circle', pShape: 'orb', exp: 'massive',
+                    svg: '<svg width="40" height="40"><circle cx="20" cy="20" r="16" fill="#161622" stroke="#ff00ff" stroke-width="2"/><circle cx="20" cy="20" r="8" fill="#ff00ff"/></svg>'
+                },
+                gravity: {
+                    name: "Singularitäts-Generator", cost: 240, range: 140, damage: 4, cooldown: 2000, color: '#8844ff', isGravity: true,
+                    desc: "Erzeugt ein Gravitationsfeld, das Gegner im Umkreis stark verlangsamend festhält und kontinuierlich zerrt.", shape: 'circle', pShape: 'orb', exp: 'small',
+                    svg: '<svg width="40" height="40"><circle cx="20" cy="20" r="15" fill="#161622" stroke="#8844ff" stroke-width="2"/><circle cx="20" cy="20" r="5" fill="#8844ff"/><circle cx="20" cy="20" r="10" fill="none" stroke="#8844ff" stroke-width="1" stroke-dasharray="2,2"/></svg>'
+                },
+                nanite: {
+                    name: "Naniten-Schwarm", cost: 200, range: 130, damage: 50, cooldown: 2200, color: '#55ff55', isNanite: true,
+                    desc: "Infiziert ein Ziel mit Naniten, die über Zeit massiven Schaden verursachen (DoT). Hoher Einzelschaden, feuert langsam.", shape: 'complexNanite', pShape: 'dash', exp: 'normal',
+                    svg: '<svg width="40" height="40"><circle cx="20" cy="20" r="14" fill="#161622" stroke="#55ff55" stroke-width="2"/><path d="M12,20 Q20,10 28,20 Q20,30 12,20 Z" fill="none" stroke="#55ff55" stroke-width="1.5"/><circle cx="20" cy="20" r="4" fill="#55ff55"/></svg>'
+                },
+                bomberpad: {
+                    name: "Bomber-Geschwader", cost: 300, range: 0, damage: 18, cooldown: 400, color: '#ffaa00', isBomberpad: true,
+                    desc: "Platziert einen Hangar, der ein Kampfflugzeug im Kreis über die gesamte Karte entsendet, welches kontinuierlich Projektile in alle Richtungen abfeuert.", shape: 'pad', pShape: 'laser', exp: 'small',
+                    svg: '<svg width="40" height="40"><rect x="5" y="5" width="30" height="30" fill="#161622" stroke="#ffaa00" stroke-width="2"/><polygon points="20,10 28,28 20,23 12,28" fill="#ffaa00"/></svg>'
+                },
                 wind: {
-                    name: "Windkraftwerk", cost: 200, range: 0, damage: 0, cooldown: 3000, income: 25, color: '#ffff00', isEconomy: true,
-                    desc: "Generiert regelmäßig passives Prisma zur Finanzierung.", shape: 'rotor', pShape: 'none', exp: 'none',
-                    svg: '<svg width="40" height="40"><circle cx="20" cy="20" r="16" fill="#161622" stroke="#ffff00" stroke-width="2"/><rect x="18" y="5" width="4" height="30" fill="#ffff00"/><rect x="5" y="18" width="30" height="4" fill="#ffff00"/></svg>'
+                    name: "Windkraftwerk", cost: 180, range: 0, damage: 0, cooldown: 6000, income: 30, color: '#bf00ff', isEconomy: true,
+                    desc: "Generiert regelmäßig passives Prisma (doppelte Generierungsdauer).", shape: 'rotor', pShape: 'none', exp: 'none',
+                    svg: '<svg width="40" height="40"><circle cx="20" cy="20" r="16" fill="#161622" stroke="#bf00ff" stroke-width="2"/><rect x="18" y="5" width="4" height="30" fill="#bf00ff"/><rect x="5" y="18" width="30" height="4" fill="#bf00ff"/></svg>'
                 },
                 helipad: {
-                    name: "Prisma-Helipad", cost: 300, range: 0, damage: 10, cooldown: 400, color: '#00ff66', isHelipad: true,
+                    name: "Prisma-Helipad", cost: 260, range: 0, damage: 15, cooldown: 350, color: '#00ff66', isHelipad: true,
                     desc: "Platziert einen Landeplatz. Entsendet einen Hubschrauber, der den vordersten Gegner jagt.", shape: 'pad', pShape: 'laser', exp: 'small',
                     svg: '<svg width="40" height="40"><rect x="5" y="5" width="30" height="30" fill="#161622" stroke="#00ff66" stroke-width="2"/><circle cx="20" cy="20" r="10" fill="none" stroke="#00ff66" stroke-width="2"/><text x="20" y="24" font-size="14" fill="#00ff66" text-anchor="middle" font-weight="bold">H</text></svg>'
                 }
             },
-            entities: { towers: [], enemies: [], projectiles: [], particles: [], texts: [], rings: [], helicopters: [] },
+            entities: { towers: [], enemies: [], projectiles: [], particles: [], texts: [], rings: [], floatingTexts: [], helicopters: [], bomberplanes: [], chainLightnings: [] },
             gridSize: 50,
-            path: [
-                {x: 0, y: 2}, {x: 3, y: 2}, {x: 3, y: 8}, {x: 8, y: 8},
-                {x: 8, y: 3}, {x: 13, y: 3}, {x: 13, y: 10}, {x: 16, y: 10}
-            ],
-            spawnTimer: 0,
-            enemyHpMultiplier: 1
+            path: generateRandomPath(),
+            enemyHpMultiplier: 0.85
         };
 
         let animationId;
@@ -62,39 +147,51 @@ export default {
         const CANVAS_WIDTH = 800;
         const CANVAS_HEIGHT = 600;
 
-        // --- Styling ---
+        // --- Styling (Overflow korrigiert, Sidebar komplett frei für Tooltips) ---
         const style = document.createElement('style');
         style.textContent = `
             .td-wrapper { box-sizing: border-box; user-select: none; margin: 0; padding: 0; background: #08080c; color: #ffffff; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; height: 100%; width: 100%; display: flex; }
-            .td-sidebar { width: 340px; background: #101016; border-right: 2px solid #202030; display: flex; flex-direction: column; padding: 20px; z-index: 10; overflow-y: visible; position: relative; }
-            .td-sidebar::-webkit-scrollbar { width: 8px; }
-            .td-sidebar::-webkit-scrollbar-thumb { background: #202030; border-radius: 4px; }
+            
+            /* Sidebar OHNE overflow: hidden/auto, damit Tooltips nach rechts rausragen können */
+            .td-sidebar { width: 340px; background: #101016; border-right: 2px solid #202030; display: flex; flex-direction: column; padding: 20px; z-index: 1000; overflow: visible; position: relative; }
+            
             .td-game-container { flex: 1; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #181828 0%, #08080c 100%); }
             canvas { background: #0d0d14; border: 2px solid #202030; box-shadow: 0 0 40px rgba(0, 255, 204, 0.1); cursor: crosshair; }
             
-            .td-stats { margin-bottom: 20px; flex-shrink: 0; }
-            .td-stats div { font-size: 1.2rem; margin-bottom: 8px; font-weight: bold; }
-            .td-stat-val { color: #00ffcc; text-shadow: 0 0 10px rgba(0,255,204,0.5); }
+            .td-stats { margin-bottom: 15px; flex-shrink: 0; }
+            .td-stats div { font-size: 1.1rem; margin-bottom: 6px; font-weight: bold; }
+            .td-stat-val { color: #00ff66; text-shadow: 0 0 10px rgba(0,255,102,0.5); }
             
-            #td-shop { flex-grow: 1; display: flex; flex-direction: column; gap: 12px; }
-            .td-tower-card { background: #161622; border: 2px solid #262638; border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.2s; position: relative; }
-            .td-tower-card:hover { border-color: #8888a0; z-index: 100; }
-            .td-tower-card.selected { border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.3); }
+            .td-upgrade-panel { background: #181824; border: 2px solid #00ffcc; border-radius: 8px; padding: 12px; margin-bottom: 15px; box-shadow: 0 0 15px rgba(0,255,204,0.2); animation: pulseGlow 2s infinite; }
+            @keyframes pulseGlow { 0% { box-shadow: 0 0 5px rgba(0,255,204,0.2); } 50% { box-shadow: 0 0 20px rgba(0,255,204,0.6); } 100% { box-shadow: 0 0 5px rgba(0,255,204,0.2); } }
+            .td-upgrade-panel h3 { margin: 0 0 8px 0; color: #00ffcc; font-size: 1.05rem; }
+            .td-upgrade-btn { background: linear-gradient(135deg, #00ffcc, #0088ff); color: #08080c; border: none; padding: 8px 12px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 6px; transition: 0.2s; box-shadow: 0 0 10px rgba(0,255,204,0.4); }
+            .td-upgrade-btn:hover { transform: scale(1.02); filter: brightness(1.2); }
+            .td-upgrade-btn:disabled { background: #333; color: #777; cursor: not-allowed; box-shadow: none; transform: none; }
+            
+            .td-sell-btn { background: linear-gradient(135deg, #ff007f, #ff4400); color: #ffffff; border: none; padding: 8px 12px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%; margin-top: 6px; transition: 0.2s; box-shadow: 0 0 10px rgba(255,0,127,0.4); }
+            .td-sell-btn:hover { transform: scale(1.02); filter: brightness(1.2); }
+
+            #td-shop { display: flex; flex-direction: column; gap: 12px; position: relative; }
+            .td-tower-card { background: #161622; border: 2px solid #262638; border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.2s; position: relative; flex-shrink: 0; z-index: 10; }
+            .td-tower-card:hover { border-color: #00ffcc; transform: translateX(4px); box-shadow: 0 0 15px rgba(0,255,204,0.3); z-index: 99999; }
+            .td-tower-card.selected { border-color: #00ffcc; box-shadow: 0 0 15px rgba(0,255,204,0.4); background: #1c1c2e; }
             .td-tower-card.locked { opacity: 0.5; cursor: not-allowed; }
             .td-tower-name { font-weight: bold; font-size: 1.1rem; margin-bottom: 4px; }
             .td-tower-cost { color: #ffff00; font-size: 0.9rem; }
             
-            .td-tooltip { display: none; position: absolute; left: 102%; top: 0; width: 220px; background: #161622; border: 1px solid #303040; padding: 15px; border-radius: 8px; box-shadow: 5px 5px 20px rgba(0,0,0,0.8); z-index: 1000; pointer-events: none; }
+            /* Tooltip poppt absolut über den Rand hinaus und schwebt frei über dem Canvas */
+            .td-tooltip { display: none; position: absolute; left: calc(100% + 12px); top: 0; width: 220px; background: #161622; border: 2px solid #00ffcc; padding: 15px; border-radius: 8px; box-shadow: 0 0 30px rgba(0,0,0,0.9), 0 0 15px rgba(0,255,204,0.3); z-index: 999999; pointer-events: none; }
             .td-tower-card:hover .td-tooltip { display: block; }
             .td-tt-img { margin-bottom: 10px; text-align: center; }
-            .td-tt-desc { font-size: 0.9rem; color: #a0a0c0; margin-bottom: 10px; line-height: 1.4; }
-            .td-tt-stats { font-size: 0.8rem; color: #fff; background: #08080c; padding: 8px; border-radius: 4px; }
+            .td-tt-desc { font-size: 0.9rem; color: #d0d0f0; margin-bottom: 10px; line-height: 1.4; }
+            .td-tt-stats { font-size: 0.8rem; color: #00ffcc; background: #08080c; padding: 8px; border-radius: 4px; border: 1px solid #262638; }
             
-            h2 { color: #00ffcc; margin-top: 0; font-size: 1.2rem; border-bottom: 2px solid #202030; padding-bottom: 10px; }
+            h2 { color: #00ffcc; margin-top: 0; font-size: 1.2rem; border-bottom: 2px solid #202030; padding-bottom: 8px; text-shadow: 0 0 8px rgba(0,255,204,0.4); }
         `;
         container.appendChild(style);
 
-        // --- DOM-Struktur ---
+        // --- DOM-Struktur ohne einschränkenden Inner-Scroll-Container ---
         const wrapper = document.createElement('div');
         wrapper.className = 'td-wrapper';
         wrapper.innerHTML = `
@@ -104,6 +201,7 @@ export default {
                     <div>Prisma: <span class="td-stat-val" id="td-prisma">0</span> P</div>
                     <div>Welle: <span class="td-stat-val" id="td-wave">1</span></div>
                 </div>
+                <div id="td-upgrade-container"></div>
                 <h2>TÜRME & EINHEITEN</h2>
                 <div id="td-shop"></div>
             </div>
@@ -118,16 +216,98 @@ export default {
         const uiPrisma = wrapper.querySelector('#td-prisma');
         const uiWave = wrapper.querySelector('#td-wave');
         const uiShop = wrapper.querySelector('#td-shop');
+        const uiUpgradeContainer = wrapper.querySelector('#td-upgrade-container');
 
-        // --- Shop Initialisierung ---
+        const getPathCoordinates = () => {
+            let coords = [];
+            for (let i = 0; i < game.path.length; i++) {
+                let p = game.path[i];
+                coords.push({x: p.x * game.gridSize + game.gridSize/2, y: p.y * game.gridSize + game.gridSize/2});
+            }
+            return coords;
+        };
+        let pathCoords = getPathCoordinates();
+        let basePos = pathCoords[pathCoords.length - 1];
+
+        const renderUpgradePanel = () => {
+            uiUpgradeContainer.innerHTML = '';
+            if (!game.selectedInstance) return;
+
+            let t = game.selectedInstance;
+            let info = game.towersData[t.type];
+            let upgradeCost = Math.floor(info.cost * 0.8 * t.level);
+            let isMaxLevel = t.level >= 3;
+
+            let totalInvested = info.cost;
+            for(let l = 1; l < t.level; l++) {
+                totalInvested += Math.floor(info.cost * 0.8 * l);
+            }
+            let sellValue = Math.floor(totalInvested / 2);
+
+            let panel = document.createElement('div');
+            panel.className = 'td-upgrade-panel';
+            panel.innerHTML = `
+                <h3>Ausgewählt: ${info.name} (Stufe ${t.level})</h3>
+                <div style="font-size: 0.85rem; color: #a0a0c0; margin-bottom: 8px;">
+                    ${info.isEconomy ? `Einkommen: ${t.currentIncome}` : (info.isHelipad || info.isBomberpad ? `Schaden: ${t.currentDamage}` : `Schaden: ${t.currentDamage} | Reichweite: ${t.currentRange}`)}
+                </div>
+                ${isMaxLevel ? '<div style="color: #ffff00; font-weight: bold; text-shadow: 0 0 8px rgba(255,255,0,0.5);">MAXIMALE STUFE</div>' : `
+                    <button class="td-upgrade-btn" id="td-do-upgrade" ${game.prisma < upgradeCost ? 'disabled' : ''}>
+                        ✨ Upgrade für ${upgradeCost} P
+                    </button>
+                `}
+                <button class="td-sell-btn" id="td-do-sell">
+                    💸 Verkaufen (+${sellValue} P)
+                </button>
+            `;
+
+            if (!isMaxLevel) {
+                panel.querySelector('#td-do-upgrade').onclick = () => {
+                    if (game.prisma >= upgradeCost) {
+                        game.prisma -= upgradeCost;
+                        t.level++;
+                        if (info.isEconomy) {
+                            t.currentIncome = Math.floor(info.income * Math.pow(1.5, t.level - 1));
+                        } else {
+                            t.currentDamage = Math.floor(info.damage * Math.pow(1.4, t.level - 1));
+                            t.currentRange = Math.floor(info.range * Math.pow(1.15, t.level - 1));
+                        }
+                        spawnParticles(t.x, t.y, info.color, 'massive');
+                        renderShop();
+                        renderUpgradePanel();
+                    }
+                };
+            }
+
+            panel.querySelector('#td-do-sell').onclick = () => {
+                game.prisma += sellValue;
+                spawnParticles(t.x, t.y, '#ff007f', 'massive');
+                spawnFloatingText(t.x, t.y, `+${sellValue}P`, '#ffff00');
+
+                if (info.isHelipad) {
+                    game.entities.helicopters = game.entities.helicopters.filter(h => h.towerRef !== t);
+                }
+                if (info.isBomberpad) {
+                    game.entities.bomberplanes = game.entities.bomberplanes.filter(b => b.towerRef !== t);
+                }
+
+                game.entities.towers = game.entities.towers.filter(item => item !== t);
+                game.selectedInstance = null;
+                renderShop();
+                renderUpgradePanel();
+            };
+
+            uiUpgradeContainer.appendChild(panel);
+        };
+
         const renderShop = () => {
             uiShop.innerHTML = '';
             for (let key in game.towersData) {
                 let t = game.towersData[key];
                 let card = document.createElement('div');
-                card.className = `td-tower-card ${game.selectedTower === key ? 'selected' : ''} ${game.prisma < t.cost ? 'locked' : ''}`;
+                card.className = `td-tower-card ${game.selectedTower === key && !game.selectedInstance ? 'selected' : ''} ${game.prisma < t.cost ? 'locked' : ''}`;
 
-                let statsHtml = t.isEconomy ? `Einkommen: ${t.income} / Schuss` : (t.isHelipad ? `Helikopter-Schaden: ${t.damage}` : `Schaden: ${t.damage}<br>Reichweite: ${t.range}`);
+                let statsHtml = t.isEconomy ? `Einkommen: ${t.income} / Schuss` : (t.isHelipad || t.isBomberpad ? `Schaden: ${t.damage}` : `Schaden: ${t.damage}<br>Reichweite: ${t.range}`);
 
                 card.innerHTML = `
                     <div class="td-tower-name" style="color: ${t.color}">${t.name}</div>
@@ -138,37 +318,20 @@ export default {
                         <div class="td-tt-stats">${statsHtml}</div>
                     </div>
                 `;
-                card.onclick = () => { if (game.prisma >= t.cost) { game.selectedTower = key; renderShop(); } };
+                card.onclick = () => {
+                    if (game.prisma >= t.cost) {
+                        game.selectedTower = key;
+                        game.selectedInstance = null;
+                        renderShop();
+                        renderUpgradePanel();
+                    }
+                };
                 uiShop.appendChild(card);
             }
             uiPrisma.innerText = game.prisma;
-            uiWave.innerText = Math.floor(game.wave);
+            uiWave.innerText = game.wave;
         };
 
-        // --- Hilfsfunktionen für Pfad ---
-        const getPathCoordinates = () => {
-            let coords = [];
-            for (let i = 0; i < game.path.length - 1; i++) {
-                let p1 = game.path[i];
-                let p2 = game.path[i+1];
-                let dx = Math.sign(p2.x - p1.x);
-                let dy = Math.sign(p2.y - p1.y);
-                let cx = p1.x;
-                let cy = p1.y;
-                while (cx !== p2.x || cy !== p2.y) {
-                    coords.push({x: cx * game.gridSize + game.gridSize/2, y: cy * game.gridSize + game.gridSize/2});
-                    cx += dx;
-                    cy += dy;
-                }
-            }
-            let last = game.path[game.path.length-1];
-            coords.push({x: last.x * game.gridSize + game.gridSize/2, y: last.y * game.gridSize + game.gridSize/2});
-            return coords;
-        };
-        const pathCoords = getPathCoordinates();
-        const basePos = pathCoords[pathCoords.length - 1];
-
-        // --- Turm Bauen ---
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -178,22 +341,34 @@ export default {
             const gridX = Math.floor(x / game.gridSize);
             const gridY = Math.floor(y / game.gridSize);
 
-            const isPath = pathCoords.some(p => Math.abs(p.x - (gridX*game.gridSize + game.gridSize/2)) < game.gridSize/2 && Math.abs(p.y - (gridY*game.gridSize + game.gridSize/2)) < game.gridSize/2);
-            const hasTower = game.entities.towers.some(t => t.gridX === gridX && t.gridY === gridY);
+            let clickedTower = game.entities.towers.find(t => t.gridX === gridX && t.gridY === gridY);
+            if (clickedTower) {
+                game.selectedInstance = clickedTower;
+                renderShop();
+                renderUpgradePanel();
+                return;
+            }
+
+            const isPath = game.path.some(p => p.x === gridX && p.y === gridY);
             const towerInfo = game.towersData[game.selectedTower];
 
-            if (!isPath && !hasTower && game.prisma >= towerInfo.cost) {
+            if (!isPath && game.prisma >= towerInfo.cost) {
                 game.prisma -= towerInfo.cost;
                 let newTower = {
                     gridX, gridY,
                     x: gridX * game.gridSize + game.gridSize/2,
                     y: gridY * game.gridSize + game.gridSize/2,
                     type: game.selectedTower,
+                    level: 1,
+                    currentDamage: towerInfo.damage,
+                    currentRange: towerInfo.range,
+                    currentIncome: towerInfo.income,
                     lastShot: 0
                 };
                 game.entities.towers.push(newTower);
+                game.selectedInstance = newTower;
+                spawnParticles(newTower.x, newTower.y, towerInfo.color, 'massive');
 
-                // Wenn es ein Helipad ist, spawne direkt einen Hubschrauber darauf
                 if (towerInfo.isHelipad) {
                     game.entities.helicopters.push({
                         x: newTower.x,
@@ -201,7 +376,23 @@ export default {
                         homeX: newTower.x,
                         homeY: newTower.y,
                         speed: 180,
-                        damage: towerInfo.damage,
+                        towerRef: newTower,
+                        cooldown: towerInfo.cooldown,
+                        lastShot: 0,
+                        color: towerInfo.color
+                    });
+                }
+
+                if (towerInfo.isBomberpad) {
+                    game.entities.bomberplanes.push({
+                        x: newTower.x,
+                        y: newTower.y,
+                        angle: Math.random() * Math.PI * 2,
+                        radius: 80 + Math.random() * 40,
+                        centerX: newTower.x,
+                        centerY: newTower.y,
+                        speed: 1.5,
+                        towerRef: newTower,
                         cooldown: towerInfo.cooldown,
                         lastShot: 0,
                         color: towerInfo.color
@@ -209,62 +400,131 @@ export default {
                 }
 
                 renderShop();
+                renderUpgradePanel();
+            } else if (!clickedTower) {
+                game.selectedInstance = null;
+                renderShop();
+                renderUpgradePanel();
             }
         });
 
         const spawnParticles = (x, y, color, expType) => {
-            let count = expType === 'massive' ? 20 : (expType === 'small' ? 3 : 8);
-            let speedMult = expType === 'massive' ? 8 : 4;
+            let count = expType === 'massive' ? 30 : (expType === 'small' ? 5 : 12);
+            let speedMult = expType === 'massive' ? 9 : 5;
             for(let i=0; i<count; i++) {
                 game.entities.particles.push({
-                    x, y, vx: (Math.random() - 0.5) * speedMult, vy: (Math.random() - 0.5) * speedMult, life: 1, color
+                    x, y,
+                    vx: (Math.random() - 0.5) * speedMult,
+                    vy: (Math.random() - 0.5) * speedMult,
+                    life: 1,
+                    maxLife: 1 + Math.random() * 0.5,
+                    color,
+                    size: Math.random() * 3 + 2
                 });
             }
-            if (expType === 'massive') {
-                game.entities.rings.push({ x, y, radius: 5, life: 1, color });
+            if (expType === 'massive' || expType === 'normal') {
+                game.entities.rings.push({ x, y, radius: 5, maxRadius: expType === 'massive' ? 70 : 40, life: 1, color });
             }
+        };
+
+        const spawnFloatingText = (x, y, text, color) => {
+            game.entities.floatingTexts.push({ x, y, text, color, life: 1 });
         };
 
         const spawnEnemy = () => {
             const enemyTypes = [
-                { type: 'basic', hp: 40, speed: 60, color: '#ff007f', size: 20, reward: 10 },
-                { type: 'fast', hp: 25, speed: 110, color: '#00ffcc', size: 14, reward: 12 },
-                { type: 'tank', hp: 150, speed: 35, color: '#ff8800', size: 26, reward: 25 },
-                { type: 'boss', hp: 600, speed: 25, color: '#9900ff', size: 36, reward: 100 }
+                { type: 'crawler', name: "Krabbel-Virus", hp: 30, speed: 60, color: '#ff0055', size: 22, reward: 10, legs: 6, shape: 'spider' },
+                { type: 'runner', name: "Neon-Spinnen", hp: 18, speed: 110, color: '#00ffcc', size: 16, reward: 12, legs: 8, shape: 'spider' },
+                { type: 'mech', name: "Giga-Mech", hp: 150, speed: 28, color: '#ff8800', size: 30, reward: 30, legs: 4, shape: 'walker' },
+                { type: 'drone', name: "Cyber-Drohne", hp: 75, speed: 70, color: '#0088ff', size: 20, reward: 20, legs: 0, shape: 'drone' },
+                { type: 'stalker', name: "Schatten-Läufer", hp: 95, speed: 85, color: '#00ff44', size: 24, reward: 35, legs: 6, shape: 'spider' },
+                { type: 'colossus', name: "Titan-Absorber", hp: 380, speed: 22, color: '#ff00aa', size: 36, reward: 75, legs: 8, shape: 'walker' },
+                { type: 'boss', name: "Apex-Zerstörer", hp: 600, speed: 20, color: '#bf00ff', size: 38, reward: 120, legs: 8, shape: 'boss' }
             ];
+
             let rand = Math.random();
             let selectedEnemy = enemyTypes[0];
 
-            if (game.wave > 5 && rand > 0.95) selectedEnemy = enemyTypes[3];
-            else if (game.wave > 3 && rand > 0.75) selectedEnemy = enemyTypes[2];
-            else if (game.wave > 2 && rand > 0.4) selectedEnemy = enemyTypes[1];
+            if (game.wave >= 7 && rand > 0.9) selectedEnemy = enemyTypes[6];
+            else if (game.wave >= 5 && rand > 0.75) selectedEnemy = enemyTypes[5];
+            else if (game.wave >= 4 && rand > 0.6) selectedEnemy = enemyTypes[4];
+            else if (game.wave >= 3 && rand > 0.45) selectedEnemy = enemyTypes[2];
+            else if (game.wave >= 2 && rand > 0.25) selectedEnemy = enemyTypes[3];
+            else if (game.wave >= 2 && rand > 0.1) selectedEnemy = enemyTypes[1];
 
             game.entities.enemies.push({
-                pathIndex: 0, x: pathCoords[0].x, y: pathCoords[0].y,
-                hp: selectedEnemy.hp * game.enemyHpMultiplier, maxHp: selectedEnemy.hp * game.enemyHpMultiplier,
-                speed: selectedEnemy.speed, color: selectedEnemy.color, size: selectedEnemy.size, reward: selectedEnemy.reward
+                pathIndex: 0,
+                x: pathCoords[0].x,
+                y: pathCoords[0].y,
+                hp: selectedEnemy.hp * game.enemyHpMultiplier,
+                maxHp: selectedEnemy.hp * game.enemyHpMultiplier,
+                speed: selectedEnemy.speed,
+                baseSpeed: selectedEnemy.speed,
+                color: selectedEnemy.color,
+                size: selectedEnemy.size,
+                reward: selectedEnemy.reward,
+                legs: selectedEnemy.legs,
+                shape: selectedEnemy.shape,
+                expType: selectedEnemy.type === 'boss' ? 'massive' : 'normal',
+                legAnimPhase: Math.random() * Math.PI * 2,
+                stunTimer: 0,
+                slowTimer: 0,
+                dotTimer: 0,
+                dotDamage: 0
             });
+            game.enemiesSpawned++;
         };
 
-        // --- Game Loop Logik ---
+        // --- Game Loop ---
         const update = (delta, time) => {
             if (game.health <= 0) return;
 
-            game.spawnTimer -= delta;
-            if (game.spawnTimer <= 0) {
-                spawnEnemy();
-                game.spawnTimer = Math.max(0.5, 2 - (game.wave * 0.1));
-                game.wave += 0.05; game.enemyHpMultiplier += 0.02;
-                uiWave.innerText = Math.floor(game.wave);
+            if (game.waveActive) {
+                game.waveTimer -= delta;
+                if (game.waveTimer <= 0 && game.enemiesSpawned < game.enemiesInWave) {
+                    spawnEnemy();
+                    game.waveTimer = Math.max(0.4, 1.5 - (game.wave * 0.05));
+                }
+                if (game.enemiesSpawned >= game.enemiesInWave && game.entities.enemies.length === 0) {
+                    game.waveActive = false;
+                    setTimeout(() => {
+                        game.wave++;
+                        game.enemiesSpawned = 0;
+                        game.enemiesInWave = Math.floor(4 + game.wave * 2.5);
+                        game.enemyHpMultiplier += 0.2;
+                        game.waveActive = true;
+                        spawnFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, `WELLE ${game.wave}`, '#00ffcc');
+                        renderShop();
+                    }, 2500);
+                }
             }
 
             for (let i = game.entities.enemies.length - 1; i >= 0; i--) {
                 let e = game.entities.enemies[i];
+
+                if (e.dotTimer > 0) {
+                    e.dotTimer -= delta;
+                    e.hp -= e.dotDamage * delta;
+                    if (Math.random() < 0.2) spawnParticles(e.x, e.y, '#55ff55', 'small');
+                }
+
+                if (e.slowTimer > 0) {
+                    e.slowTimer -= delta;
+                    e.speed = e.baseSpeed * 0.4;
+                } else {
+                    e.speed = e.baseSpeed;
+                }
+
+                if (e.stunTimer > 0) {
+                    e.stunTimer -= delta;
+                    continue;
+                }
+
                 let target = pathCoords[e.pathIndex + 1];
 
                 if (!target) {
                     game.health--;
-                    game.entities.texts.push({ x: basePos.x, y: basePos.y - 40, text: "-1", life: 1.5, color: '#ff0000' });
+                    spawnFloatingText(basePos.x, basePos.y - 40, "-1 HP", '#ff0000');
                     game.entities.enemies.splice(i, 1);
                     triggerShake();
                     continue;
@@ -272,6 +532,9 @@ export default {
 
                 let dx = target.x - e.x, dy = target.y - e.y;
                 let dist = Math.hypot(dx, dy), moveDist = e.speed * delta;
+
+                e.legAnimPhase += delta * e.speed * 0.15;
+
                 if (dist <= moveDist) {
                     e.x = target.x; e.y = target.y; e.pathIndex++;
                 } else {
@@ -279,23 +542,102 @@ export default {
                 }
             }
 
-            // Normale Türme Logik
+            for (let i = game.entities.chainLightnings.length - 1; i >= 0; i--) {
+                let chain = game.entities.chainLightnings[i];
+                chain.timer -= delta;
+                if (chain.timer <= 0) {
+                    let enemy = chain.target;
+                    if (game.entities.enemies.includes(enemy)) {
+                        enemy.hp -= chain.damage;
+                        enemy.stunTimer = 0.4;
+                        spawnParticles(enemy.x, enemy.y, '#ffff33', 'small');
+
+                        game.entities.particles.push({
+                            x: chain.fromX, y: chain.fromY,
+                            vx: (enemy.x - chain.fromX) * 0.1,
+                            vy: (enemy.y - chain.fromY) * 0.1,
+                            life: 0.3, maxLife: 0.3, color: '#ffff33', size: 3
+                        });
+
+                        if (enemy.hp <= 0) {
+                            spawnParticles(enemy.x, enemy.y, enemy.color, enemy.expType);
+                            game.prisma += enemy.reward; game.score += enemy.reward;
+                            spawnFloatingText(enemy.x, enemy.y, `+${enemy.reward}P`, '#ffff00');
+                            let idx = game.entities.enemies.indexOf(enemy);
+                            if (idx > -1) game.entities.enemies.splice(idx, 1);
+                            renderShop();
+                            renderUpgradePanel();
+                        }
+                    }
+                    game.entities.chainLightnings.splice(i, 1);
+                }
+            }
+
             game.entities.towers.forEach(t => {
                 let info = game.towersData[t.type];
-                if (info.isHelipad) return; // Hubschrauber wird separat gesteuert
+                if (info.isHelipad || info.isBomberpad) return;
 
-                if (time - t.lastShot > info.cooldown) {
+                let currentCooldown = info.isEconomy ? (info.cooldown / t.level) * 2 : info.cooldown;
+
+                if (time - t.lastShot > currentCooldown) {
                     if (info.isEconomy) {
-                        game.prisma += info.income;
+                        game.prisma += t.currentIncome;
                         spawnParticles(t.x, t.y, info.color, 'small');
-                        game.entities.texts.push({ x: t.x, y: t.y - 15, text: `+${info.income}`, life: 1, color: info.color });
+                        spawnFloatingText(t.x, t.y - 15, `+${t.currentIncome}P`, info.color);
                         t.lastShot = time; renderShop();
+                    } else if (info.isTesla) {
+                        let target = game.entities.enemies.find(e => Math.hypot(e.x - t.x, e.y - t.y) <= t.currentRange);
+                        if (target) {
+                            game.entities.projectiles.push({
+                                x: t.x, y: t.y, target: target, speed: 600, damage: t.currentDamage,
+                                color: info.color, shape: 'dash', exp: 'small', isTeslaProj: true
+                            });
+                            t.lastShot = time;
+                        }
+                    } else if (info.isGravity) {
+                        let affected = game.entities.enemies.filter(e => Math.hypot(e.x - t.x, e.y - t.y) <= t.currentRange);
+                        if (affected.length > 0) {
+                            affected.forEach(e => {
+                                e.hp -= t.currentDamage;
+                                e.slowTimer = 2.0;
+                                let angle = Math.atan2(t.y - e.y, t.x - e.x);
+                                e.x += Math.cos(angle) * 10;
+                                e.y += Math.sin(angle) * 10;
+                            });
+                            game.entities.rings.push({ x: t.x, y: t.y, radius: 5, maxRadius: t.currentRange, life: 1, color: '#8844ff' });
+                            spawnFloatingText(t.x, t.y - 10, "🌀 SOG", '#8844ff');
+                            t.lastShot = time;
+                        }
+                    } else if (info.isNanite) {
+                        let target = game.entities.enemies.find(e => Math.hypot(e.x - t.x, e.y - t.y) <= t.currentRange);
+                        if (target) {
+                            game.entities.projectiles.push({
+                                x: t.x, y: t.y, target: target, speed: 500, damage: t.currentDamage,
+                                color: info.color, shape: 'dash', exp: 'normal', isNaniteProj: true
+                            });
+                            t.lastShot = time;
+                        }
+                    } else if (info.isMortar) {
+                        let target = game.entities.enemies.find(e => Math.hypot(e.x - t.x, e.y - t.y) <= t.currentRange);
+                        if (target) {
+                            let destX = target.x;
+                            let destY = target.y;
+
+                            game.entities.projectiles.push({
+                                x: t.x, y: t.y,
+                                targetX: destX, targetY: destY,
+                                isArea: true,
+                                speed: 350, damage: t.currentDamage, range: 80,
+                                color: info.color, shape: info.pShape, exp: info.exp
+                            });
+                            t.lastShot = time;
+                        }
                     } else {
-                        let target = game.entities.enemies.find(e => Math.hypot(e.x - t.x, e.y - t.y) <= info.range);
+                        let target = game.entities.enemies.find(e => Math.hypot(e.x - t.x, e.y - t.y) <= t.currentRange);
                         if (target) {
                             let projSpeed = info.pShape === 'laser' ? 1200 : (info.pShape === 'orb' ? 200 : 500);
                             game.entities.projectiles.push({
-                                x: t.x, y: t.y, target: target, speed: projSpeed, damage: info.damage,
+                                x: t.x, y: t.y, target: target, speed: projSpeed, damage: t.currentDamage,
                                 color: info.color, shape: info.pShape, exp: info.exp
                             });
                             t.lastShot = time;
@@ -304,13 +646,13 @@ export default {
                 }
             });
 
-            // Hubschrauber Logik: Fliegt zum vordersten Gegner (höchster pathIndex oder weitest im Pfad)
             game.entities.helicopters.forEach(heli => {
                 let targetX = heli.homeX;
                 let targetY = heli.homeY;
+                let towerInfo = game.towersData['helipad'];
+                let heliDamage = Math.floor(towerInfo.damage * Math.pow(1.4, heli.towerRef.level - 1));
 
                 if (game.entities.enemies.length > 0) {
-                    // Finde den vordersten Gegner (höchster pathIndex, bei gleichen Index am nächsten zum nächsten Punkt)
                     let frontEnemy = game.entities.enemies.reduce((prev, curr) => {
                         if (curr.pathIndex > prev.pathIndex) return curr;
                         if (curr.pathIndex === prev.pathIndex) {
@@ -322,21 +664,19 @@ export default {
                         return prev;
                     });
 
-                    // Verfolge den vordersten Gegner mit etwas Abstand/Schwebeposition
-                    targetX = frontEnemy.x;
-                    targetY = frontEnemy.y - 20;
+                    let angleToHome = Math.atan2(heli.homeY - frontEnemy.y, heli.homeX - frontEnemy.x);
+                    targetX = frontEnemy.x + Math.cos(angleToHome) * 65;
+                    targetY = frontEnemy.y + Math.sin(angleToHome) * 65;
 
-                    // Schießen
                     if (time - heli.lastShot > heli.cooldown) {
                         game.entities.projectiles.push({
-                            x: heli.x, y: heli.y, target: frontEnemy, speed: 900, damage: heli.damage,
+                            x: heli.x, y: heli.y, target: frontEnemy, speed: 900, damage: heliDamage,
                             color: heli.color, shape: 'laser', exp: 'small'
                         });
                         heli.lastShot = time;
                     }
                 }
 
-                // Heli bewegt sich Richtung Ziel
                 let dx = targetX - heli.x;
                 let dy = targetY - heli.y;
                 let dist = Math.hypot(dx, dy);
@@ -349,26 +689,166 @@ export default {
                 }
             });
 
+            // Bomber-Geschwader (Fliegt im Kreis um seinen Turm und feuert kontinuierlich einen Kreis aus Projektilen ab)
+            game.entities.bomberplanes.forEach(plane => {
+                // Aktualisiere Zentrum basierend auf der aktuellen Turmposition (falls Türme verschoben werden könnten)
+                plane.centerX = plane.towerRef.x;
+                plane.centerY = plane.towerRef.y;
+
+                plane.angle += plane.speed * delta;
+                plane.x = plane.centerX + Math.cos(plane.angle) * plane.radius;
+                plane.y = plane.centerY + Math.sin(plane.angle) * plane.radius;
+
+                let towerInfo = game.towersData['bomberpad'];
+                let planeDamage = Math.floor(towerInfo.damage * Math.pow(1.4, plane.towerRef.level - 1));
+
+                if (time - plane.lastShot > towerInfo.cooldown) {
+                    // Erzeuge 8 Projektile im Kreis (360 Grad) um das Flugzeug herum
+                    let numProjectiles = 8;
+                    for (let a = 0; a < numProjectiles; a++) {
+                        let angle = (a / numProjectiles) * Math.PI * 2;
+                        game.entities.projectiles.push({
+                            x: plane.x,
+                            y: plane.y,
+                            vx: Math.cos(angle) * 400,
+                            vy: Math.sin(angle) * 400,
+                            isFreeLinear: true,
+                            damage: planeDamage,
+                            color: plane.color,
+                            shape: 'bullet',
+                            range: 160,
+                            traveled: 0
+                        });
+                    }
+                    plane.lastShot = time;
+                }
+            });
+
             for (let i = game.entities.projectiles.length - 1; i >= 0; i--) {
                 let p = game.entities.projectiles[i];
-                if (!game.entities.enemies.includes(p.target)) { game.entities.projectiles.splice(i, 1); continue; }
 
-                let dx = p.target.x - p.x, dy = p.target.y - p.y;
-                let dist = Math.hypot(dx, dy), moveDist = p.speed * delta;
+                if (p.isFreeLinear) {
+                    let step = p.speed ? p.speed * delta : 350 * delta;
+                    let moveX = (p.vx / 400) * step;
+                    let moveY = (p.vy / 400) * step;
+                    p.x += moveX;
+                    p.y += moveY;
+                    p.traveled += step;
 
-                if (dist <= moveDist) {
-                    p.target.hp -= p.damage;
-                    spawnParticles(p.target.x, p.target.y, p.color, p.exp);
-                    game.entities.projectiles.splice(i, 1);
-                    if (p.target.hp <= 0) {
-                        game.prisma += p.target.reward; game.score += p.target.reward;
-                        let eIdx = game.entities.enemies.indexOf(p.target);
-                        if(eIdx > -1) game.entities.enemies.splice(eIdx, 1);
-                        renderShop();
+                    let hit = false;
+                    for (let j = game.entities.enemies.length - 1; j >= 0; j--) {
+                        let en = game.entities.enemies[j];
+                        if (Math.hypot(en.x - p.x, en.y - p.y) <= en.size) {
+                            en.hp -= p.damage;
+                            hit = true;
+                            spawnParticles(p.x, p.y, p.color, 'small');
+                            if (en.hp <= 0) {
+                                spawnParticles(en.x, en.y, en.color, en.expType);
+                                game.prisma += en.reward; game.score += en.reward;
+                                spawnFloatingText(en.x, en.y, `+${en.reward}P`, '#ffff00');
+                                game.entities.enemies.splice(j, 1);
+                                renderShop();
+                                renderUpgradePanel();
+                            }
+                            break;
+                        }
+                    }
+
+                    if (hit || p.traveled >= p.range) {
+                        game.entities.projectiles.splice(i, 1);
+                    }
+                } else if (p.isArea) {
+                    let dx = p.targetX - p.x, dy = p.targetY - p.y;
+                    let dist = Math.hypot(dx, dy), moveDist = p.speed * delta;
+
+                    if (dist <= moveDist) {
+                        spawnParticles(p.targetX, p.targetY, p.color, p.exp);
+
+                        game.entities.enemies.forEach(en => {
+                            if (Math.hypot(en.x - p.targetX, en.y - p.targetY) <= p.range) {
+                                en.hp -= p.damage;
+                            }
+                        });
+
+                        game.entities.projectiles.splice(i, 1);
+
+                        for (let j = game.entities.enemies.length - 1; j >= 0; j--) {
+                            let en = game.entities.enemies[j];
+                            if (en.hp <= 0) {
+                                spawnParticles(en.x, en.y, en.color, en.expType);
+                                game.prisma += en.reward; game.score += en.reward;
+                                spawnFloatingText(en.x, en.y, `+${en.reward}P`, '#ffff00');
+                                game.entities.enemies.splice(j, 1);
+                                renderShop();
+                                renderUpgradePanel();
+                            }
+                        }
+                    } else {
+                        p.x += (dx / dist) * moveDist; p.y += (dy / dist) * moveDist;
+                        p.angle = Math.atan2(dy, dx);
                     }
                 } else {
-                    p.x += (dx / dist) * moveDist; p.y += (dy / dist) * moveDist;
-                    p.angle = Math.atan2(dy, dx);
+                    if (!game.entities.enemies.includes(p.target)) { game.entities.projectiles.splice(i, 1); continue; }
+
+                    let dx = p.target.x - p.x, dy = p.target.y - p.y;
+                    let dist = Math.hypot(dx, dy), moveDist = p.speed * delta;
+
+                    if (dist <= moveDist) {
+                        if (p.isTeslaProj) {
+                            p.target.hp -= p.damage;
+                            p.target.stunTimer = 0.4;
+                            spawnParticles(p.target.x, p.target.y, '#ffff33', 'small');
+
+                            let inRangeEnemies = game.entities.enemies.filter(e => Math.hypot(e.x - p.target.x, e.y - p.target.y) <= 120);
+                            inRangeEnemies.sort((a, b) => Math.hypot(a.x - p.target.x, a.y - p.target.y) - Math.hypot(b.x - p.target.x, b.y - p.target.y));
+
+                            let selectedChainTargets = [];
+                            for (let e of inRangeEnemies) {
+                                if (selectedChainTargets.length < 3) {
+                                    if (!selectedChainTargets.includes(e) && e !== p.target) {
+                                        selectedChainTargets.push(e);
+                                    }
+                                }
+                            }
+
+                            selectedChainTargets.forEach((targetEnemy, index) => {
+                                game.entities.chainLightnings.push({
+                                    target: targetEnemy,
+                                    damage: p.damage,
+                                    fromX: index === 0 ? p.target.x : selectedChainTargets[index - 1].x,
+                                    fromY: index === 0 ? p.target.y : selectedChainTargets[index - 1].y,
+                                    timer: (index + 1) * 0.3
+                                });
+                            });
+                            spawnFloatingText(p.target.x, p.target.y - 10, "⚡ KETTE!", '#ffff33');
+                        } else if (p.isNaniteProj) {
+                            p.target.hp -= p.damage;
+                            p.target.dotTimer = 4.0;
+                            p.target.dotDamage = p.damage * 0.75;
+                            spawnParticles(p.target.x, p.target.y, '#55ff55', 'normal');
+                            spawnFloatingText(p.target.x, p.target.y - 10, "🦠 INFIZIERT", '#55ff55');
+                        } else {
+                            p.target.hp -= p.damage;
+                            let parentTower = game.entities.towers.find(t => Math.hypot(t.x - p.x, t.y - p.y) < 50 && t.type === 'frost');
+                            if (parentTower || p.color === '#00ffff') {
+                                p.target.slowTimer = 2.5;
+                            }
+                        }
+
+                        game.entities.projectiles.splice(i, 1);
+                        if (p.target.hp <= 0) {
+                            spawnParticles(p.target.x, p.target.y, p.target.color, p.target.expType);
+                            game.prisma += p.target.reward; game.score += p.target.reward;
+                            spawnFloatingText(p.target.x, p.target.y, `+${p.target.reward}P`, '#ffff00');
+                            let eIdx = game.entities.enemies.indexOf(p.target);
+                            if(eIdx > -1) game.entities.enemies.splice(eIdx, 1);
+                            renderShop();
+                            renderUpgradePanel();
+                        }
+                    } else {
+                        p.x += (dx / dist) * moveDist; p.y += (dy / dist) * moveDist;
+                        p.angle = Math.atan2(dy, dx);
+                    }
                 }
             }
 
@@ -379,13 +859,13 @@ export default {
             }
             for (let i = game.entities.rings.length - 1; i >= 0; i--) {
                 let r = game.entities.rings[i];
-                r.radius += delta * 150; r.life -= delta * 3;
+                r.radius += delta * 200; r.life -= delta * 3;
                 if (r.life <= 0) game.entities.rings.splice(i, 1);
             }
-            for (let i = game.entities.texts.length - 1; i >= 0; i--) {
-                let txt = game.entities.texts[i];
-                txt.y -= delta * 25; txt.life -= delta;
-                if (txt.life <= 0) game.entities.texts.splice(i, 1);
+            for (let i = game.entities.floatingTexts.length - 1; i >= 0; i--) {
+                let txt = game.entities.floatingTexts[i];
+                txt.y -= delta * 35; txt.life -= delta;
+                if (txt.life <= 0) game.entities.floatingTexts.splice(i, 1);
             }
         };
 
@@ -393,41 +873,77 @@ export default {
         const draw = (time) => {
             ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'; ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)'; ctx.lineWidth = 1;
             for(let i=0; i<=CANVAS_WIDTH; i+=game.gridSize) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,CANVAS_HEIGHT); ctx.stroke(); }
             for(let i=0; i<=CANVAS_HEIGHT; i+=game.gridSize) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(CANVAS_WIDTH,i); ctx.stroke(); }
 
-            ctx.strokeStyle = 'rgba(0, 255, 204, 0.15)'; ctx.lineWidth = game.gridSize * 0.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#252538';
+            ctx.lineWidth = game.gridSize * 0.75;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
             ctx.beginPath();
             if (pathCoords.length > 0) ctx.moveTo(pathCoords[0].x, pathCoords[0].y);
             for (let i=1; i<pathCoords.length; i++) ctx.lineTo(pathCoords[i].x, pathCoords[i].y);
             ctx.stroke();
 
-            // Kern Basis am Ende
+            let glowIntensity = 10 + Math.sin(time / 200) * 5;
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 6;
+            ctx.shadowBlur = glowIntensity;
+            ctx.shadowColor = '#00ffcc';
+            ctx.beginPath();
+            if (pathCoords.length > 0) ctx.moveTo(pathCoords[0].x, pathCoords[0].y);
+            for (let i=1; i<pathCoords.length; i++) ctx.lineTo(pathCoords[i].x, pathCoords[i].y);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            if (game.selectedInstance && !game.towersData[game.selectedInstance.type].isEconomy && !game.towersData[game.selectedInstance.type].isHelipad && !game.towersData[game.selectedInstance.type].isBomberpad) {
+                ctx.strokeStyle = 'rgba(0, 255, 204, 0.6)';
+                ctx.fillStyle = 'rgba(0, 255, 204, 0.08)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(game.selectedInstance.x, game.selectedInstance.y, game.selectedInstance.currentRange, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+
             ctx.fillStyle = '#101016';
             ctx.strokeStyle = '#ff007f';
             ctx.lineWidth = 3;
-            ctx.shadowBlur = 20;
+            ctx.shadowBlur = 25;
             ctx.shadowColor = '#ff007f';
             ctx.fillRect(basePos.x - 25, basePos.y - 25, 50, 50);
             ctx.strokeRect(basePos.x - 25, basePos.y - 25, 50, 50);
             ctx.shadowBlur = 0;
 
-            // Kern HP Bar
             ctx.fillStyle = 'rgba(255,0,0,0.5)';
             ctx.fillRect(basePos.x - 30, basePos.y - 40, 60, 6);
-            ctx.fillStyle = '#00ffcc';
+            ctx.fillStyle = '#00ff66';
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = '#00ff66';
             ctx.fillRect(basePos.x - 30, basePos.y - 40, 60 * (game.health / game.maxHealth), 6);
+            ctx.shadowBlur = 0;
 
-            // Türme zeichnen
             game.entities.towers.forEach(t => {
                 let info = game.towersData[t.type];
                 ctx.save();
                 ctx.translate(t.x, t.y);
 
+                if (game.selectedInstance === t) {
+                    ctx.strokeStyle = '#ffff00';
+                    ctx.lineWidth = 3;
+                    ctx.shadowBlur = 12;
+                    ctx.shadowColor = '#ffff00';
+                    ctx.strokeRect(-22, -22, 44, 44);
+                    ctx.shadowBlur = 0;
+                }
+
                 ctx.fillStyle = '#161622';
                 ctx.strokeStyle = info.color;
                 ctx.lineWidth = 2;
+
+                let sizeScale = 1 + (t.level - 1) * 0.15;
+                ctx.scale(sizeScale, sizeScale);
 
                 ctx.beginPath();
                 if (info.shape === 'square') {
@@ -437,20 +953,33 @@ export default {
                 } else if (info.shape === 'diamond') {
                     ctx.moveTo(0, -18); ctx.lineTo(18, 0); ctx.lineTo(0, 18); ctx.lineTo(-18, 0);
                 } else if (info.shape === 'hexagon') {
-                    for(let i=0; i<6; i++) {
-                        ctx.lineTo(16 * Math.cos(i * Math.PI / 3), 16 * Math.sin(i * Math.PI / 3));
+                    for(let j=0; j<6; j++) {
+                        ctx.lineTo(16 * Math.cos(j * Math.PI / 3), 16 * Math.sin(j * Math.PI / 3));
                     }
+                } else if (info.shape === 'star') {
+                    for(let j=0; j<5; j++) {
+                        ctx.lineTo(16 * Math.cos(j * Math.PI * 2 / 5), 16 * Math.sin(j * Math.PI * 2 / 5));
+                        ctx.lineTo(8 * Math.cos((j + 0.5) * Math.PI * 2 / 5), 8 * Math.sin((j + 0.5) * Math.PI * 2 / 5));
+                    }
+                } else if (info.shape === 'octagon') {
+                    for(let j=0; j<8; j++) {
+                        ctx.lineTo(16 * Math.cos(j * Math.PI / 4), 16 * Math.sin(j * Math.PI / 4));
+                    }
+                } else if (info.shape === 'circle') {
+                    ctx.arc(0, 0, 16, 0, Math.PI*2);
                 } else if (info.shape === 'rotor') {
                     ctx.arc(0, 0, 15, 0, Math.PI*2);
                 } else if (info.shape === 'pad') {
                     ctx.rect(-18, -18, 36, 36);
+                } else if (info.shape === 'complexNanite') {
+                    ctx.arc(0, 0, 16, 0, Math.PI*2);
                 }
                 ctx.closePath();
                 ctx.fill(); ctx.stroke();
 
                 if (info.isEconomy) {
-                    ctx.rotate(time / 400);
-                    ctx.fillStyle = info.color; ctx.shadowBlur = 10; ctx.shadowColor = info.color;
+                    ctx.rotate((time / 300) * t.level);
+                    ctx.fillStyle = info.color; ctx.shadowBlur = 12; ctx.shadowColor = info.color;
                     ctx.fillRect(-12, -2, 24, 4); ctx.fillRect(-2, -12, 4, 24);
                 } else if (info.isHelipad) {
                     ctx.fillStyle = info.color;
@@ -458,88 +987,181 @@ export default {
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText('H', 0, 1);
-                } else {
-                    ctx.fillStyle = info.color; ctx.shadowBlur = 10; ctx.shadowColor = info.color;
+                } else if (info.isBomberpad) {
+                    ctx.fillStyle = info.color;
                     ctx.beginPath();
-                    ctx.arc(0, 0, info.shape === 'hexagon' ? 8 : 5, 0, Math.PI*2);
+                    ctx.moveTo(0, -8); ctx.lineTo(8, 8); ctx.lineTo(0, 4); ctx.lineTo(-8, 8);
+                    ctx.closePath();
                     ctx.fill();
+                } else if (info.isNanite) {
+                    ctx.strokeStyle = info.color;
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 8, 0, Math.PI*2);
+                    ctx.stroke();
+                    ctx.fillStyle = info.color;
+                    ctx.fillRect(-3, -3, 6, 6);
+                } else {
+                    ctx.fillStyle = info.color; ctx.shadowBlur = 12; ctx.shadowColor = info.color;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 5, 0, Math.PI*2);
+                    ctx.fill();
+                    if (t.level >= 2) {
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+                    }
                 }
                 ctx.restore();
             });
 
-            // Hubschrauber zeichnen
             game.entities.helicopters.forEach(heli => {
                 ctx.save();
                 ctx.translate(heli.x, heli.y);
                 ctx.fillStyle = heli.color;
-                ctx.shadowBlur = 10;
+                ctx.shadowBlur = 15;
                 ctx.shadowColor = heli.color;
-                // Heli-Rumpf
                 ctx.beginPath();
                 ctx.ellipse(0, 0, 12, 7, 0, 0, Math.PI*2);
                 ctx.fill();
-                // Heli-Rotor (rotiert schnell)
-                ctx.rotate(time / 50);
+                ctx.rotate(time / 40);
                 ctx.fillRect(-18, -2, 36, 4);
                 ctx.restore();
             });
 
+            game.entities.bomberplanes.forEach(plane => {
+                ctx.save();
+                ctx.translate(plane.x, plane.y);
+                ctx.rotate(plane.angle + Math.PI / 2);
+                ctx.fillStyle = plane.color;
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = plane.color;
+                ctx.beginPath();
+                ctx.moveTo(0, -12);
+                ctx.lineTo(8, 10);
+                ctx.lineTo(0, 5);
+                ctx.lineTo(-8, 10);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            });
+
             game.entities.enemies.forEach(e => {
-                ctx.fillStyle = e.color; ctx.shadowBlur = 15; ctx.shadowColor = e.color;
-                ctx.fillRect(e.x - e.size/2, e.y - e.size/2, e.size, e.size);
-                ctx.shadowBlur = 0;
+                ctx.save();
+                ctx.translate(e.x, e.y);
+
+                let renderColor = e.dotTimer > 0 ? '#55ff55' : (e.stunTimer > 0 ? '#ffff33' : (e.slowTimer > 0 ? '#00ffff' : e.color));
+
+                if (e.legs > 0) {
+                    ctx.strokeStyle = renderColor;
+                    ctx.lineWidth = 2;
+                    let legLength = e.size * 0.9;
+                    for (let l = 0; l < e.legs; l++) {
+                        let angleOffset = (l / e.legs) * Math.PI * 2;
+                        let swing = Math.sin(e.legAnimPhase + angleOffset) * (e.size * 0.4);
+                        let lx = Math.cos(angleOffset) * legLength;
+                        let ly = Math.sin(angleOffset) * legLength + swing;
+                        ctx.beginPath();
+                        ctx.moveTo(0, 0);
+                        ctx.lineTo(lx, ly);
+                        ctx.stroke();
+                    }
+                }
+
+                ctx.fillStyle = '#0d0d14';
+                ctx.strokeStyle = renderColor;
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = renderColor;
+
+                if (e.shape === 'spider' || e.shape === 'boss') {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, e.size * 0.6, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.fillStyle = renderColor;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, e.size * 0.25, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (e.shape === 'walker') {
+                    ctx.fillRect(-e.size/2, -e.size/2, e.size, e.size);
+                    ctx.strokeRect(-e.size/2, -e.size/2, e.size, e.size);
+                } else if (e.shape === 'drone') {
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, e.size * 0.8, e.size * 0.4, time / 300, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    ctx.fillRect(-e.size/2, -e.size/2, e.size, e.size);
+                    ctx.strokeRect(-e.size/2, -e.size/2, e.size, e.size);
+                }
+
+                ctx.restore();
+
                 ctx.fillStyle = 'rgba(255,0,0,0.5)';
-                ctx.fillRect(e.x - e.size/2 - 5, e.y - e.size/2 - 8, e.size + 10, 4);
-                ctx.fillStyle = '#00ffcc';
-                ctx.fillRect(e.x - e.size/2 - 5, e.y - e.size/2 - 8, (e.size + 10) * (e.hp / e.maxHp), 4);
+                ctx.fillRect(e.x - e.size/2 - 5, e.y - e.size/2 - 12, e.size + 10, 4);
+
+                ctx.fillStyle = '#00ff66';
+                ctx.shadowBlur = 6;
+                ctx.shadowColor = '#00ff66';
+                ctx.fillRect(e.x - e.size/2 - 5, e.y - e.size/2 - 12, (e.size + 10) * Math.max(0, (e.hp / e.maxHp)), 4);
+                ctx.shadowBlur = 0;
             });
 
             game.entities.projectiles.forEach(p => {
                 ctx.save();
                 ctx.translate(p.x, p.y);
                 ctx.rotate(p.angle || 0);
-                ctx.fillStyle = p.color; ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+                ctx.fillStyle = p.color; ctx.shadowBlur = 15; ctx.shadowColor = p.color;
 
                 if (p.shape === 'bullet') {
-                    ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI*2); ctx.fill();
                 } else if (p.shape === 'dash') {
-                    ctx.fillRect(-8, -2, 16, 4);
+                    ctx.fillRect(-10, -3, 20, 6);
                 } else if (p.shape === 'laser') {
-                    ctx.fillRect(-20, -1, 40, 2);
+                    ctx.fillRect(-24, -2, 48, 4);
                 } else if (p.shape === 'orb') {
-                    ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI*2); ctx.fill();
                 }
                 ctx.restore();
             });
 
             game.entities.particles.forEach(p => {
-                ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life);
-                ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1;
+                ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+                ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = 1; ctx.shadowBlur = 0;
             });
 
             game.entities.rings.forEach(r => {
                 ctx.strokeStyle = r.color; ctx.globalAlpha = Math.max(0, r.life); ctx.lineWidth = 3;
-                ctx.beginPath(); ctx.arc(r.x, r.y, r.radius, 0, Math.PI*2); ctx.stroke(); ctx.globalAlpha = 1;
+                ctx.shadowBlur = 10; ctx.shadowColor = r.color;
+                ctx.beginPath(); ctx.arc(r.x, r.y, r.radius, 0, Math.PI*2); ctx.stroke();
+                ctx.globalAlpha = 1; ctx.shadowBlur = 0;
             });
 
-            game.entities.texts.forEach(txt => {
+            game.entities.floatingTexts.forEach(txt => {
                 ctx.fillStyle = txt.color; ctx.globalAlpha = Math.max(0, txt.life);
-                ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center';
-                ctx.shadowBlur = 8; ctx.shadowColor = txt.color;
-                ctx.fillText(txt.text, txt.x, txt.y); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+                ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center';
+                ctx.shadowBlur = 10; ctx.shadowColor = txt.color;
+                ctx.fillText(txt.text, txt.x, txt.y);
+                ctx.globalAlpha = 1; ctx.shadowBlur = 0;
             });
 
             if (game.health <= 0) {
-                ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0,0,CANVAS_WIDTH, CANVAS_HEIGHT);
-                ctx.fillStyle = '#ff007f'; ctx.font = '40px sans-serif'; ctx.textAlign = 'center';
+                ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0,0,CANVAS_WIDTH, CANVAS_HEIGHT);
+                ctx.fillStyle = '#ff007f'; ctx.font = 'bold 45px sans-serif'; ctx.textAlign = 'center';
+                ctx.shadowBlur = 30; ctx.shadowColor = '#ff007f';
                 ctx.fillText('KERN ZERSTÖRT', CANVAS_WIDTH/2, CANVAS_HEIGHT/2);
+                ctx.shadowBlur = 0;
             }
         };
 
         const triggerShake = () => {
-            canvas.style.transform = 'translate(5px, 5px)';
-            setTimeout(() => canvas.style.transform = 'translate(-5px, -5px)', 50);
-            setTimeout(() => canvas.style.transform = 'translate(0, 0)', 100);
+            canvas.style.transform = 'translate(6px, 6px)';
+            setTimeout(() => canvas.style.transform = 'translate(-6px, -6px)', 40);
+            setTimeout(() => canvas.style.transform = 'translate(4px, -4px)', 80);
+            setTimeout(() => canvas.style.transform = 'translate(0, 0)', 120);
         };
 
         const loop = (time) => {
@@ -556,6 +1178,7 @@ export default {
         };
 
         renderShop();
+        renderUpgradePanel();
         animationId = requestAnimationFrame(loop);
 
         return { destroy: () => { cancelAnimationFrame(animationId); } };

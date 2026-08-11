@@ -3,9 +3,10 @@ import ShapeDodger from '../games/ShapeDodger.js';
 import ShapeDodgerV2 from '../games/ShapeDodgerV2.js';
 import Blackjack from "../games/Blackjack.js";
 import Crash from "../games/Crash.js";
-import PrsimaClix from "../games/PrsimaClix.js";
+import PrismaClix from "../games/PrismaClix.js";
 import Mines from '../games/Mines.js';
 import BlockBuster from '../games/BlockBuster.js';
+import PrismaDefense from "../games/PrismaDefense.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
@@ -15,7 +16,8 @@ export const GameRegistry = [
     ShapeDodgerV2,
     Blackjack,
     Crash,
-    PrsimaClix,
+    PrismaClix,
     Mines,
-    BlockBuster
+    BlockBuster,
+    PrismaDefense
 ];

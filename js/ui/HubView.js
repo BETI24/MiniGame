@@ -14,14 +14,72 @@ export class HubView {
         const container = document.createElement('div');
         container.className = 'hub-container';
 
+        // Globale Ambient-Effekte
+        const ambientBg = document.createElement('div');
+        ambientBg.className = 'ambient-background';
+        ambientBg.innerHTML = `
+            <div class="ambient-orb orb-1"></div>
+            <div class="ambient-orb orb-2"></div>
+            <div class="ambient-orb orb-3"></div>
+            <div class="ambient-orb orb-4"></div>
+            <div class="cyber-grid-global"></div>
+        `;
+        container.appendChild(ambientBg);
+
+        // --- DYNAMISCHE WERTE BERECHNEN ---
+
+        // 1. Anzahl der Spiele aus der Registry auslesen (z.B. "04")
+        const totalGames = String(GameRegistry.length).padStart(2, '0');
+
+        // 2. Globalen Highscore aus allen Spielen zusammenrechnen
+        let globalRecord = 0;
+        GameRegistry.forEach(game => {
+            globalRecord += services.highscores.getHighscore(game.manifest.id) || 0;
+        });
+
+        // Zahl formatieren (macht aus 24080 z.B. 24.080)
+        const formattedRecord = globalRecord.toLocaleString('de-DE');
+
+
         const hero = document.createElement('div');
         hero.className = 'hero-section';
         hero.innerHTML = `
-            <h1>Nexus</h1>
-            <p>Wähle ein Modul aus oder suche nach bestimmten Tags und Spielen, um das System zu starten.</p>
-            <div class="search-container">
-                <span class="search-icon">🔍</span>
-                <input type="text" class="search-input" placeholder="Spiele oder Tags suchen..." aria-label="Spiele suchen">
+            <div class="hero-content">
+                <!-- Linke Seite: Text und Suche -->
+                <div class="hero-left">
+                    <div class="hero-text">
+                        <p class="eyebrow">Nexus System · Arcade Hub</p>
+                        <h1>Enter the<br><span>Nexus.</span></h1>
+                        <p class="hero-desc">Keine Ladezeiten, pure Action. Starte ein Minispiel, setze deinen Einsatz und knacke den Highscore.</p>
+                    </div>
+                    <div class="search-container">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" class="search-input" placeholder="Spiele oder Tags suchen..." aria-label="Spiele suchen">
+                    </div>
+                </div>
+
+                <!-- Rechte Seite: Dynamisches System Status Panel -->
+                <div class="hero-right">
+                    <div class="status-panel glass-panel">
+                        <div class="status-header">
+                            <div class="status-dot"></div>
+                            <span>System Online</span>
+                        </div>
+                        <div class="status-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">Aktive Module</span>
+                                <!-- Hier wird die dynamische Anzahl eingesetzt -->
+                                <span class="stat-value">${totalGames}</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Global Record</span>
+                                <!-- Hier wird der berechnete Gesamt-Highscore eingesetzt -->
+                                <span class="stat-value text-cyan">$${formattedRecord}</span>
+                            </div>
+                        </div>
+                        <div class="panel-ring"></div>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -73,18 +131,14 @@ export class HubView {
         card.className = 'game-card';
 
         const highscore = services.highscores.getHighscore(manifest.id) || 0;
-
         const tagsHtml = manifest.tags.map(tag => `<span class="card-tag">${tag.toUpperCase()}</span>`).join('');
-
         const bgStyle = manifest.imageUrl ? `background-image: url('${manifest.imageUrl}');` : `background: #1a1a24;`;
 
-        // Zweifarbiger Titel-Trick: Das erste Wort wird weiß, der Rest bekommt die Klasse "text-cyan"
         const titleParts = manifest.name.split(' ');
         const formattedTitle = titleParts.length > 1
             ? `${titleParts[0]} <span class="text-cyan">${titleParts.slice(1).join(' ')}</span>`
             : titleParts[0];
 
-        // Struktur mit isoliertem Hintergrund (.card-bg) für den perfekten Zoom-Effekt
         card.innerHTML = `
             <div class="card-inner">
                 <div class="card-bg" style="${bgStyle}"></div>

@@ -8,6 +8,7 @@ import Mines from "../games/Mines.js";
 import BlockBuster from "../games/BlockBuster.js";
 import PrismaDefense from "../games/PrismaDefense.js";
 import IslandConquest from "../games/IslandConquest.js";
+import ReactionDuel from "../games/ReactionDuel.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
@@ -22,4 +23,5 @@ export const GameRegistry = [
   BlockBuster,
   PrismaDefense,
   IslandConquest,
+  ReactionDuel,
 ];

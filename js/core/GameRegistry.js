@@ -12,22 +12,24 @@ import IslandConquest from "../games/IslandConquest.js";
 import Plinko from "../games/Plinko.js";
 import Jackpot from "../games/Jackpot.js";
 import neon_swarm from "../games/neon_swarm.js";
+import SurvivalRoyale from "../games/SurvivalRoyale.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
 export const GameRegistry = [
-    NeonClicker,
-    ShapeDodger,
-    ShapeDodgerV2,
-    Blackjack,
-    Crash,
-    PrismaClix,
-    Mines,
-    BlockBuster,
-    PrismaDefense,
-    IslandConquest,
-    zombies,
-    Jackpot,
-    neon_swarm,
-    Plinko
+  NeonClicker,
+  ShapeDodger,
+  ShapeDodgerV2,
+  Blackjack,
+  Crash,
+  PrismaClix,
+  Mines,
+  BlockBuster,
+  PrismaDefense,
+  IslandConquest,
+  zombies,
+  Jackpot,
+  neon_swarm,
+  Plinko,
+  SurvivalRoyale,
 ];

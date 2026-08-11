@@ -9,6 +9,7 @@ import BlockBuster from "../games/BlockBuster.js";
 import PrismaDefense from "../games/PrismaDefense.js";
 import zombies from "../games/zombies.js";
 import IslandConquest from "../games/IslandConquest.js";
+import Plinko from "../games/Plinko.js";
 import ReactionDuel from "../games/ReactionDuel.js";
 import Jackpot from "../games/Jackpot.js";
 import neon_swarm from "../games/neon_swarm.js";

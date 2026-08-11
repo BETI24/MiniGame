@@ -19,11 +19,47 @@ export default {
         let history = [];
         let hasCashedOut = false;
 
-        let animationId; // Für den renderLoop
+        let animationId;
         let particles = [];
         let winParticles = [];
 
-        // --- Styling (Direkt ins Modul injiziert und isoliert) ---
+        // --- Sound Engine (mit lokalen MP3s) ---
+        const sfxTick = new Audio('js/assets/sounds/Crash_Tick.mp3');
+        const sfxCoin = new Audio('js/assets/sounds/Crash_Cashout.mp3');
+        const sfxCrash = new Audio('js/assets/sounds/Crash_Crash.mp3');
+
+        sfxTick.volume = 0.5;
+        sfxCoin.volume = 0.8;
+        sfxCrash.volume = 0.8;
+
+        let lastTickTime = 0;
+
+        const SoundEngine = {
+            playTick: (mult) => {
+                const now = performance.now();
+                // Verhindert ein Übersteuern bei extrem hohen Multiplikatoren
+                if (now - lastTickTime < 80) return;
+                lastTickTime = now;
+
+                // Klonen des Sounds, damit schnelle Ticks sich perfekt überlappen können
+                const tickClone = sfxTick.cloneNode();
+
+                // Spannung erhöhen: Das Ticken wird immer schneller/höher (max. 3.5x Speed)
+                tickClone.playbackRate = Math.min(1 + (mult * 0.08), 3.5);
+                tickClone.volume = 0.4;
+                tickClone.play().catch(e => console.log('Audio blockiert (Interaktion fehlt)'));
+            },
+            playCashout: () => {
+                sfxCoin.currentTime = 0;
+                sfxCoin.play().catch(e => {});
+            },
+            playCrash: () => {
+                sfxCrash.currentTime = 0;
+                sfxCrash.play().catch(e => {});
+            }
+        };
+
+        // --- Styling ---
         const style = document.createElement('style');
         style.textContent = `
             @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Inter:wght@400;600;800&display=swap');
@@ -37,6 +73,7 @@ export default {
                 font-family: 'Inter', sans-serif;
                 user-select: none;
                 overflow: hidden;
+                border-radius: 12px;
             }
 
             .rc-wrapper * {
@@ -45,7 +82,6 @@ export default {
                 padding: 0;
             }
 
-            /* Linke Seite: Wett-Steuerung */
             .rc-betting-panel {
                 width: 380px;
                 background: #0c0e15;
@@ -57,11 +93,7 @@ export default {
                 z-index: 10;
             }
 
-            .rc-panel-top {
-                display: flex;
-                flex-direction: column;
-                gap: 20px;
-            }
+            .rc-panel-top { display: flex; flex-direction: column; gap: 20px; }
 
             .rc-balance-box {
                 background: #131722;
@@ -73,39 +105,13 @@ export default {
                 align-items: center;
             }
 
-            .rc-balance-box .label {
-                font-size: 0.85rem;
-                color: #7b88a8;
-                text-transform: uppercase;
-                font-weight: 600;
-            }
+            .rc-balance-box .label { font-size: 0.85rem; color: #7b88a8; text-transform: uppercase; font-weight: 600; }
+            .rc-balance-box .amount { font-family: 'Orbitron', sans-serif; font-size: 1.4rem; font-weight: 700; color: #00ffcc; text-shadow: 0 0 10px rgba(0, 255, 204, 0.3); }
 
-            .rc-balance-box .amount {
-                font-family: 'Orbitron', sans-serif;
-                font-size: 1.4rem;
-                font-weight: 700;
-                color: #00ffcc;
-                text-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
-            }
+            .rc-input-section { display: flex; flex-direction: column; gap: 8px; }
+            .rc-input-section label { font-size: 0.85rem; color: #7b88a8; font-weight: 600; }
 
-            .rc-input-section {
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-            }
-
-            .rc-input-section label {
-                font-size: 0.85rem;
-                color: #7b88a8;
-                font-weight: 600;
-            }
-
-            .rc-input-wrapper {
-                position: relative;
-                display: flex;
-                align-items: center;
-            }
-
+            .rc-input-wrapper { position: relative; display: flex; align-items: center; }
             .rc-input-wrapper input {
                 width: 100%;
                 background: #131722;
@@ -118,24 +124,10 @@ export default {
                 outline: none;
                 transition: border-color 0.2s;
             }
+            .rc-input-wrapper input:focus { border-color: #00ffcc; }
+            .rc-currency-tag { position: absolute; right: 15px; color: #7b88a8; font-weight: bold; }
 
-            .rc-input-wrapper input:focus {
-                border-color: #00ffcc;
-            }
-
-            .rc-currency-tag {
-                position: absolute;
-                right: 15px;
-                color: #7b88a8;
-                font-weight: bold;
-            }
-
-            .rc-quick-buttons {
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 6px;
-            }
-
+            .rc-quick-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
             .rc-quick-btn {
                 background: #131722;
                 border: 1px solid #222838;
@@ -147,12 +139,7 @@ export default {
                 cursor: pointer;
                 transition: all 0.1s;
             }
-
-            .rc-quick-btn:hover {
-                background: #1c2333;
-                color: white;
-                border-color: #3b4663;
-            }
+            .rc-quick-btn:hover { background: #1c2333; color: white; border-color: #3b4663; }
 
             .rc-action-btn {
                 width: 100%;
@@ -170,31 +157,12 @@ export default {
                 text-transform: uppercase;
                 letter-spacing: 1px;
             }
+            .rc-action-btn:hover { filter: brightness(1.1); transform: translateY(-2px); box-shadow: 0 6px 25px rgba(0, 255, 204, 0.6); }
+            .rc-action-btn:active { transform: translateY(0); }
+            
+            .rc-action-btn.cashout { background: linear-gradient(135deg, #ffc107 0%, #ff8800 100%); box-shadow: 0 4px 20px rgba(255, 136, 0, 0.4); }
+            .rc-action-btn:disabled { background: #1a1e29; color: #4a5568; box-shadow: none; cursor: not-allowed; transform: none !important; }
 
-            .rc-action-btn:hover {
-                filter: brightness(1.1);
-                transform: translateY(-2px);
-                box-shadow: 0 6px 25px rgba(0, 255, 204, 0.6);
-            }
-
-            .rc-action-btn:active {
-                transform: translateY(0);
-            }
-
-            .rc-action-btn.cashout {
-                background: linear-gradient(135deg, #ffc107 0%, #ff8800 100%);
-                box-shadow: 0 4px 20px rgba(255, 136, 0, 0.4);
-            }
-
-            .rc-action-btn:disabled {
-                background: #1a1e29;
-                color: #4a5568;
-                box-shadow: none;
-                cursor: not-allowed;
-                transform: none !important;
-            }
-
-            /* Rechte Seite: Spiel-Arena */
             .rc-game-main {
                 flex: 1;
                 display: flex;
@@ -204,14 +172,7 @@ export default {
                 overflow: hidden;
             }
 
-            .rc-history-bar {
-                display: flex;
-                gap: 10px;
-                padding: 20px 30px;
-                align-items: center;
-                z-index: 5;
-            }
-
+            .rc-history-bar { display: flex; gap: 10px; padding: 20px 30px; align-items: center; z-index: 5; }
             .rc-history-pill {
                 background: #131722;
                 border: 1px solid #222838;
@@ -221,36 +182,14 @@ export default {
                 font-size: 0.85rem;
                 font-weight: 700;
             }
-
             .rc-history-pill.high { color: #00ffcc; border-color: rgba(0, 255, 204, 0.4); background: rgba(0, 255, 204, 0.05); }
             .rc-history-pill.mid { color: #ffaa00; border-color: rgba(255, 170, 0, 0.4); }
             .rc-history-pill.low { color: #ff3366; border-color: rgba(255, 51, 102, 0.4); }
 
-            .rc-canvas-arena {
-                flex: 1;
-                position: relative;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
+            .rc-canvas-arena { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; }
+            .rc-canvas-arena canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 
-            .rc-canvas-arena canvas {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-            }
-
-            .rc-multiplier-display-box {
-                z-index: 4;
-                text-align: center;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                pointer-events: none;
-            }
-
+            .rc-multiplier-display-box { z-index: 4; text-align: center; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
             #rc-multiplierDisplay {
                 font-family: 'Orbitron', sans-serif;
                 font-size: 6rem;
@@ -260,70 +199,35 @@ export default {
                 letter-spacing: 2px;
                 line-height: 1;
             }
-
-            .rc-status-subtext {
-                font-family: 'Orbitron', sans-serif;
-                font-size: 1.1rem;
-                color: #7b88a8;
-                margin-top: 10px;
-                letter-spacing: 3px;
-                text-transform: uppercase;
-            }
+            .rc-status-subtext { font-family: 'Orbitron', sans-serif; font-size: 1.1rem; color: #7b88a8; margin-top: 10px; letter-spacing: 3px; text-transform: uppercase; }
 
             .rc-shake { animation: rc-screenShake 0.15s infinite alternate; }
-
-            @keyframes rc-screenShake {
-                0% { transform: translate(3px, 3px); }
-                100% { transform: translate(-3px, -3px); }
-            }
+            @keyframes rc-screenShake { 0% { transform: translate(3px, 3px); } 100% { transform: translate(-3px, -3px); } }
 
             .rc-flash-overlay {
-                position: absolute;
-                top: 0; left: 0; width: 100%; height: 100%;
+                position: absolute; top: 0; left: 0; width: 100%; height: 100%;
                 background: rgba(255, 51, 102, 0.15);
-                opacity: 0;
-                pointer-events: none;
-                z-index: 6;
+                opacity: 0; pointer-events: none; z-index: 6;
                 transition: opacity 0.1s ease;
             }
             .rc-flash-overlay.active { opacity: 1; }
 
             .rc-win-banner {
-                position: absolute;
-                top: 50%; left: 50%;
+                position: absolute; top: 50%; left: 50%;
                 transform: translate(-50%, -50%) scale(0);
                 z-index: 20;
                 background: linear-gradient(135deg, rgba(0, 255, 204, 0.9), rgba(0, 150, 120, 0.9));
-                padding: 30px 60px;
-                border-radius: 20px;
-                border: 3px solid #fff;
-                text-align: center;
-                box-shadow: 0 0 50px rgba(0, 255, 204, 0.8);
-                pointer-events: none;
-                transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                padding: 30px 60px; border-radius: 20px; border: 3px solid #fff;
+                text-align: center; box-shadow: 0 0 50px rgba(0, 255, 204, 0.8);
+                pointer-events: none; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             }
             .rc-win-banner.show { transform: translate(-50%, -50%) scale(1); }
-
-            .rc-win-banner h2 {
-                font-family: 'Orbitron', sans-serif;
-                font-size: 2.5rem;
-                color: #06070a;
-                text-transform: uppercase;
-                font-weight: 900;
-            }
-
-            .rc-win-banner .rc-win-amount-text {
-                font-family: 'Orbitron', sans-serif;
-                font-size: 2rem;
-                color: #ffffff;
-                font-weight: 900;
-                text-shadow: 0 2px 10px rgba(0,0,0,0.5);
-                margin-top: 5px;
-            }
+            .rc-win-banner h2 { font-family: 'Orbitron', sans-serif; font-size: 2.5rem; color: #06070a; text-transform: uppercase; font-weight: 900; }
+            .rc-win-banner .rc-win-amount-text { font-family: 'Orbitron', sans-serif; font-size: 2rem; color: #ffffff; font-weight: 900; text-shadow: 0 2px 10px rgba(0,0,0,0.5); margin-top: 5px; }
         `;
         container.appendChild(style);
 
-        // --- DOM-Struktur aufbauen ---
+        // --- DOM-Struktur ---
         const wrapper = document.createElement('div');
         wrapper.className = 'rc-wrapper';
 
@@ -389,7 +293,8 @@ export default {
             canvas.height = canvas.parentElement.clientHeight;
         };
         window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+        // Timeout stellt sicher, dass das Canvas-Element im DOM ist, bevor gemessen wird
+        setTimeout(resizeCanvas, 0);
 
         const updateUI = () => {
             balanceEl.innerText = balance.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -417,10 +322,9 @@ export default {
             });
         };
 
-        // Algorithmus (House Edge)[cite: 5]
         const generateCrashPoint = () => {
             let h = Math.random();
-            if (h < 0.03) return 1.00; // 3% Chance auf Sofort-Crash
+            if (h < 0.03) return 1.00; // 3% House Edge[cite: 5]
             let e = 2 ** 32;
             let result = Math.floor((100 * e - h) / (e - h * e)) / 100;
             return Math.max(1.00, result);
@@ -458,6 +362,9 @@ export default {
 
             statusSubtext.innerText = !hasCashedOut ? 'CRASHED! (VERLOREN)' : 'CRASHED!';
 
+            // Crash Sound abspielen
+            SoundEngine.playCrash();
+
             actionBtn.innerText = 'NEU STARTEN';
             actionBtn.className = 'rc-action-btn';
             actionBtn.disabled = false;
@@ -465,7 +372,6 @@ export default {
 
             addHistory(multiplier);
 
-            // Highscore-Update (wie bei Blackjack)
             services.highscores.saveHighscore('reactor-crash', Math.floor(balance));
 
             if (balance <= 0) {
@@ -488,6 +394,8 @@ export default {
             actionBtn.innerText = 'AUSGEZAHLT!';
             actionBtn.disabled = true;
 
+            // Gewinn Sound abspielen
+            SoundEngine.playCashout();
             triggerWinFX(winAmount);
         };
 
@@ -522,6 +430,10 @@ export default {
                     crashGame();
                 } else {
                     multiplierDisplay.innerText = multiplier.toFixed(2) + 'x';
+
+                    // Tick Sound abspielen
+                    SoundEngine.playTick(multiplier);
+
                     if (multiplier >= 10) {
                         gameMainContainer.classList.add('rc-shake');
                         multiplierDisplay.style.color = '#00ffcc';
@@ -545,7 +457,7 @@ export default {
         wrapper.querySelector('#btn-max').addEventListener('click', () => setBet('max'));
         wrapper.querySelector('#btn-min').addEventListener('click', () => setBet('min'));
 
-        // --- Render Loop (Canvas Animation) ---
+        // --- Render Loop ---
         const renderLoop = () => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -579,7 +491,6 @@ export default {
             ctx.lineTo(padding, padding);
             ctx.stroke();
 
-            // Win Particles
             for (let i = winParticles.length - 1; i >= 0; i--) {
                 let wp = winParticles[i];
                 wp.x += wp.vx;
@@ -661,7 +572,6 @@ export default {
             animationId = requestAnimationFrame(renderLoop);
         };
 
-        // --- Initialisierung ---
         addHistory(1.85);
         addHistory(1.12);
         addHistory(4.50);
@@ -669,12 +579,11 @@ export default {
         updateUI();
         renderLoop();
 
-        // --- Lifecycle Cleanup ---
         return {
             destroy: () => {
-                clearInterval(gameInterval); // Stoppt die Zähl-Schleife[cite: 5]
-                cancelAnimationFrame(animationId); // Stoppt das Canvas-Rendering
-                window.removeEventListener('resize', resizeCanvas); // Verhindert Speicherlecks
+                clearInterval(gameInterval);
+                cancelAnimationFrame(animationId);
+                window.removeEventListener('resize', resizeCanvas);
             }
         };
     }

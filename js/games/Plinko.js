@@ -1219,7 +1219,10 @@ export default {
             } else if (multiplier >= 1) {
                 tone(560, 0.055, 0.018);
             } else {
-                tone(220, 0.06, 0.015, 'sawtooth');
+                // Weicher Loss-Sound statt des kratzigen Sawtooth-Tons:
+                // kurzer, sauberer zweistufiger Abwärtston.
+                tone(260, 0.07, 0.012, 'sine');
+                schedule(() => tone(190, 0.10, 0.010, 'sine'), 55);
             }
 
             updateHud();

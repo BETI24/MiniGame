@@ -10,6 +10,8 @@ import PrismaDefense from "../games/PrismaDefense.js";
 import zombies from "../games/zombies.js";
 import IslandConquest from "../games/IslandConquest.js";
 import Plinko from "../games/Plinko.js";
+import EndlessFishing from "../games/EndlessFishing.js";
+import SurvivalRoyale from "../games/SurvivalRoyale.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
@@ -26,4 +28,6 @@ export const GameRegistry = [
   IslandConquest,
   zombies,
   Plinko,
+  EndlessFishing,
+  SurvivalRoyale,
 ];

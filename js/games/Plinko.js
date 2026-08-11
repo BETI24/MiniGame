@@ -53,6 +53,12 @@ const CONFIG = {
     dropCooldownMs: 95
 };
 
+// Kleine Math-Helper müssen auf Modulebene existieren, weil sie von
+// mehreren Funktionen innerhalb von init() verwendet werden.
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const rand = (min, max) => min + Math.random() * (max - min);
+
+
 export default {
     manifest: {
         id: 'plinko',
@@ -1219,8 +1225,23 @@ export default {
             ctx.save();
 
             const topY = board.top - 28;
+            const bottomPegY = board.pegs.length
+                ? Math.max(...board.pegs.map(peg => peg.y))
+                : board.slotY - 50;
+            const halfBottomWidth = board.pegGapX * (rows + 1) / 2;
 
-            ctx.strokeStyle = 'rgba(49,220,255,.16)';
+            // Dezente Seitenkanten machen die typische Plinko-Pyramide
+            // sofort lesbar, ohne die eigentlichen Pegs zu überdecken.
+            ctx.strokeStyle = 'rgba(49,220,255,.11)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(board.centerX - board.pegGapX, board.top + board.pegGapY * 0.55);
+            ctx.lineTo(board.centerX - halfBottomWidth, bottomPegY + board.pegGapY * 0.45);
+            ctx.moveTo(board.centerX + board.pegGapX, board.top + board.pegGapY * 0.55);
+            ctx.lineTo(board.centerX + halfBottomWidth, bottomPegY + board.pegGapY * 0.45);
+            ctx.stroke();
+
+            ctx.strokeStyle = 'rgba(49,220,255,.18)';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 7]);
 
@@ -1579,6 +1600,10 @@ export default {
         resizeCanvas();
         setBet(bet);
         updateHud();
+
+        // Direkt den ersten Frame zeichnen. So ist das Plinko-Board sofort
+        // sichtbar, noch bevor der erste requestAnimationFrame läuft.
+        draw();
 
         animationId =
             requestAnimationFrame(loop);

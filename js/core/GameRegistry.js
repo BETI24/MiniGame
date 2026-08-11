@@ -8,18 +8,20 @@ import Mines from '../games/Mines.js';
 import BlockBuster from '../games/BlockBuster.js';
 import PrismaDefense from "../games/PrismaDefense.js";
 import zombies from "../games/zombies.js";
+import IslandConquest from "../games/IslandConquest.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
 export const GameRegistry = [
-    NeonClicker,
-    ShapeDodger,
-    ShapeDodgerV2,
-    Blackjack,
-    Crash,
-    PrismaClix,
-    Mines,
-    BlockBuster,
-    PrismaDefense,
+  NeonClicker,
+  ShapeDodger,
+  ShapeDodgerV2,
+  Blackjack,
+  Crash,
+  PrismaClix,
+  Mines,
+  BlockBuster,
+  PrismaDefense,
+  IslandConquest,
     zombies
 ];

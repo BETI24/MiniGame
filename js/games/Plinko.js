@@ -38,6 +38,7 @@ const RISK_PROFILES = {
 };
 
 const ROW_OPTIONS = [8, 10, 12, 14, 16];
+const BALLS_PER_DROP_OPTIONS = [1, 3, 5, 10];
 
 const CONFIG = {
     targetRtp: 0.99,
@@ -45,7 +46,7 @@ const CONFIG = {
     minBet: 5,
     maxBet: 250,
     betStep: 5,
-    maxBalls: 30,
+    maxBalls: 60,
     gravity: 900,
     restitution: 0.48,
     sideBounce: 0.68,
@@ -78,6 +79,7 @@ export default {
         let rows = 12;
         let riskKey = 'medium';
         let bet = 25;
+        let ballsPerDrop = 1;
 
         let credits = CONFIG.startingCredits;
         let peakCredits = credits;
@@ -251,6 +253,10 @@ export default {
 
             .pl-segment.rows {
                 grid-template-columns:repeat(5,1fr);
+            }
+
+            .pl-segment.ball-count {
+                grid-template-columns:repeat(4,1fr);
             }
 
             .pl-seg-btn {
@@ -591,7 +597,22 @@ export default {
 
                 <div>
                     <div class="pl-label-row">
-                        <span class="pl-label">Bet</span>
+                        <span class="pl-label">Balls / Drop</span>
+                        <span class="pl-label-value pl-ball-count-label">1 Ball</span>
+                    </div>
+
+                    <div class="pl-segment ball-count pl-ball-count-buttons">
+                        ${BALLS_PER_DROP_OPTIONS.map(value => `
+                            <button class="pl-seg-btn ${value === ballsPerDrop ? 'selected' : ''}" data-ball-count="${value}" type="button">
+                                ×${value}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <div>
+                    <div class="pl-label-row">
+                        <span class="pl-label">Bet / Ball</span>
                         <span class="pl-label-value">Credits</span>
                     </div>
 
@@ -617,7 +638,7 @@ export default {
                 </div>
 
                 <div class="pl-help">
-                    Virtuelle Credits ohne Echtgeld · theoretische RTP 99%. Jeder Drop erhält beim Start einen zufälligen 50/50 Links/Rechts-Pfad; Ergebnis und Multiplikator sind vor der Animation festgelegt.
+                    Virtuelle Credits ohne Echtgeld · theoretische RTP 99%. Bet gilt pro Ball. Bei Multi-Drop werden alle Kugeln mit einem Klick gestartet und jede erhält ihren eigenen zufälligen 50/50-Pfad.
                 </div>
             </div>
 
@@ -638,9 +659,11 @@ export default {
 
         const riskLabelEl = root.querySelector('.pl-risk-label');
         const rowsLabelEl = root.querySelector('.pl-rows-label');
+        const ballCountLabelEl = root.querySelector('.pl-ball-count-label');
 
         const riskButtons = [...root.querySelectorAll('[data-risk]')];
         const rowButtons = [...root.querySelectorAll('[data-rows]')];
+        const ballCountButtons = [...root.querySelectorAll('[data-ball-count]')];
 
         const betInput = root.querySelector('.pl-bet-input');
         const betRange = root.querySelector('.pl-range');
@@ -1129,37 +1152,22 @@ export default {
             );
         };
 
-        const dropBall = () => {
-            const now = performance.now();
-
-            if (
-                now - lastDropAt < CONFIG.dropCooldownMs ||
-                balls.length >= CONFIG.maxBalls ||
-                credits < bet
-            ) {
-                return false;
-            }
-
-            ensureAudio();
-
-            lastDropAt = now;
-
-            credits -= bet;
-            totalDropped += bet;
-            ballsDropped++;
-
+        const createBallForDrop = (stake, spawnDelay = 0) => {
             const outcome = createDropOutcome();
+
+            // Etwas langsamer als zuvor: je nach Rows ungefähr 1.7–2.2 Sekunden
+            // sichtbare Fallzeit statt der sehr schnellen alten Animation.
             const segmentDuration = clamp(
-                0.108 - rows * 0.00115,
-                0.086,
-                0.100
+                0.148 - rows * 0.0015,
+                0.120,
+                0.136
             );
 
-            balls.push({
+            return {
                 id: nextBallId++,
                 x: outcome.waypoints[0].x,
                 y: outcome.waypoints[0].y,
-                bet,
+                bet: stake,
                 slotIndex: outcome.slotIndex,
                 multiplier: board.slots[outcome.slotIndex].multiplier,
                 directions: outcome.directions,
@@ -1167,10 +1175,55 @@ export default {
                 segmentIndex: 0,
                 segmentElapsed: 0,
                 segmentDuration,
+                spawnDelay,
                 resolved: false
-            });
+            };
+        };
 
-            tone(510, 0.035, 0.015, 'sine');
+        const dropBall = () => {
+            const now = performance.now();
+            const batchCount = ballsPerDrop;
+            const totalCost = bet * batchCount;
+
+            if (
+                now - lastDropAt < CONFIG.dropCooldownMs ||
+                balls.length + batchCount > CONFIG.maxBalls ||
+                credits < totalCost
+            ) {
+                return false;
+            }
+
+            ensureAudio();
+            lastDropAt = now;
+
+            // Einsatz wird für die gesamte Charge direkt abgezogen.
+            credits -= totalCost;
+            totalDropped += totalCost;
+            ballsDropped += batchCount;
+
+            for (let i = 0; i < batchCount; i++) {
+                // Sehr kleiner visueller Versatz verhindert, dass mehrere Kugeln
+                // exakt übereinander liegen. Ergebnis/Pfad wird trotzdem sofort
+                // beim Klick für jede Kugel separat festgelegt.
+                const spawnDelay =
+                    batchCount === 1
+                        ? 0
+                        : i * 0.045;
+
+                balls.push(
+                    createBallForDrop(
+                        bet,
+                        spawnDelay
+                    )
+                );
+            }
+
+            tone(
+                batchCount >= 5 ? 590 : 510,
+                0.04,
+                batchCount >= 5 ? 0.021 : 0.015,
+                'sine'
+            );
 
             updateHud();
             return true;
@@ -1181,6 +1234,11 @@ export default {
 
             for (const ball of balls) {
                 if (ball.resolved) continue;
+
+                if (ball.spawnDelay > 0) {
+                    ball.spawnDelay -= delta;
+                    continue;
+                }
 
                 const from =
                     ball.waypoints[ball.segmentIndex];
@@ -1300,7 +1358,7 @@ export default {
 
             if (
                 autoRemaining <= 0 ||
-                credits < bet
+                credits < bet * ballsPerDrop
             ) {
                 autoMode = false;
                 autoRemaining = 0;
@@ -1314,7 +1372,12 @@ export default {
 
                 if (dropped) {
                     autoRemaining--;
-                    autoTimer = 0.18;
+                    autoTimer =
+                        ballsPerDrop >= 5
+                            ? 0.28
+                            : ballsPerDrop >= 3
+                                ? 0.23
+                                : 0.18;
                 } else {
                     autoTimer = 0.08;
                 }
@@ -1689,6 +1752,17 @@ export default {
             updateHud();
         };
 
+        const updateBallCountSelection = () => {
+            ballCountButtons.forEach(button => {
+                button.classList.toggle(
+                    'selected',
+                    Number(button.dataset.ballCount) === ballsPerDrop
+                );
+            });
+
+            updateHud();
+        };
+
         riskButtons.forEach(button => {
             button.addEventListener('click', () => {
                 if (balls.length > 0 || autoMode) return;
@@ -1704,6 +1778,13 @@ export default {
 
                 rows = Number(button.dataset.rows);
                 updateRowsSelection();
+            });
+        });
+
+        ballCountButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                ballsPerDrop = Number(button.dataset.ballCount);
+                updateBallCountSelection();
             });
         });
 
@@ -1775,6 +1856,7 @@ export default {
 
         resizeCanvas();
         setBet(bet);
+        updateBallCountSelection();
         updateHud();
 
         // Direkt den ersten Frame zeichnen. So ist das Plinko-Board sofort
@@ -1812,5 +1894,6 @@ export default {
 export {
     RISK_PROFILES,
     ROW_OPTIONS,
+    BALLS_PER_DROP_OPTIONS,
     CONFIG
 };

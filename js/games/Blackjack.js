@@ -4,6 +4,7 @@ export default {
         name: 'Blackjack',
         description: 'Der Casino-Klassiker.',
         icon: '🃏',
+        imageUrl: 'js/assets/images/blackjack.png',
         tags: ['Karten', 'Casino', 'Logik']
     },
     init: (container, services) => {
@@ -16,7 +17,6 @@ export default {
         let balance = 1000;
         let currentBet = 0;
 
-        // Bisherigen Highscore laden (Standard: 0)
         let recordBalance = services.highscores.getHighscore('blackjack') || 0;
 
         const style = document.createElement('style');
@@ -27,63 +27,103 @@ export default {
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
-                padding: 1.5rem;
-                color: #fff;
-                background: radial-gradient(circle at 50% 50%, #1a3c28 0%, #0a1710 100%);
+                padding: 2rem;
+                color: #ffffff;
+                /* Neuer moderner Dark-Mode Hintergrund mit Neon-Akzenten */
+                background-color: #0b0b0e;
+                background-image: 
+                    radial-gradient(circle at 15% 80%, rgba(0, 212, 255, 0.08) 0%, transparent 40%),
+                    radial-gradient(circle at 85% 20%, rgba(255, 51, 102, 0.08) 0%, transparent 40%);
                 overflow: hidden;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             }
             .bj-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                background: rgba(0,0,0,0.5);
+                /* Glassmorphismus für den Header */
+                background: rgba(20, 20, 30, 0.4);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
                 padding: 1rem 1.5rem;
                 border-radius: 12px;
-                border: 1px solid rgba(255,255,255,0.2);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
             }
             .bj-stats {
                 font-size: 1.2rem;
                 font-weight: bold;
+                letter-spacing: 0.5px;
             }
-            .val-balance { color: #00ff88; }
-            .val-bet { color: #f4a261; }
+            .val-balance { color: #00d4ff; text-shadow: 0 0 10px rgba(0, 212, 255, 0.4); }
+            .val-bet { color: #f4a261; text-shadow: 0 0 10px rgba(244, 162, 97, 0.4); }
             .bj-record {
                 color: #ffd700;
                 font-weight: bold;
+                background: rgba(255, 215, 0, 0.1);
+                padding: 0.4rem 1rem;
+                border-radius: 20px;
+                border: 1px solid rgba(255, 215, 0, 0.3);
                 text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
             }
             .bj-area {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                gap: 1rem;
+                gap: 1.5rem;
+            }
+            .bj-area h2 {
+                font-size: 1.2rem;
+                color: #8b8b9f;
+                text-transform: uppercase;
+                letter-spacing: 2px;
+                margin: 0;
+            }
+            .bj-area h2 span {
+                color: #ffffff;
+                font-size: 1.5rem;
             }
             .bj-cards {
                 display: flex;
                 gap: 15px;
-                min-height: 120px;
+                min-height: 130px;
             }
+            
+            /* Neue Dark-Neon Karten */
             .bj-card {
-                width: 80px;
-                height: 120px;
-                background: white;
+                width: 85px;
+                height: 130px;
+                background: rgba(15, 15, 20, 0.85);
+                backdrop-filter: blur(5px);
                 border-radius: 8px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 2rem;
+                font-size: 2.2rem;
                 font-weight: bold;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+                box-shadow: 0 10px 20px rgba(0,0,0,0.6), inset 0 0 15px rgba(0,0,0,0.8);
                 position: relative;
                 opacity: 0;
                 animation: dealCard 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+                border: 1px solid rgba(255,255,255,0.05);
             }
-            .bj-card.red { color: #e63946; }
-            .bj-card.black { color: #1d3557; }
+            .bj-card.red { 
+                border-color: rgba(255, 51, 102, 0.5); 
+                color: #ff3366; 
+                text-shadow: 0 0 12px rgba(255, 51, 102, 0.6);
+            }
+            .bj-card.black { 
+                border-color: rgba(0, 212, 255, 0.5); 
+                color: #00d4ff; 
+                text-shadow: 0 0 12px rgba(0, 212, 255, 0.6);
+            }
             .bj-card.hidden {
-                background: repeating-linear-gradient(45deg, #1d3557, #1d3557 10px, #457b9d 10px, #457b9d 20px);
+                background: repeating-linear-gradient(45deg, #1a1a24, #1a1a24 10px, #2a2a35 10px, #2a2a35 20px);
+                border-color: #333;
+                box-shadow: inset 0 0 20px rgba(0,0,0,0.9);
                 color: transparent;
             }
+            
             .bj-controls {
                 display: flex;
                 justify-content: center;
@@ -91,20 +131,29 @@ export default {
                 gap: 1rem;
                 margin-top: 1rem;
             }
+            
+            /* Glassmorphism Buttons */
             .bj-btn {
-                padding: 0.8rem 1.5rem;
-                border: none;
-                border-radius: 25px;
+                padding: 0.8rem 1.8rem;
+                border-radius: 30px;
                 font-size: 1rem;
-                font-weight: bold;
+                font-weight: 700;
                 cursor: pointer;
-                background: #00d4ff;
-                color: #000;
-                transition: transform 0.2s, box-shadow 0.2s;
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #ffffff;
+                backdrop-filter: blur(8px);
+                transition: all 0.3s ease;
             }
-            .bj-btn.bet-btn { background: #f4a261; }
-            .bj-btn.action-btn { background: #00ff88; }
-            .bj-btn.danger-btn { background: #ff3366; color: white; }
+            
+            .bj-btn.bet-btn { border-color: rgba(244, 162, 97, 0.4); color: #f4a261; }
+            .bj-btn.bet-btn:hover:not(:disabled) { background: rgba(244, 162, 97, 0.2); box-shadow: 0 0 15px rgba(244, 162, 97, 0.3); }
+            
+            .bj-btn.action-btn { border-color: rgba(0, 212, 255, 0.4); color: #00d4ff; }
+            .bj-btn.action-btn:hover:not(:disabled) { background: rgba(0, 212, 255, 0.2); box-shadow: 0 0 15px rgba(0, 212, 255, 0.4); }
+            
+            .bj-btn.danger-btn { border-color: rgba(255, 51, 102, 0.4); color: #ff3366; }
+            .bj-btn.danger-btn:hover:not(:disabled) { background: rgba(255, 51, 102, 0.2); box-shadow: 0 0 15px rgba(255, 51, 102, 0.4); }
             
             .bj-btn:disabled {
                 opacity: 0.3;
@@ -114,14 +163,15 @@ export default {
             }
             .bj-btn:not(:disabled):hover {
                 transform: translateY(-3px);
-                box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
             }
+            
             .bj-message {
                 text-align: center;
-                font-size: 2rem;
-                font-weight: bold;
+                font-size: 1.8rem;
+                font-weight: 800;
                 min-height: 2.5rem;
-                text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+                text-transform: uppercase;
+                letter-spacing: 1px;
                 transition: all 0.3s;
             }
             
@@ -130,12 +180,12 @@ export default {
             .bj-message.draw { color: #f4a261; }
             
             @keyframes dealCard {
-                0% { transform: translateY(-150px) rotate(-15deg) scale(0.5); opacity: 0; }
-                100% { transform: translateY(0) rotate(0) scale(1); opacity: 1; }
+                0% { transform: translateY(-100px) scale(0.8); opacity: 0; }
+                100% { transform: translateY(0) scale(1); opacity: 1; }
             }
             @keyframes winPulse {
-                0%, 100% { text-shadow: 0 0 10px #00ff88; transform: scale(1); }
-                50% { text-shadow: 0 0 30px #00ff88, 0 0 50px #00ff88; transform: scale(1.1); }
+                0%, 100% { text-shadow: 0 0 10px rgba(0, 255, 136, 0.5); transform: scale(1); }
+                50% { text-shadow: 0 0 25px rgba(0, 255, 136, 0.8); transform: scale(1.05); }
             }
             @keyframes shake {
                 0%, 100% { transform: translateX(0); }
@@ -151,24 +201,23 @@ export default {
         wrapper.innerHTML = `
             <div class="bj-header">
                 <div class="bj-stats">
-                    Guthaben: $<span id="balance-display" class="val-balance">1000</span> | 
+                    Guthaben: $<span id="balance-display" class="val-balance">1000</span> &nbsp;|&nbsp; 
                     Einsatz: $<span id="bet-display" class="val-bet">0</span>
                 </div>
                 <div class="bj-record">Rekord: $<span id="record-counter">${recordBalance}</span></div>
             </div>
             
             <div class="bj-area" id="dealer-area">
-                <h2>Dealer: <span id="dealer-score">?</span></h2>
+                <h2>Dealer <span id="dealer-score">?</span></h2>
                 <div class="bj-cards" id="dealer-cards"></div>
             </div>
 
-            <div class="bj-message" id="game-message">Willkommen! Bitte Einsatz wählen.</div>
+            <div class="bj-message" id="game-message">Bitte Einsatz wählen</div>
 
             <div class="bj-area" id="player-area">
                 <div class="bj-cards" id="player-cards"></div>
-                <h2>Spieler: <span id="player-score">0</span></h2>
+                <h2>Spieler <span id="player-score">0</span></h2>
                 
-                <!-- Setz-Phase Buttons -->
                 <div class="bj-controls" id="betting-controls">
                     <button class="bj-btn bet-btn" id="btn-bet-10">+$10</button>
                     <button class="bj-btn bet-btn" id="btn-bet-50">+$50</button>
@@ -178,9 +227,8 @@ export default {
                     <button class="bj-btn action-btn" id="btn-deal" disabled>Karten geben</button>
                 </div>
 
-                <!-- Spiel-Phase Buttons -->
                 <div class="bj-controls" id="playing-controls" style="display: none;">
-                    <button class="bj-btn" id="btn-hit">Karte ziehen</button>
+                    <button class="bj-btn action-btn" id="btn-hit">Karte ziehen</button>
                     <button class="bj-btn" id="btn-stand">Halten</button>
                     <button class="bj-btn action-btn" id="btn-restart" style="display: none;">Nächste Runde</button>
                     <button class="bj-btn danger-btn" id="btn-bankrupt" style="display: none;">Neues Geld holen ($1000)</button>
@@ -367,19 +415,16 @@ export default {
             messageEl.className = `bj-message ${status}`;
             messageEl.innerText = message;
 
-            // Gewinnausschüttung berechnen
             if (status === 'win') {
                 balance += currentBet * 2;
             } else if (status === 'blackjack') {
-                balance += Math.floor(currentBet * 2.5); // 3:2 Payout
+                balance += Math.floor(currentBet * 2.5);
             } else if (status === 'draw') {
-                balance += currentBet; // Geld zurück
+                balance += currentBet;
             }
 
-            // Highscore (Max. Guthaben) prüfen und speichern
             services.highscores.saveHighscore('blackjack', balance);
 
-            // UI mit dem eventuell neuen Rekord aktualisieren
             recordBalance = services.highscores.getHighscore('blackjack');
             recordEl.innerText = recordBalance;
 
@@ -417,7 +462,6 @@ export default {
             }
         };
 
-        // --- Event Listener Spiel-Phase ---
         btnDeal.addEventListener('click', startRound);
         btnRestart.addEventListener('click', startBettingPhase);
 
@@ -466,7 +510,6 @@ export default {
             setTimeout(dealerPlay, 500);
         });
 
-        // Start in der Setz-Phase
         startBettingPhase();
 
         return {

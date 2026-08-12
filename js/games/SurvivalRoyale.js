@@ -1,11 +1,31 @@
+import {
+  houseWalls,
+  houseContains,
+  houseEntrance
+} from './SurvivalRoyaleBuildingsV2_2.js';
+import {
+  buildFixedWorld,
+  drawRiver,
+  drawRiverMini,
+  terrainSpeedMultiplier,
+  collisionRadiusForObject
+} from './SurvivalRoyaleMapV2_2.js';
+import {
+  createBotAIState,
+  findNearbyEnemy,
+  chooseRoamDestination,
+  moveWithSteering,
+  findNavigationPath
+} from './SurvivalRoyaleAIV2_2.js';
+
 const DIFFICULTY={
   easy:{label:'Easy',aim:.20,reaction:.55,speed:.92},
   normal:{label:'Normal',aim:.11,reaction:.34,speed:1},
   hard:{label:'Hard',aim:.055,reaction:.20,speed:1.08}
 };
 const PRESETS={
-  quick:{label:'Quick',bots:11,size:2100,loot:115},
-  standard:{label:'Standard',bots:19,size:2800,loot:175}
+  quick:{label:'Quick',bots:11,size:2700,loot:165},
+  standard:{label:'Standard',bots:19,size:3900,loot:275}
 };
 const WEAPONS={
   pistol:{name:'9mm Pistol',ammo:'9mm',damage:24,rate:3.2,speed:760,spread:.045,mag:12,reload:1.25,range:650,color:'#7bdcff'},
@@ -16,10 +36,31 @@ const WEAPONS={
 };
 const CFG={move:205,playerR:19,botR:18,maxHp:100,maxArmor:100,pickup:62,medHeal:55,medTime:2.8,
 zone:[
- {wait:30,shrink:24,r:.72,dmg:3},{wait:25,shrink:21,r:.50,dmg:5},
- {wait:20,shrink:18,r:.33,dmg:8},{wait:16,shrink:15,r:.20,dmg:12},
- {wait:12,shrink:12,r:.10,dmg:18},{wait:8,shrink:10,r:.045,dmg:28}
+ {wait:36,shrink:30,r:.72,dmg:3},{wait:30,shrink:26,r:.50,dmg:5},
+ {wait:24,shrink:22,r:.33,dmg:8},{wait:20,shrink:18,r:.20,dmg:12},
+ {wait:16,shrink:15,r:.10,dmg:18},{wait:12,shrink:12,r:.045,dmg:28}
 ]};
+
+const GEAR={
+  vest:{
+    0:{armor:0,absorb:0},
+    1:{armor:50,absorb:.18},
+    2:{armor:75,absorb:.28},
+    3:{armor:100,absorb:.38}
+  },
+  helmet:{
+    0:{reduction:0},
+    1:{reduction:.05},
+    2:{reduction:.10},
+    3:{reduction:.16}
+  },
+  backpack:{
+    0:{ammo:100,med:1},
+    1:{ammo:165,med:2},
+    2:{ammo:255,med:3},
+    3:{ammo:390,med:5}
+  }
+};
 
 export default{
   manifest:{
@@ -33,8 +74,8 @@ export default{
     let dead=false,raf=0,last=performance.now(),running=false,ended=false;
     let presetKey='standard',diffKey='normal',preset=PRESETS[presetKey],diff=DIFFICULTY[diffKey];
     let W=1,H=1,dpr=1,worldSize=preset.size,time=0,kills=0,damageDone=0,placement=0;
-    let cam={x:0,y:0,zoom:1.45,targetZoom:1.45},mouse={x:0,y:0,wx:0,wy:0,down:false},keys={w:false,a:false,s:false,d:false,shift:false};
-    let player=null,bots=[],bullets=[],loot=[],objects=[],houses=[],crates=[],fx=[],feed=[],zone=null,nextId=1;
+    let cam={x:0,y:0,zoom:1.42,targetZoom:1.42},mouse={x:0,y:0,wx:0,wy:0,down:false},keys={w:false,a:false,s:false,d:false,shift:false};
+    let player=null,bots=[],bullets=[],loot=[],objects=[],houses=[],crates=[],fx=[],feed=[],zone=null,worldMap=null,nextId=1;
     let muted=false,audio=null;
 
     const style=document.createElement('style');
@@ -197,6 +238,41 @@ export default{
       font-size:.72rem
     }
 
+
+    .br-equipment{
+      display:grid;grid-template-columns:repeat(3,1fr);gap:5px
+    }
+    .br-equip{
+      min-height:47px;padding:5px 3px;border:1px solid #111711;
+      background:#272f27;text-align:center;border-radius:2px
+    }
+    .br-equip-icon{
+      width:25px;height:22px;margin:0 auto 3px;position:relative
+    }
+    .br-equip-label{
+      color:#b8c2b8;font-size:.49rem;font-weight:900;text-transform:uppercase
+    }
+    .br-equip-level{
+      color:#f0f3ee;font-size:.62rem;font-weight:950;margin-top:1px
+    }
+    .br-equip.helmet .br-equip-icon:before{
+      content:"";position:absolute;left:3px;right:3px;bottom:2px;height:13px;
+      border:3px solid #dfe6df;border-bottom-width:5px;border-radius:14px 14px 5px 5px
+    }
+    .br-equip.vest .br-equip-icon:before{
+      content:"";position:absolute;left:5px;right:5px;top:2px;bottom:1px;
+      border:3px solid #dfe6df;border-radius:3px;
+      clip-path:polygon(15% 0,38% 0,43% 18%,57% 18%,62% 0,85% 0,100% 25%,84% 100%,16% 100%,0 25%)
+    }
+    .br-equip.bag .br-equip-icon:before{
+      content:"";position:absolute;left:6px;right:6px;top:5px;bottom:1px;
+      border:3px solid #dfe6df;border-radius:4px
+    }
+    .br-equip.bag .br-equip-icon:after{
+      content:"";position:absolute;left:9px;right:9px;top:0;height:8px;
+      border:3px solid #dfe6df;border-bottom:0;border-radius:7px 7px 0 0
+    }
+
     @media(max-width:800px){
       .br-top{right:7px}.br-alive-panel{width:86px}.br-feed{right:7px;width:210px}
       .br-map{width:116px;height:116px;bottom:112px}
@@ -267,6 +343,24 @@ export default{
           <div class="br-ammo-cell"><span><i class="br-ammo-dot" style="background:#7197eb"></i>7.62</span><b class="am762">0</b></div>
         </div>
 
+        <div class="br-equipment">
+          <div class="br-equip helmet">
+            <div class="br-equip-icon"></div>
+            <div class="br-equip-label">Helmet</div>
+            <div class="br-equip-level eq-helmet">—</div>
+          </div>
+          <div class="br-equip vest">
+            <div class="br-equip-icon"></div>
+            <div class="br-equip-label">Vest</div>
+            <div class="br-equip-level eq-vest">—</div>
+          </div>
+          <div class="br-equip bag">
+            <div class="br-equip-icon"></div>
+            <div class="br-equip-label">Bag</div>
+            <div class="br-equip-level eq-bag">—</div>
+          </div>
+        </div>
+
         <div class="br-medbox">Q · Medkit <span class="br-med">×1</span></div>
       </div>
 
@@ -275,7 +369,7 @@ export default{
       <button class="br-sound" type="button">Sound: An</button>
       <div class="br-ov menu"><div class="br-card">
         <div class="br-k">Top-Down Battle Royale / Singleplayer</div><div class="br-title">Survival Royale</div>
-        <div class="br-desc">Inspiriert von klassischen Browser-Battle-Royales: zufällige Top-Down-Map, Loot, Waffen, KI-Gefechte, Deckung und eine Safe Zone, die das Match immer weiter zusammenzieht.</div>
+        <div class="br-desc">Inspiriert von klassischen Browser-Battle-Royales: große Top-Down-Map, begehbare Gebäude, Loot, Waffen, KI-Gefechte, Deckung und eine Safe Zone, die das Match immer weiter zusammenzieht.</div>
         <div class="br-how"><div><b>WASD + Maus</b><span>Bewegen und zielen. Du startest mit Fäusten; LMB schlägt oder schießt.</span></div><div><b>Looten</b><span>Loot liegt in Gebäuden oder steckt in zerstörbaren Kisten. E hebt Gegenstände auf.</span></div><div><b>Kisten & Deckung</b><span>Kisten haben versteckte HP, schrumpfen bei Schaden und droppen Loot. Wände stoppen Kugeln.</span></div><div><b>Zone</b><span>Außerhalb des Kreises bekommst du immer stärkeren Schaden.</span></div></div>
         <div class="br-sec">Match</div><div class="br-opts p">${Object.entries(PRESETS).map(([k,v])=>`<button class="br-opt ${k===presetKey?'sel':''}" data-p="${k}" type="button"><b>${v.label}</b><span>${v.bots+1} Teilnehmer · ${v.size}px Map</span></button>`).join('')}</div>
         <div class="br-sec">Bot Difficulty</div><div class="br-opts d">${Object.entries(DIFFICULTY).map(([k,v])=>`<button class="br-opt ${k===diffKey?'sel':''}" data-d="${k}" type="button"><b>${v.label}</b><span>${k==='easy'?'Ungenauer und langsamer':k==='hard'?'Schnelle, präzise Gegner':'Ausgewogene Gegner'}</span></button>`).join('')}</div>
@@ -293,38 +387,130 @@ export default{
     const slots=[$('.s0'),$('.s1')],fistsEl=$('.fists'),medEl=$('.br-med'),hpNumberEl=$('.br-hp-number'),
       ammoEls={'9mm':$('.am9'),'12g':$('.am12'),'556':$('.am556'),'762':$('.am762')},
       scopeEls={1:$('.scope1'),2:$('.scope2'),4:$('.scope4'),8:$('.scope8')},
+      equipEls={helmet:$('.eq-helmet'),vest:$('.eq-vest'),backpack:$('.eq-bag')},
       menu=$('.menu'),end=$('.end');
     const rand=(a,b)=>a+Math.random()*(b-a), rint=(a,b)=>Math.floor(rand(a,b+1)), clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
     const names=['Lucky','Nova','Crow','Echo','Moss','Viper','Rex','Pixel','Ghost','Bolt','Mango','Frost','Mako','Wolf','Jinx','Ace','Luna','Drift','Quill','Zero'];let nameI=0;
-    const makeGun=id=>({id,mag:WEAPONS[id].mag,reload:0,cool:0});
-    const makeChar=(x,y,isP=false)=>({id:nextId++,x,y,r:isP?CFG.playerR:CFG.botR,isP,name:isP?'YOU':names[nameI++%names.length],hp:100,armor:0,alive:true,angle:0,color:isP?'#efc178':`hsl(${rint(0,359)} 55% 67%)`,guns:[null,null],slot:-1,ammo:{'9mm':0,'12g':0,'556':0,'762':0},med:1,scope:1,using:false,useT:0,meleeCool:0,ai:isP?null:{think:rand(.1,.5),target:null,move:null,strafe:Math.random()<.5?-1:1}});
+    const makeGun=(id,mag=null)=>({id,mag:mag??WEAPONS[id].mag,reload:0,cool:0});
+    const makeChar=(x,y,isP=false)=>({
+      id:nextId++,
+      x,y,
+      r:isP?CFG.playerR:CFG.botR,
+      isP,
+      name:isP?'YOU':names[nameI++%names.length],
+      hp:100,
+      armor:0,
+      vest:0,
+      helmet:0,
+      backpack:0,
+      alive:true,
+      angle:0,
+      color:isP?'#efc178':`hsl(${rint(0,359)} 55% 67%)`,
+      guns:[null,null],
+      slot:-1,
+      ammo:{'9mm':0,'12g':0,'556':0,'762':0},
+      med:1,
+      scope:1,
+      using:false,
+      useT:0,
+      meleeCool:0,
+      ai:isP?null:createBotAIState(rand)
+    });
     const weapon=e=>e.slot<0?null:e.guns[e.slot], fmt=t=>`${Math.floor(t/60)}:${String(Math.floor(t)%60).padStart(2,'0')}`;
     const ensureAudio=()=>{if(muted)return null;try{if(!audio)audio=new(window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();return audio}catch{return null}};
     const tone=(f,d=.035,v=.015,type='square')=>{const a=ensureAudio();if(!a)return;const o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.value=f;g.gain.value=v;g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+d);o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+d)};
 
     function resize(){const r=root.getBoundingClientRect();W=r.width;H=r.height;dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);canvas.style.width=W+'px';canvas.style.height=H+'px';}
     function rectHit(x,y,r,o){const nx=clamp(x,o.x,o.x+o.w),ny=clamp(y,o.y,o.y+o.h);return Math.hypot(x-nx,y-ny)<r}
-    function blocked(e,x,y){
-      for(const o of objects)if(o.solid&&Math.hypot(x-o.x,y-o.y)<e.r+o.r)return true;
-      for(const c of crates)if(c.on&&Math.hypot(x-c.x,y-c.y)<e.r+c.r*c.scale)return true;
-      for(const h of houses)for(const w of h.walls)if(rectHit(x,y,e.r,w))return true;
-      return false
+    function blockedStatic(e,x,y){
+      for(const o of objects){
+        const r=collisionRadiusForObject(o);
+        if(r>0&&Math.hypot(x-o.x,y-o.y)<e.r+r)return true;
+      }
+
+      for(const h of houses){
+        for(const w of houseWalls(h)){
+          if(rectHit(x,y,e.r,w))return true;
+        }
+      }
+
+      return false;
     }
-    function move(e,dx,dy){let nx=clamp(e.x+dx,e.r,worldSize-e.r);if(!blocked(e,nx,e.y))e.x=nx;let ny=clamp(e.y+dy,e.r,worldSize-e.r);if(!blocked(e,e.x,ny))e.y=ny}
-    function openPoint(){for(let n=0;n<120;n++){const p={x:rand(70,worldSize-70),y:rand(70,worldSize-70)};if(!objects.some(o=>o.solid&&dist(p,o)<o.r+35)&&!crates.some(c=>c.on&&dist(p,c)<c.r+28)&&!houses.some(h=>p.x>h.x-30&&p.x<h.x+h.w+30&&p.y>h.y-30&&p.y<h.y+h.h+30))return p}return{x:rand(70,worldSize-70),y:rand(70,worldSize-70)}}
-    function makeHouse(x,y,w,h){const t=13,d=50,walls=[{x,y,w,h:t},{x,y:y+h-t,w,h:t},{x,y,w:t,h},{x:x+w-t,y,w:t,h}];const side=rint(0,3);if(side===0){walls.splice(0,1,{x,y,w:w/2-d/2,h:t},{x:x+w/2+d/2,y,w:w/2-d/2,h:t})}if(side===2){walls.splice(1,1,{x,y:y+h-t,w:w/2-d/2,h:t},{x:x+w/2+d/2,y:y+h-t,w:w/2-d/2,h:t})}return{x,y,w,h,walls,warehouse:Math.random()<.28}}
+
+    function blocked(e,x,y){
+      if(blockedStatic(e,x,y))return true;
+
+      for(const c of crates){
+        if(c.on&&Math.hypot(x-c.x,y-c.y)<e.r+c.r*c.scale)return true;
+      }
+
+      return false;
+    }
+
+    function navigationSegmentBlocked(e,x1,y1,x2,y2){
+      const distance=Math.hypot(x2-x1,y2-y1);
+      const steps=Math.max(1,Math.ceil(distance/13));
+
+      for(let i=1;i<=steps;i++){
+        const t=i/steps;
+        const x=x1+(x2-x1)*t;
+        const y=y1+(y2-y1)*t;
+
+        if(blockedStatic(e,x,y))return true;
+      }
+
+      return false;
+    }
+
+    function move(e,dx,dy){
+      const terrain=terrainSpeedMultiplier(
+        e.x,
+        e.y,
+        worldMap?.river
+      );
+
+      dx*=terrain;
+      dy*=terrain;
+
+      let nx=clamp(e.x+dx,e.r,worldSize-e.r);
+      if(!blocked(e,nx,e.y))e.x=nx;
+
+      let ny=clamp(e.y+dy,e.r,worldSize-e.r);
+      if(!blocked(e,e.x,ny))e.y=ny;
+    }
+
+    function openPoint(){
+      const fixed=worldMap?.spawnPoints??[];
+
+      for(let n=0;n<fixed.length*2;n++){
+        const p=fixed[rint(0,fixed.length-1)];
+        if(p&&!blocked({r:CFG.playerR},p.x,p.y))return{x:p.x,y:p.y};
+      }
+
+      for(let n=0;n<120;n++){
+        const p={x:rand(70,worldSize-70),y:rand(70,worldSize-70)};
+        if(!blocked({r:CFG.playerR},p.x,p.y))return p;
+      }
+
+      return{x:worldSize*.2,y:worldSize*.2};
+    }
+
+    function currentPlayerHouse(){
+      if(!player)return null;
+      return houses.find(h=>houseContains(player,h,8))??null;
+    }
 
     function scopeViewMultiplier(scope){
-      if(scope===2)return 1.5;
-      if(scope===4)return 2.0;
-      if(scope===8)return 2.5;
+      // Die Scope-Sprünge sind absichtlich deutlich kleiner als vorher.
+      // Sie geben mehr Übersicht, ohne dass 4x/8x die Spielfiguren winzig machen.
+      if(scope===2)return 1.16;
+      if(scope===4)return 1.32;
+      if(scope===8)return 1.50;
       return 1.0;
     }
 
     function scopeZoom(scope){
-      // Start ist absichtlich nah herangezoomt.
-      // 2x = 50% mehr Sichtfläche, 4x = 100%, 8x = 150%.
-      return 1.45/scopeViewMultiplier(scope);
+      return 1.42/scopeViewMultiplier(scope);
     }
 
     function randomScope(){
@@ -332,6 +518,36 @@ export default{
       if(roll<.64)return 2;
       if(roll<.91)return 4;
       return 8;
+    }
+
+    function randomGearLevel(){
+      const roll=Math.random();
+      if(roll<.62)return 1;
+      if(roll<.91)return 2;
+      return 3;
+    }
+
+    function totalReserveAmmo(e){
+      return Object.values(e.ammo).reduce((a,b)=>a+b,0);
+    }
+
+    function ammoCapacity(e){
+      return GEAR.backpack[e.backpack||0].ammo;
+    }
+
+    function medCapacity(e){
+      return GEAR.backpack[e.backpack||0].med;
+    }
+
+    function addAmmo(e,type,amount){
+      const free=Math.max(0,ammoCapacity(e)-totalReserveAmmo(e));
+      const take=Math.min(amount,free);
+
+      if(take>0){
+        e.ammo[type]+=take;
+      }
+
+      return take;
     }
 
     function addLoot(type,x,y,data={}){loot.push({id:nextId++,type,x,y,on:true,...data})}
@@ -351,27 +567,42 @@ export default{
     function spawnLootRoll(x,y,crateDrop=false){
       const z=Math.random();
 
-      if(z<(crateDrop?.31:.27)){
+      if(z<(crateDrop?.27:.24)){
         const gun=randomWeaponId();
-        addLoot('gun',x,y,{gun});
+        addLoot('gun',x,y,{gun,mag:WEAPONS[gun].mag});
 
-        if(crateDrop && Math.random()<.62){
+        if(crateDrop&&Math.random()<.58){
           const a=WEAPONS[gun].ammo;
-          addLoot('ammo',x+rand(-18,18),y+rand(-18,18),{
-            ammo:a,
-            amount:a==='12g'?rint(6,13):rint(15,32)
-          });
+
+          addLoot(
+            'ammo',
+            x+rand(-18,18),
+            y+rand(-18,18),
+            {
+              ammo:a,
+              amount:a==='12g'
+                ?rint(6,13)
+                :rint(15,32)
+            }
+          );
         }
-      }else if(z<.59){
+      }else if(z<.52){
         const a=['9mm','12g','556','762'][rint(0,3)];
+
         addLoot('ammo',x,y,{
           ammo:a,
-          amount:a==='12g'?rint(6,14):rint(15,36)
+          amount:a==='12g'
+            ?rint(6,14)
+            :rint(15,36)
         });
-      }else if(z<.72){
+      }else if(z<.62){
         addLoot('med',x,y,{amount:1});
-      }else if(z<.90){
-        addLoot('armor',x,y,{amount:rint(22,48)});
+      }else if(z<.74){
+        addLoot('vest',x,y,{level:randomGearLevel()});
+      }else if(z<.83){
+        addLoot('helmet',x,y,{level:randomGearLevel()});
+      }else if(z<.91){
+        addLoot('backpack',x,y,{level:randomGearLevel()});
       }else{
         addLoot('scope',x,y,{scope:randomScope()});
       }
@@ -430,101 +661,65 @@ export default{
       crates=[];
       loot=[];
 
-      const hc=presetKey==='quick'?7:12;
+      worldMap=buildFixedWorld({
+        worldSize,
+        presetKey,
+        allocId:()=>nextId++
+      });
 
-      for(let n=0;n<hc;n++){
-        for(let t=0;t<80;t++){
-          const w=rand(145,235),h=rand(125,205),
-                x=rand(90,worldSize-w-90),y=rand(90,worldSize-h-90);
+      houses=worldMap.houses;
+      objects=worldMap.objects;
 
-          if(!houses.some(q=>!(
-            x+w+75<q.x||
-            x>q.x+q.w+75||
-            y+h+75<q.y||
-            y>q.y+q.h+75
-          ))){
-            houses.push(makeHouse(x,y,w,h));
-            break;
-          }
-        }
-      }
-
-      const oc=presetKey==='quick'?75:115;
-
-      for(let n=0;n<oc;n++){
-        const type=Math.random()<.58?'tree':Math.random()<.72?'rock':'bush',
-              r=type==='tree'?rand(25,37):rand(18,30),
-              p=openPoint();
-
-        objects.push({
-          id:nextId++,
-          type,
-          x:p.x,
-          y:p.y,
-          r,
-          solid:type!=='bush'
-        });
-      }
-
-      // Freier Boden-Loot liegt bewusst fast nur in Gebäuden.
-      const floorLoot=Math.round(preset.loot*.42);
-
-      for(let n=0;n<floorLoot;n++){
-        if(!houses.length)break;
-
-        const h=houses[rint(0,houses.length-1)];
-        const p={
-          x:rand(h.x+27,h.x+h.w-27),
-          y:rand(h.y+27,h.y+h.h-27)
-        };
-
+      // Positions are authored and fixed. Only the item roll itself changes per match.
+      for(const p of worldMap.lootSpawns){
         spawnLootRoll(p.x,p.y,false);
       }
 
-      // Restliche Loot-Quelle: zerstörbare Kisten, drinnen und draußen.
-      const crateCount=presetKey==='quick'?38:58;
-
-      for(let n=0;n<crateCount;n++){
-        let placed=false;
-
-        if(houses.length && Math.random()<.43){
-          const h=houses[rint(0,houses.length-1)];
-
-          for(let tries=0;tries<24;tries++){
-            const p={
-              x:rand(h.x+32,h.x+h.w-32),
-              y:rand(h.y+32,h.y+h.h-32)
-            };
-
-            if(!crates.some(c=>dist(c,p)<62)){
-              addCrate(p.x,p.y);
-              placed=true;
-              break;
-            }
-          }
-        }
-
-        if(!placed){
-          const p=openPoint();
+      for(const p of worldMap.crateSpawns){
+        if(!blocked({r:23},p.x,p.y)){
           addCrate(p.x,p.y);
         }
       }
     }
 
+    function fixedSpawnPoint(avoid=null,used=[]){
+      const points=(worldMap?.spawnPoints??[])
+        .filter(p=>
+          !blocked({r:CFG.playerR},p.x,p.y)&&
+          !used.some(q=>Math.hypot(q.x-p.x,q.y-p.y)<180)
+        );
+
+      let best=null;
+      let bestScore=-Infinity;
+
+      for(const p of points){
+        const avoidDist=avoid?Math.hypot(p.x-avoid.x,p.y-avoid.y):9999;
+        const score=avoidDist+rand(0,150);
+
+        if(score>bestScore){
+          bestScore=score;
+          best=p;
+        }
+      }
+
+      return best?{x:best.x,y:best.y}:openPoint();
+    }
+
     function spawn(){
-      const p=openPoint();
+      const used=[];
+      const p=fixedSpawnPoint(null,used);
+      used.push(p);
+
       player=makeChar(p.x,p.y,true);
       player.slot=-1;
       bots=[];
 
       for(let i=0;i<preset.bots;i++){
-        let q=openPoint(),tries=0;
-        while(dist(p,q)<340&&tries++<30)q=openPoint();
+        const q=fixedSpawnPoint(p,used);
+        used.push(q);
 
         const b=makeChar(q.x,q.y,false);
 
-        // Bots bekommen mindestens eine Pistole, damit die Singleplayer-Runde
-        // direkt als Battle Royale funktioniert. Nur der Spieler startet mit Fäusten.
         b.guns[0]=makeGun('pistol');
         b.slot=0;
         b.ammo['9mm']=36;
@@ -536,7 +731,18 @@ export default{
           b.ammo[WEAPONS[id].ammo]+=WEAPONS[id].mag*2;
         }
 
-        if(Math.random()<.25)b.armor=rint(18,50);
+        if(Math.random()<.32){
+          b.vest=Math.random()<.18?2:1;
+          b.armor=GEAR.vest[b.vest].armor*rand(.55,.95);
+        }
+
+        if(Math.random()<.22){
+          b.helmet=Math.random()<.14?2:1;
+        }
+
+        if(Math.random()<.24){
+          b.backpack=Math.random()<.12?2:1;
+        }
 
         bots.push(b);
       }
@@ -547,11 +753,141 @@ export default{
     const inside=e=>Math.hypot(e.x-zone.x,e.y-zone.y)<=zone.r;
     function fxBurst(x,y,c,n=8){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=rand(30,100),life=rand(.25,.5);fx.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,c,life,max:life})}}
     function addFeed(s){feed.unshift({s,t:5});feed=feed.slice(0,6);feedEl.innerHTML=feed.map(x=>`<div>${x.s}</div>`).join('')}
-    function damage(e,d,owner=null,source='bullet'){if(!e.alive)return;if(e.armor>0&&source!=='zone'){const ab=Math.min(e.armor,d*.48);e.armor-=ab;d-=ab*.72}e.hp-=d;if(owner===player?.id)damageDone+=d;if(e.hp<=0)kill(e,owner,source)}
-    function alive(){return [player,...bots].filter(x=>x&&x.alive)}
+    function damage(e,d,owner=null,source='bullet'){
+      if(!e.alive)return;
+
+      if(source!=='zone'){
+        const helmetReduction=
+          GEAR.helmet[e.helmet||0].reduction;
+
+        d*=1-helmetReduction;
+
+        if(e.vest>0&&e.armor>0){
+          const absorbRate=
+            GEAR.vest[e.vest].absorb;
+
+          const prevented=
+            d*absorbRate;
+
+          e.armor=Math.max(
+            0,
+            e.armor-prevented*1.18
+          );
+
+          d-=prevented;
+        }
+      }
+
+      e.hp-=d;
+
+      if(owner===player?.id){
+        damageDone+=d;
+      }
+
+      if(e.hp<=0){
+        kill(e,owner,source);
+      }
+    }    function alive(){return [player,...bots].filter(x=>x&&x.alive)}
     function kill(e,owner,source){if(!e.alive)return;e.alive=false;e.hp=0;dropLoot(e);const a=[player,...bots].find(x=>x&&x.id===owner),killer=a?a.name:source==='zone'?'Zone':'Unknown';addFeed(`${killer} eliminated ${e.name}`);if(owner===player?.id&&!e.isP){kills++;fxBurst(e.x,e.y,'#ff6578',14)}if(e.isP){placement=alive().length+1;setTimeout(()=>finish(false),650)}else if(player?.alive&&alive().length===1){placement=1;setTimeout(()=>finish(true),500)}}
-    function dropLoot(e){const g=weapon(e);if(g)addLoot('gun',e.x+rand(-15,15),e.y+rand(-15,15),{gun:g.id});for(const a in e.ammo)if(e.ammo[a]>8)addLoot('ammo',e.x+rand(-18,18),e.y+rand(-18,18),{ammo:a,amount:Math.min(e.ammo[a],30)});if(e.med)addLoot('med',e.x+10,e.y-10,{amount:1});if(e.armor>15)addLoot('armor',e.x-10,e.y+10,{amount:Math.min(40,Math.round(e.armor))})}
-    function lineBlocked(x1,y1,x2,y2){const steps=Math.ceil(Math.hypot(x2-x1,y2-y1)/14);for(let i=1;i<=steps;i++){const t=i/steps,x=x1+(x2-x1)*t,y=y1+(y2-y1)*t;for(const o of objects)if(o.solid&&Math.hypot(x-o.x,y-o.y)<o.r)return true;for(const h of houses)for(const w of h.walls)if(x>=w.x&&x<=w.x+w.w&&y>=w.y&&y<=w.y+w.h)return true}return false}
+    function dropLoot(e){
+      e.guns.forEach((g,index)=>{
+        if(!g)return;
+
+        const angle=e.angle+Math.PI+index*.45;
+
+        addLoot(
+          'gun',
+          e.x+Math.cos(angle)*24,
+          e.y+Math.sin(angle)*24,
+          {
+            gun:g.id,
+            mag:g.mag
+          }
+        );
+      });
+
+      for(const a in e.ammo){
+        if(e.ammo[a]>5){
+          addLoot(
+            'ammo',
+            e.x+rand(-22,22),
+            e.y+rand(-22,22),
+            {
+              ammo:a,
+              amount:Math.min(e.ammo[a],34)
+            }
+          );
+        }
+      }
+
+      if(e.med>0){
+        addLoot(
+          'med',
+          e.x+rand(-18,18),
+          e.y+rand(-18,18),
+          {amount:Math.min(2,e.med)}
+        );
+      }
+
+      if(e.vest>0){
+        addLoot(
+          'vest',
+          e.x+rand(-20,20),
+          e.y+rand(-20,20),
+          {level:e.vest}
+        );
+      }
+
+      if(e.helmet>0){
+        addLoot(
+          'helmet',
+          e.x+rand(-20,20),
+          e.y+rand(-20,20),
+          {level:e.helmet}
+        );
+      }
+
+      if(e.backpack>0){
+        addLoot(
+          'backpack',
+          e.x+rand(-20,20),
+          e.y+rand(-20,20),
+          {level:e.backpack}
+        );
+      }
+    }    function lineBlocked(x1,y1,x2,y2){
+      const steps=Math.ceil(Math.hypot(x2-x1,y2-y1)/14);
+
+      for(let i=1;i<=steps;i++){
+        const t=i/steps;
+        const x=x1+(x2-x1)*t;
+        const y=y1+(y2-y1)*t;
+
+        for(const o of objects){
+          const r=collisionRadiusForObject(o);
+
+          if(r>0&&Math.hypot(x-o.x,y-o.y)<r){
+            return true;
+          }
+        }
+
+        for(const c of crates){
+          if(c.on&&Math.hypot(x-c.x,y-c.y)<c.r*c.scale){
+            return true;
+          }
+        }
+
+        for(const h of houses){
+          for(const w of houseWalls(h)){
+            if(x>=w.x&&x<=w.x+w.w&&y>=w.y&&y<=w.y+w.h){
+              return true;
+            }
+          }
+        }
+      }
+
+      return false;
+    }
     function reload(e){const s=weapon(e);if(!s)return;const d=WEAPONS[s.id];if(s.reload>0||s.mag>=d.mag||e.ammo[d.ammo]<=0)return;s.reload=d.reload}
     function updateTimers(e,dt){e.meleeCool=Math.max(0,(e.meleeCool||0)-dt);for(const s of e.guns)if(s){s.cool=Math.max(0,s.cool-dt);if(s.reload>0){s.reload-=dt;if(s.reload<=0){s.reload=0;const d=WEAPONS[s.id],n=Math.min(d.mag-s.mag,e.ammo[d.ammo]);s.mag+=n;e.ammo[d.ammo]-=n}}}if(e.using){e.useT-=dt;if(e.useT<=0){e.using=false;e.med--;e.hp=Math.min(100,e.hp+CFG.medHeal);if(e.isP)tone(700,.06,.018,'sine')}}}
     function angleDifference(a,b){
@@ -607,9 +943,40 @@ export default{
       }
     }
 
-    function shoot(e,ang=e.angle){if(!e.alive||e.using)return;const s=weapon(e);if(!s){melee(e);return;}const d=WEAPONS[s.id];if(s.cool>0||s.reload>0)return;if(s.mag<=0){if(!e.isP)reload(e);return}s.mag--;s.cool=1/d.rate;const pellets=d.pellets||1,mx=e.x+Math.cos(ang)*(e.r+14),my=e.y+Math.sin(ang)*(e.r+14);for(let p=0;p<pellets;p++){const a=ang+rand(-d.spread,d.spread);bullets.push({id:nextId++,owner:e.id,weaponId:s.id,x:mx,y:my,vx:Math.cos(a)*d.speed,vy:Math.sin(a)*d.speed,dmg:d.damage,life:d.range/d.speed,c:d.color})}fxBurst(mx,my,'#ffe18a',4);if(e.isP)tone(s.id==='shotgun'?135:s.id==='dmr'?170:220,.03,.018)}
+    function shoot(e,ang=e.angle){if(!e.alive||e.using)return;const s=weapon(e);if(!s){melee(e);return;}const d=WEAPONS[s.id];if(s.cool>0||s.reload>0)return;if(s.mag<=0){if(!e.isP)reload(e);return}s.mag--;s.cool=1/d.rate;const pellets=d.pellets||1,mx=e.x+Math.cos(ang)*(e.r+14),my=e.y+Math.sin(ang)*(e.r+14);for(let p=0;p<pellets;p++){const a=ang+rand(-d.spread,d.spread);bullets.push({
+        id:nextId++,
+        owner:e.id,
+        weaponId:s.id,
+        x:mx,
+        y:my,
+        vx:Math.cos(a)*d.speed,
+        vy:Math.sin(a)*d.speed,
+        dmg:d.damage,
+        life:d.range/d.speed,
+        maxLife:d.range/d.speed,
+        tracer:
+          s.id==='dmr'
+            ?82
+            :s.id==='rifle'
+              ?70
+              :s.id==='shotgun'
+                ?52
+                :s.id==='smg'
+                  ?48
+                  :58,
+        c:d.color
+      })}fxBurst(mx,my,'#ffe18a',4);if(e.isP)tone(s.id==='shotgun'?135:s.id==='dmr'?170:220,.03,.018)}
     function nearLoot(e,r=CFG.pickup){let best=null,bd=1e9;for(const l of loot)if(l.on){const d=dist(e,l);if(d<r&&d<bd){best=l;bd=d}}return best}
-    function lootName(l){if(l.type==='gun')return WEAPONS[l.gun].name;if(l.type==='ammo')return `${l.amount} ${l.ammo}`;if(l.type==='med')return'Medkit';if(l.type==='scope')return`${l.scope}x Scope`;return`Armor +${l.amount}`}
+    function lootName(l){
+      if(l.type==='gun')return WEAPONS[l.gun].name;
+      if(l.type==='ammo')return `${l.amount} ${l.ammo}`;
+      if(l.type==='med')return'Medkit';
+      if(l.type==='scope')return`${l.scope}x Scope`;
+      if(l.type==='vest')return`Vest Lv.${l.level}`;
+      if(l.type==='helmet')return`Helmet Lv.${l.level}`;
+      if(l.type==='backpack')return`Backpack Lv.${l.level}`;
+      return l.type;
+    }
     function pick(e,l){
       if(!l||!l.on)return;
 
@@ -620,21 +987,93 @@ export default{
         else if(!e.guns[1])targetSlot=1;
         else targetSlot=e.slot>=0?e.slot:0;
 
-        e.guns[targetSlot]=makeGun(l.gun);
+        const old=e.guns[targetSlot];
+
+        // PUBG-artig: Slot ist belegt -> alte Waffe landet wieder auf dem Boden.
+        if(old){
+          const dropAngle=e.angle+Math.PI;
+          const dropDistance=e.r+27;
+
+          addLoot(
+            'gun',
+            e.x+Math.cos(dropAngle)*dropDistance,
+            e.y+Math.sin(dropAngle)*dropDistance,
+            {
+              gun:old.id,
+              mag:old.mag
+            }
+          );
+        }
+
+        e.guns[targetSlot]=makeGun(
+          l.gun,
+          l.mag??WEAPONS[l.gun].mag
+        );
+
         e.slot=targetSlot;
 
         const def=WEAPONS[l.gun];
-        e.ammo[def.ammo]+=Math.max(
-          Math.ceil(def.mag*.55),
-          def.ammo==='12g'?3:6
+
+        addAmmo(
+          e,
+          def.ammo,
+          Math.max(
+            Math.ceil(def.mag*.45),
+            def.ammo==='12g'?3:6
+          )
         );
 
         l.on=false;
       }else if(l.type==='ammo'){
-        e.ammo[l.ammo]+=l.amount;
-        l.on=false;
+        const taken=addAmmo(e,l.ammo,l.amount);
+
+        if(taken<=0)return;
+
+        l.amount-=taken;
+
+        if(l.amount<=0){
+          l.on=false;
+        }
       }else if(l.type==='med'){
-        e.med=Math.min(5,e.med+l.amount);
+        const free=Math.max(0,medCapacity(e)-e.med);
+
+        if(free<=0)return;
+
+        const take=Math.min(l.amount,free);
+        e.med+=take;
+        l.amount-=take;
+
+        if(l.amount<=0){
+          l.on=false;
+        }
+      }else if(l.type==='vest'){
+        const level=l.level;
+
+        if(level<e.vest)return;
+
+        const maxArmor=GEAR.vest[level].armor;
+
+        if(level===e.vest&&e.armor>=maxArmor*.90){
+          return;
+        }
+
+        const previousVest=e.vest;
+        e.vest=level;
+        e.armor=Math.max(
+          e.armor,
+          maxArmor*(level===previousVest?.72:.84)
+        );
+        e.armor=Math.min(maxArmor,e.armor);
+        l.on=false;
+      }else if(l.type==='helmet'){
+        if(l.level<=e.helmet)return;
+
+        e.helmet=l.level;
+        l.on=false;
+      }else if(l.type==='backpack'){
+        if(l.level<=e.backpack)return;
+
+        e.backpack=l.level;
         l.on=false;
       }else if(l.type==='scope'){
         if(l.scope>(e.scope||1)){
@@ -648,25 +1087,587 @@ export default{
         }else{
           return;
         }
-      }else{
-        e.armor=Math.min(100,e.armor+l.amount);
-        l.on=false;
       }
 
-      if(e.isP && l.type!=='scope'){
+      if(e.isP&&l.type!=='scope'){
         tone(670,.025,.01,'triangle');
       }
     }
     function useMed(e){if(e.med>0&&e.hp<100&&!e.using){e.using=true;e.useT=CFG.medTime}}
     function updatePlayer(dt){if(!player?.alive)return;updateTimers(player,dt);let dx=(keys.d?1:0)-(keys.a?1:0),dy=(keys.s?1:0)-(keys.w?1:0),len=Math.hypot(dx,dy);if(len){if(player.using){player.using=false;player.useT=0}const sp=CFG.move*(keys.shift?1.22:1);move(player,dx/len*sp*dt,dy/len*sp*dt)}mouse.wx=cam.x+(mouse.x-W/2)/cam.zoom;mouse.wy=cam.y+(mouse.y-H/2)/cam.zoom;player.angle=Math.atan2(mouse.wy-player.y,mouse.wx-player.x);if(mouse.down)shoot(player);if(!inside(player))damage(player,zone.dmg*dt,null,'zone')}
-    function nearestEnemy(b,max=620){let best=null,bd=max;for(const e of alive())if(e.id!==b.id){const d=dist(b,e);if(d<bd&&!lineBlocked(b.x,b.y,e.x,e.y)){best=e;bd=d}}return best?{e:best,d:bd}:null}
-    function aiLoot(b){let best=null,bs=-1e9;for(const l of loot)if(l.on){const d=dist(b,l);if(d>430)continue;let s=-d*.15;if(l.type==='gun'){const cur=weapon(b),order={pistol:1,smg:2,shotgun:2,rifle:3,dmr:4};s+=(order[l.gun]-(cur?order[cur.id]:0))*90}else if(l.type==='armor')s+=90-b.armor;else if(l.type==='med')s+=b.med<2?65:5;else if(l.type==='scope')s+=(l.scope>(b.scope||1)?32:-30);else s+=20;if(s>bs){best=l;bs=s}}return bs>5?best:null}
-    function moveToward(b,x,y,dt,m=1){const dx=x-b.x,dy=y-b.y,l=Math.max(1,Math.hypot(dx,dy)),sp=CFG.move*diff.speed*m;const ox=b.x,oy=b.y;move(b,dx/l*sp*dt,dy/l*sp*dt);if(Math.hypot(b.x-ox,b.y-oy)<.2)move(b,-dy/l*sp*dt*b.ai.strafe,dx/l*sp*dt*b.ai.strafe)}
-    function updateBot(b,dt){if(!b.alive)return;updateTimers(b,dt);if(!inside(b))damage(b,zone.dmg*dt,null,'zone');if(!b.alive)return;if(b.using)return;const zd=Math.hypot(b.x-zone.x,b.y-zone.y);if(zd>zone.r-30){moveToward(b,zone.x,zone.y,dt,1.08);b.angle=Math.atan2(zone.y-b.y,zone.x-b.x);return}
-      const en=nearestEnemy(b,620);if(en){const s=weapon(b),def=WEAPONS[s.id],ideal=s.id==='shotgun'?145:s.id==='smg'?220:s.id==='pistol'?290:s.id==='rifle'?400:500,dx=en.e.x-b.x,dy=en.e.y-b.y,l=Math.max(1,en.d),nx=dx/l,ny=dy/l;let mx=-ny*b.ai.strafe*.7,my=nx*b.ai.strafe*.7;if(en.d>ideal*1.1){mx+=nx;my+=ny}else if(en.d<ideal*.62){mx-=nx;my-=ny}const ml=Math.max(1,Math.hypot(mx,my)),sp=CFG.move*diff.speed*.9;move(b,mx/ml*sp*dt,my/ml*sp*dt);b.angle=Math.atan2(dy,dx)+rand(-diff.aim,diff.aim)*clamp(en.d/450,.6,1.2);if(en.d<def.range*.86)shoot(b,b.angle);if(s.mag<=0)reload(b);return}
-      b.ai.think-=dt;if(b.ai.think<=0){b.ai.think=diff.reaction+rand(.08,.28);b.ai.target=aiLoot(b);if(!b.ai.target){const a=Math.random()*Math.PI*2,r=rand(0,zone.r*.65);b.ai.move={x:clamp(zone.x+Math.cos(a)*r,50,worldSize-50),y:clamp(zone.y+Math.sin(a)*r,50,worldSize-50)}}}
-      if(b.hp<45&&b.med&&Math.random()<.005){useMed(b);return}
-      if(b.ai.target&&b.ai.target.on){if(dist(b,b.ai.target)<CFG.pickup)pick(b,b.ai.target);else moveToward(b,b.ai.target.x,b.ai.target.y,dt,.92)}else if(b.ai.move)moveToward(b,b.ai.move.x,b.ai.move.y,dt,.86)
+    function nearbyEnemy(b,max=650){
+      return findNearbyEnemy(
+        b,
+        alive(),
+        max,
+        lineBlocked
+      );
+    }
+    function aiLoot(b){
+      let best=null;
+      let bs=-1e9;
+
+      for(const l of loot){
+        if(!l.on)continue;
+
+        const d=dist(b,l);
+
+        if(d>470)continue;
+
+        let s=-d*.15;
+
+        if(l.type==='gun'){
+          const cur=weapon(b);
+          const order={
+            pistol:1,
+            smg:2,
+            shotgun:2,
+            rifle:3,
+            dmr:4
+          };
+
+          s+=(
+            order[l.gun]-
+            (cur?order[cur.id]:0)
+          )*90;
+        }else if(l.type==='vest'){
+          s+=(l.level-b.vest)*100;
+
+          if(l.level===b.vest&&b.armor<GEAR.vest[b.vest].armor*.55){
+            s+=45;
+          }
+        }else if(l.type==='helmet'){
+          s+=(l.level-b.helmet)*88;
+        }else if(l.type==='backpack'){
+          s+=(l.level-b.backpack)*76;
+        }else if(l.type==='med'){
+          s+=b.med<medCapacity(b)?60:0;
+        }else if(l.type==='scope'){
+          s+=(l.scope>(b.scope||1)?32:-30);
+        }else if(l.type==='ammo'){
+          s+=totalReserveAmmo(b)<ammoCapacity(b)*.55?42:8;
+        }
+
+        if(s>bs){
+          best=l;
+          bs=s;
+        }
+      }
+
+      return bs>5?best:null;
+    }
+
+    function pointSegmentDistance(px,py,ax,ay,bx,by){
+      const abx=bx-ax;
+      const aby=by-ay;
+      const denom=abx*abx+aby*aby||1;
+      const t=clamp(((px-ax)*abx+(py-ay)*aby)/denom,0,1);
+      const x=ax+abx*t;
+      const y=ay+aby*t;
+      return Math.hypot(px-x,py-y);
+    }
+
+    function clearBotPath(b){
+      b.ai.destination=null;
+      b.ai.path=[];
+      b.ai.pathIndex=0;
+      b.ai.repathTimer=0;
+    }
+
+    function setBotDestination(b,x,y,state='roam',force=false){
+      const current=b.ai.destination;
+
+      if(
+        !force&&
+        current&&
+        current.state===state&&
+        Math.hypot(current.x-x,current.y-y)<58&&
+        b.ai.path?.length
+      ){
+        return;
+      }
+
+      b.ai.destination={x,y,state};
+      b.ai.path=findNavigationPath({
+        entity:b,
+        startX:b.x,
+        startY:b.y,
+        targetX:x,
+        targetY:y,
+        navPoints:worldMap?.navPoints??[],
+        segmentBlocked:navigationSegmentBlocked,
+        maxLink:presetKey==='quick'?610:720
+      });
+      b.ai.pathIndex=0;
+      b.ai.repathTimer=rand(.85,1.45);
+    }
+
+    function botPathWaypoint(b,targetX,targetY,state){
+      b.ai.repathTimer-=1/60;
+
+      if(
+        !b.ai.destination||
+        b.ai.destination.state!==state||
+        Math.hypot(b.ai.destination.x-targetX,b.ai.destination.y-targetY)>70||
+        !b.ai.path?.length
+      ){
+        setBotDestination(b,targetX,targetY,state,true);
+      }
+
+      while(
+        b.ai.pathIndex< b.ai.path.length-1&&
+        Math.hypot(
+          b.ai.path[b.ai.pathIndex].x-b.x,
+          b.ai.path[b.ai.pathIndex].y-b.y
+        )<38
+      ){
+        b.ai.pathIndex++;
+      }
+
+      return b.ai.path[b.ai.pathIndex]??{x:targetX,y:targetY,type:'target'};
+    }
+
+    function blockingCrateToward(b,targetX,targetY){
+      let best=null;
+      let bestD=Infinity;
+
+      for(const c of crates){
+        if(!c.on)continue;
+
+        const d=Math.hypot(c.x-b.x,c.y-b.y);
+        if(d>82||d>=bestD)continue;
+
+        const corridor=pointSegmentDistance(
+          c.x,c.y,
+          b.x,b.y,
+          targetX,targetY
+        );
+
+        if(corridor>c.r*c.scale+b.r+10)continue;
+
+        best=c;
+        bestD=d;
+      }
+
+      return best;
+    }
+
+    function botHandleCrate(b,targetX,targetY,dt){
+      let c=b.ai.crateFocus;
+
+      if(
+        !c?.on||
+        Math.hypot(c.x-b.x,c.y-b.y)>95
+      ){
+        c=blockingCrateToward(b,targetX,targetY);
+        b.ai.crateFocus=c??null;
+      }
+
+      if(!c)return false;
+
+      const dx=c.x-b.x;
+      const dy=c.y-b.y;
+      const d=Math.max(1,Math.hypot(dx,dy));
+      b.angle=Math.atan2(dy,dx);
+      b.ai.state='crate';
+
+      if(d<=69){
+        if(b.meleeCool<=0){
+          melee(b);
+        }
+      }else{
+        const stop=Math.max(0,d-(b.r+c.r*c.scale+8));
+        const tx=b.x+dx/d*stop;
+        const ty=b.y+dy/d*stop;
+
+        moveWithSteering({
+          entity:b,
+          targetX:tx,
+          targetY:ty,
+          dt,
+          speed:CFG.move*diff.speed*.82,
+          move,
+          blocked,
+          strafe:b.ai.strafe
+        });
+      }
+
+      if(!c.on){
+        b.ai.crateFocus=null;
+        b.ai.path=[];
+      }
+
+      return true;
+    }
+
+    function aiCrateTarget(b){
+      let best=null;
+      let bestScore=Infinity;
+      const botHouse=houses.find(h=>houseContains(b,h,3));
+
+      for(const c of crates){
+        if(!c.on)continue;
+
+        const d=Math.hypot(c.x-b.x,c.y-b.y);
+        if(d>390)continue;
+
+        const crateHouse=houses.find(h=>
+          c.x>h.x&&c.x<h.x+h.w&&c.y>h.y&&c.y<h.y+h.h
+        );
+
+        // Indoor crates are deliberately attractive when the bot is already
+        // inside that building; otherwise distance remains the main factor.
+        const sameHouse=botHouse&&crateHouse===botHouse;
+        const score=d-(sameHouse?125:0);
+
+        if(score<bestScore){
+          bestScore=score;
+          best=c;
+        }
+      }
+
+      return best;
+    }
+
+    function botNavigateTo(b,x,y,dt,m=1,state='roam'){
+      if(Math.hypot(x-b.x,y-b.y)<38){
+        b.ai.stuckTimer=0;
+        b.ai.stuckChecks=0;
+        return true;
+      }
+
+      const wp=botPathWaypoint(b,x,y,state);
+
+      if(botHandleCrate(b,wp.x,wp.y,dt)){
+        b.ai.stuckTimer=0;
+        return false;
+      }
+
+      const speed=CFG.move*diff.speed*m;
+
+      const result=moveWithSteering({
+        entity:b,
+        targetX:wp.x,
+        targetY:wp.y,
+        dt,
+        speed,
+        move,
+        blocked,
+        strafe:b.ai.strafe
+      });
+
+      if(result.moved<Math.max(.12,speed*dt*.07)){
+        b.ai.stuckTimer+=dt;
+      }else{
+        b.ai.stuckTimer=Math.max(0,b.ai.stuckTimer-dt*2.8);
+        b.ai.stuckChecks=0;
+      }
+
+      if(b.ai.stuckTimer>.62){
+        b.ai.stuckTimer=0;
+        b.ai.stuckChecks++;
+        b.ai.strafe*=-1;
+        setBotDestination(b,x,y,state,true);
+
+        // If a roaming destination repeatedly fails, abandon it instead of
+        // standing forever at the same wall/corner.
+        if(state==='roam'&&b.ai.stuckChecks>=2){
+          b.ai.move=null;
+          b.ai.roamTimer=0;
+          clearBotPath(b);
+          b.ai.stuckChecks=0;
+        }
+      }
+
+      return false;
+    }
+
+    function roamPointValid(b,p){
+      if(!p)return false;
+      if(Math.hypot(p.x-zone.x,p.y-zone.y)>Math.max(70,zone.r-55))return false;
+      return !blockedStatic(b,p.x,p.y);
+    }
+
+    function chooseBotRoam(b){
+      const p=chooseRoamDestination({
+        bot:b,
+        zone,
+        worldSize,
+        navPoints:worldMap?.navPoints??[],
+        rand,
+        blockedPoint:(entity,x,y)=>blockedStatic(entity,x,y)
+      });
+
+      b.ai.move=p;
+      b.ai.roamTimer=rand(4.0,8.0);
+      b.ai.state='roam';
+      b.ai.stuckChecks=0;
+      setBotDestination(b,p.x,p.y,'roam',true);
+    }
+
+    function updateBot(b,dt){
+      if(!b.alive)return;
+
+      updateTimers(b,dt);
+
+      if(!inside(b)){
+        damage(b,zone.dmg*dt,null,'zone');
+      }
+
+      if(!b.alive||b.using)return;
+
+      const awareness=
+        diffKey==='easy'
+          ?560
+          :diffKey==='hard'
+            ?740
+            :650;
+
+      const zoneDistance=Math.hypot(b.x-zone.x,b.y-zone.y);
+
+      // Zone safety always overrides looting/roaming/combat when the edge is close.
+      if(zoneDistance>zone.r-34){
+        b.ai.target=null;
+        b.ai.lootTarget=null;
+        b.ai.state='zone';
+        botNavigateTo(b,zone.x,zone.y,dt,1.10,'zone');
+        b.angle=Math.atan2(zone.y-b.y,zone.x-b.x);
+        return;
+      }
+
+      const sensed=nearbyEnemy(b,awareness);
+
+      if(sensed){
+        b.ai.target=sensed.e;
+        b.ai.combatForget=2.4;
+        b.ai.lastEnemyX=sensed.e.x;
+        b.ai.lastEnemyY=sensed.e.y;
+        b.ai.state='combat';
+
+        const s=weapon(b);
+        const def=WEAPONS[s.id];
+        const ideal=
+          s.id==='shotgun'
+            ?145
+            :s.id==='smg'
+              ?220
+              :s.id==='pistol'
+                ?290
+                :s.id==='rifle'
+                  ?400
+                  :500;
+
+        const dx=sensed.e.x-b.x;
+        const dy=sensed.e.y-b.y;
+        const l=Math.max(1,sensed.d);
+        const nx=dx/l,ny=dy/l;
+
+        if(sensed.visible){
+          clearBotPath(b);
+
+          let mx=-ny*b.ai.strafe*.72;
+          let my= nx*b.ai.strafe*.72;
+
+          if(sensed.d>ideal*1.10){
+            mx+=nx;
+            my+=ny;
+          }else if(sensed.d<ideal*.62){
+            mx-=nx;
+            my-=ny;
+          }
+
+          const ml=Math.max(1,Math.hypot(mx,my));
+          const sp=CFG.move*diff.speed*.91;
+          move(b,mx/ml*sp*dt,my/ml*sp*dt);
+
+          b.angle=
+            Math.atan2(dy,dx)+
+            rand(-diff.aim,diff.aim)*
+            clamp(sensed.d/450,.6,1.2);
+
+          if(sensed.d<def.range*.86){
+            shoot(b,b.angle);
+          }
+
+          if(s.mag<=0)reload(b);
+        }else{
+          // Awareness is proximity based, but authored path nodes are used to
+          // actually get through doors/corridors and around house walls.
+          botNavigateTo(
+            b,
+            sensed.e.x,
+            sensed.e.y,
+            dt,
+            .98,
+            'combat'
+          );
+          b.angle=Math.atan2(sensed.e.y-b.y,sensed.e.x-b.x);
+        }
+
+        return;
+      }
+
+      if(b.ai.combatForget>0&&b.ai.target?.alive){
+        b.ai.combatForget-=dt;
+
+        const tx=b.ai.lastEnemyX??b.ai.target.x;
+        const ty=b.ai.lastEnemyY??b.ai.target.y;
+
+        if(Math.hypot(tx-b.x,ty-b.y)>50){
+          b.ai.state='search';
+          botNavigateTo(b,tx,ty,dt,.94,'search');
+          b.angle=Math.atan2(ty-b.y,tx-b.x);
+          return;
+        }
+      }else{
+        b.ai.target=null;
+        b.ai.combatForget=0;
+      }
+
+      if(b.hp<45&&b.med&&Math.random()<.007){
+        useMed(b);
+        return;
+      }
+
+      b.ai.think-=dt;
+      b.ai.roamTimer-=dt;
+
+      // Even between think ticks the bot always has a movement objective.
+      // This removes the old passive/idling state when nobody is nearby.
+      if(
+        !b.ai.lootTarget&&
+        (
+          !b.ai.move||
+          !roamPointValid(b,b.ai.move)||
+          b.ai.roamTimer<=0||
+          Math.hypot(b.ai.move.x-b.x,b.ai.move.y-b.y)<60
+        )
+      ){
+        chooseBotRoam(b);
+      }
+
+      if(b.ai.think<=0){
+        b.ai.think=diff.reaction+rand(.08,.24);
+
+        const candidate=aiLoot(b);
+        const crateCandidate=aiCrateTarget(b);
+
+        if(
+          candidate&&
+          candidate.on&&
+          Math.hypot(candidate.x-zone.x,candidate.y-zone.y)<zone.r-35
+        ){
+          b.ai.crateTarget=null;
+
+          if(b.ai.lootTarget?.id!==candidate.id){
+            b.ai.lootTarget=candidate;
+            b.ai.state='loot';
+            setBotDestination(b,candidate.x,candidate.y,'loot',true);
+          }
+        }else if(
+          crateCandidate&&
+          Math.hypot(crateCandidate.x-zone.x,crateCandidate.y-zone.y)<zone.r-35
+        ){
+          b.ai.lootTarget=null;
+
+          if(b.ai.crateTarget?.id!==crateCandidate.id){
+            b.ai.crateTarget=crateCandidate;
+            b.ai.state='crate-loot';
+            setBotDestination(
+              b,
+              crateCandidate.x,
+              crateCandidate.y,
+              'crate-loot',
+              true
+            );
+          }
+        }else{
+          b.ai.lootTarget=null;
+          b.ai.crateTarget=null;
+        }
+      }
+
+      if(b.ai.crateTarget?.on){
+        const c=b.ai.crateTarget;
+        const d=Math.hypot(c.x-b.x,c.y-b.y);
+
+        if(d<=69){
+          b.angle=Math.atan2(c.y-b.y,c.x-b.x);
+          b.ai.crateFocus=c;
+
+          if(b.meleeCool<=0){
+            melee(b);
+          }
+        }else{
+          botNavigateTo(
+            b,
+            c.x,
+            c.y,
+            dt,
+            .90,
+            'crate-loot'
+          );
+          b.angle=Math.atan2(c.y-b.y,c.x-b.x);
+        }
+
+        if(!c.on){
+          b.ai.crateTarget=null;
+          b.ai.crateFocus=null;
+          b.ai.think=0;
+          b.ai.path=[];
+        }
+
+        return;
+      }else if(b.ai.crateTarget){
+        b.ai.crateTarget=null;
+      }
+
+      if(b.ai.lootTarget?.on){
+        if(dist(b,b.ai.lootTarget)<CFG.pickup){
+          pick(b,b.ai.lootTarget);
+          b.ai.lootTarget=null;
+          chooseBotRoam(b);
+        }else{
+          botNavigateTo(
+            b,
+            b.ai.lootTarget.x,
+            b.ai.lootTarget.y,
+            dt,
+            .92,
+            'loot'
+          );
+
+          b.angle=Math.atan2(
+            b.ai.lootTarget.y-b.y,
+            b.ai.lootTarget.x-b.x
+          );
+        }
+
+        return;
+      }
+
+      if(
+        !roamPointValid(b,b.ai.move)||
+        Math.hypot(b.ai.move.x-b.x,b.ai.move.y-b.y)<60
+      ){
+        chooseBotRoam(b);
+      }
+
+      if(b.ai.move){
+        botNavigateTo(
+          b,
+          b.ai.move.x,
+          b.ai.move.y,
+          dt,
+          .86,
+          'roam'
+        );
+
+        b.angle=Math.atan2(
+          b.ai.move.y-b.y,
+          b.ai.move.x-b.x
+        );
+      }
     }
     function updateBullets(dt){
       const deadSet=new Set();
@@ -681,7 +1682,11 @@ export default{
 
         const steps=Math.max(
           1,
-          Math.ceil(Math.hypot(bl.vx,bl.vy)*dt/10)
+          Math.ceil(
+            Math.hypot(bl.vx,bl.vy)*
+            dt/
+            10
+          )
         );
 
         const sd=dt/steps;
@@ -696,20 +1701,29 @@ export default{
             bl.x>worldSize||
             bl.y>worldSize;
 
-          // Kisten fangen Projektile ab und besitzen unsichtbare HP.
           if(!block){
             for(const c of crates){
               if(!c.on)continue;
 
-              if(Math.hypot(bl.x-c.x,bl.y-c.y)<c.r*c.scale+2){
+              if(
+                Math.hypot(
+                  bl.x-c.x,
+                  bl.y-c.y
+                )<
+                c.r*c.scale+2
+              ){
                 const crateDamage=
                   bl.weaponId==='shotgun'
-                    ? .55
-                    : bl.weaponId==='smg'
-                      ? .72
-                      : 1;
+                    ?.55
+                    :bl.weaponId==='smg'
+                      ?.72
+                      :1;
 
-                damageCrate(c,crateDamage);
+                damageCrate(
+                  c,
+                  crateDamage
+                );
+
                 block=true;
                 break;
               }
@@ -717,45 +1731,17 @@ export default{
           }
 
           if(!block){
-            for(const c of crates){
-        if(!c.on)continue;
+            for(const o of objects){
+              const r=collisionRadiusForObject(o);
 
-        const p=scr(c.x,c.y);
-        const rr=c.r*c.scale;
-
-        if(p.x<-rr*2||p.y<-rr*2||p.x>W+rr*2||p.y>H+rr*2)continue;
-
-        ctx.save();
-        ctx.translate(p.x,p.y);
-        ctx.rotate(c.rotation);
-
-        ctx.fillStyle='#a96e37';
-        ctx.strokeStyle='#56351f';
-        ctx.lineWidth=3;
-
-        const size=rr*1.55;
-
-        ctx.fillRect(-size/2,-size/2,size,size);
-        ctx.strokeRect(-size/2,-size/2,size,size);
-
-        ctx.strokeStyle='#d29a58';
-        ctx.lineWidth=3;
-
-        ctx.beginPath();
-        ctx.moveTo(-size*.38,-size*.38);
-        ctx.lineTo(size*.38,size*.38);
-        ctx.moveTo(size*.38,-size*.38);
-        ctx.lineTo(-size*.38,size*.38);
-        ctx.stroke();
-
-        ctx.fillStyle='#5d3b22';
-        ctx.fillRect(-size*.08,-size*.5,size*.16,size);
-
-        ctx.restore();
-      }
-
-      for(const o of objects){
-              if(o.solid&&Math.hypot(bl.x-o.x,bl.y-o.y)<o.r){
+              if(
+                r>0&&
+                Math.hypot(
+                  bl.x-o.x,
+                  bl.y-o.y
+                )<
+                r
+              ){
                 block=true;
                 break;
               }
@@ -765,7 +1751,7 @@ export default{
           if(!block){
             outer:
             for(const h of houses){
-              for(const w of h.walls){
+              for(const w of houseWalls(h)){
                 if(
                   bl.x>=w.x&&
                   bl.x<=w.x+w.w&&
@@ -787,9 +1773,26 @@ export default{
           for(const e of alive()){
             if(e.id===bl.owner)continue;
 
-            if(Math.hypot(bl.x-e.x,bl.y-e.y)<e.r+2){
-              damage(e,bl.dmg,bl.owner);
-              fxBurst(bl.x,bl.y,'#ff7788',6);
+            if(
+              Math.hypot(
+                bl.x-e.x,
+                bl.y-e.y
+              )<
+              e.r+2
+            ){
+              damage(
+                e,
+                bl.dmg,
+                bl.owner
+              );
+
+              fxBurst(
+                bl.x,
+                bl.y,
+                '#ff7788',
+                6
+              );
+
               deadSet.add(bl.id);
               block=true;
               break;
@@ -801,9 +1804,10 @@ export default{
       }
 
       if(deadSet.size){
-        bullets=bullets.filter(
-          b=>!deadSet.has(b.id)
-        );
+        bullets=
+          bullets.filter(
+            b=>!deadSet.has(b.id)
+          );
       }
     }
     function updateFx(dt){for(let i=fx.length-1;i>=0;i--){const p=fx[i];p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;if(p.life<=0)fx.splice(i,1)}for(const f of feed)f.t-=dt;const n=feed.length;feed=feed.filter(f=>f.t>0);if(n!==feed.length)feedEl.innerHTML=feed.map(x=>`<div>${x.s}</div>`).join('')}
@@ -813,7 +1817,18 @@ export default{
       cam.x=player.x;
       cam.y=player.y;
 
-      cam.targetZoom=scopeZoom(player.scope||1);
+      const inHouse=
+        !!currentPlayerHouse();
+
+      const houseZoomFactor=
+        inHouse
+          ?.88
+          :1;
+
+      cam.targetZoom=
+        scopeZoom(player.scope||1)*
+        houseZoomFactor;
+
       cam.zoom+=(
         cam.targetZoom-cam.zoom
       )*.10;
@@ -872,6 +1887,21 @@ export default{
         );
       }
 
+      equipEls.helmet.textContent=
+        player.helmet>0
+          ?`Lv.${player.helmet}`
+          :'—';
+
+      equipEls.vest.textContent=
+        player.vest>0
+          ?`Lv.${player.vest}`
+          :'—';
+
+      equipEls.backpack.textContent=
+        player.backpack>0
+          ?`Lv.${player.backpack}`
+          :'—';
+
       const l=nearLoot(player);
       pickEl.classList.toggle('show',!!l);
       if(l)pickEl.textContent='E · '+lootName(l);
@@ -889,15 +1919,18 @@ export default{
       ctx.rotate(e.angle);
       ctx.lineCap='round';
 
-      // Unbewaffnet: zwei Fäuste vor dem Charakter.
+      // Zwei Hände sitzen sichtbar vor dem Körper, ähnlich den Referenzen.
+      const handColor='#efbd72';
+      const handStroke='#74553a';
+
       if(!g){
-        ctx.fillStyle='#efc178';
-        ctx.strokeStyle='#73583c';
-        ctx.lineWidth=2;
+        ctx.fillStyle=handColor;
+        ctx.strokeStyle=handStroke;
+        ctx.lineWidth=2.5;
 
         ctx.beginPath();
-        ctx.arc(e.r+7,-7,6,0,Math.PI*2);
-        ctx.arc(e.r+7,7,6,0,Math.PI*2);
+        ctx.arc(e.r+7,-8,6.5,0,Math.PI*2);
+        ctx.arc(e.r+7,8,6.5,0,Math.PI*2);
         ctx.fill();
         ctx.stroke();
 
@@ -905,90 +1938,616 @@ export default{
         return;
       }
 
-      const id=g.id,d=WEAPONS[id];
+      const id=g.id;
+      const d=WEAPONS[id];
 
-      // Jede Waffe bleibt bewusst eine klare Linie aus dem Spieler.
-      // Unterschiede entstehen nur durch Länge, Farbe und überlagerte Linien.
-      const profile={
-        pistol:{len:29,base:7,accent:4,offset:0},
-        smg:{len:37,base:9,accent:5,offset:4},
-        shotgun:{len:53,base:7,accent:4,offset:12},
-        rifle:{len:48,base:8,accent:4,offset:8},
-        dmr:{len:61,base:6,accent:3,offset:18}
+      const p={
+        pistol:{len:31,base:7,accent:4,hand1:10,hand2:22},
+        smg:{len:42,base:10,accent:5,hand1:12,hand2:27},
+        shotgun:{len:58,base:7,accent:4,hand1:13,hand2:34},
+        rifle:{len:53,base:8,accent:5,hand1:13,hand2:31},
+        dmr:{len:66,base:7,accent:4,hand1:14,hand2:36}
       }[id];
 
-      const start=e.r*.25;
-      const end=e.r+profile.len;
+      const start=e.r*.20;
+      const end=e.r+p.len;
 
-      ctx.strokeStyle='#171c20';
-      ctx.lineWidth=profile.base;
+      // Schwarzer Hauptkörper / Lauf
+      ctx.strokeStyle='#11171a';
+      ctx.lineWidth=p.base;
       ctx.beginPath();
       ctx.moveTo(start,0);
       ctx.lineTo(end,0);
       ctx.stroke();
 
+      // Waffenfarbe ist nur der zentrale Receiver, nicht die komplette Waffe.
       ctx.strokeStyle=d.color;
-      ctx.lineWidth=profile.accent;
+      ctx.lineWidth=p.accent;
       ctx.beginPath();
-      ctx.moveTo(e.r*.65,0);
-      ctx.lineTo(end-profile.offset,0);
+      ctx.moveTo(e.r*.62,0);
+      ctx.lineTo(
+        id==='pistol'
+          ?end-4
+          :id==='dmr'
+            ?end-20
+            :end-12,
+        0
+      );
       ctx.stroke();
 
-      if(id==='smg'){
-        ctx.strokeStyle='#252d32';
+      if(id==='pistol'){
+        ctx.strokeStyle='#1c2226';
         ctx.lineWidth=5;
         ctx.beginPath();
-        ctx.moveTo(e.r*.82,3);
-        ctx.lineTo(e.r+8,10);
+        ctx.moveTo(e.r*.72,3);
+        ctx.lineTo(e.r*.82,12);
+        ctx.stroke();
+      }
+
+      if(id==='smg'){
+        ctx.strokeStyle='#20272b';
+        ctx.lineWidth=5;
+        ctx.beginPath();
+        ctx.moveTo(e.r*.78,4);
+        ctx.lineTo(e.r+7,14);
         ctx.stroke();
       }
 
       if(id==='shotgun'){
-        ctx.strokeStyle='#a36b43';
+        ctx.strokeStyle='#9b6138';
         ctx.lineWidth=6;
         ctx.beginPath();
         ctx.moveTo(e.r*.62,0);
-        ctx.lineTo(e.r+15,0);
+        ctx.lineTo(e.r+17,0);
         ctx.stroke();
       }
 
       if(id==='rifle'){
-        ctx.strokeStyle='#20272c';
+        ctx.strokeStyle='#20272b';
         ctx.lineWidth=5;
         ctx.beginPath();
-        ctx.moveTo(e.r*.86,3);
-        ctx.lineTo(e.r+9,11);
+        ctx.moveTo(e.r*.86,4);
+        ctx.lineTo(e.r+9,14);
         ctx.stroke();
       }
 
       if(id==='dmr'){
-        // Zweite kurze obere Linie = Scope.
-        ctx.strokeStyle='#11161a';
+        ctx.strokeStyle='#0d1215';
+        ctx.lineWidth=5;
+        ctx.beginPath();
+        ctx.moveTo(e.r*.72,-7);
+        ctx.lineTo(e.r+18,-7);
+        ctx.stroke();
+
+        ctx.fillStyle=d.color;
+        ctx.beginPath();
+        ctx.arc(e.r+3,-7,3,0,Math.PI*2);
+        ctx.fill();
+      }
+
+      // Hände liegen sichtbar auf/unter der Waffe.
+      ctx.fillStyle=handColor;
+      ctx.strokeStyle=handStroke;
+      ctx.lineWidth=2;
+
+      ctx.beginPath();
+      ctx.arc(e.r+p.hand1,-7,6,0,Math.PI*2);
+      ctx.arc(e.r+p.hand2,7,6,0,Math.PI*2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawGroundWeapon(l){
+      const def=WEAPONS[l.gun];
+
+      ctx.save();
+      ctx.translate(l.x,l.y);
+
+      // Dunkler Item-Kreis mit farbigem dünnem Rand:
+      // dadurch bleibt die Waffe auf Gras/Holzboden sofort erkennbar.
+      ctx.fillStyle='rgba(48,51,50,.97)';
+      ctx.strokeStyle=def.color;
+      ctx.lineWidth=2.5;
+      ctx.beginPath();
+      ctx.arc(0,0,24,0,Math.PI*2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.rotate(-.42);
+      ctx.lineCap='round';
+
+      const black='#101518';
+      const dark='#22292d';
+
+      if(l.gun==='pistol'){
+        ctx.strokeStyle=black;
+        ctx.lineWidth=7;
+        ctx.beginPath();
+        ctx.moveTo(-11,0);
+        ctx.lineTo(13,0);
+        ctx.stroke();
+
+        ctx.strokeStyle=def.color;
         ctx.lineWidth=4;
         ctx.beginPath();
-        ctx.moveTo(e.r*.72,-6);
-        ctx.lineTo(e.r+15,-6);
+        ctx.moveTo(-6,0);
+        ctx.lineTo(11,0);
+        ctx.stroke();
+
+        ctx.strokeStyle=black;
+        ctx.lineWidth=5;
+        ctx.beginPath();
+        ctx.moveTo(-2,3);
+        ctx.lineTo(2,12);
+        ctx.stroke();
+      }else if(l.gun==='smg'){
+        ctx.strokeStyle=black;
+        ctx.lineWidth=10;
+        ctx.beginPath();
+        ctx.moveTo(-16,0);
+        ctx.lineTo(15,0);
+        ctx.stroke();
+
+        ctx.strokeStyle=def.color;
+        ctx.lineWidth=5;
+        ctx.beginPath();
+        ctx.moveTo(-9,0);
+        ctx.lineTo(10,0);
+        ctx.stroke();
+
+        ctx.strokeStyle=dark;
+        ctx.lineWidth=5;
+        ctx.beginPath();
+        ctx.moveTo(-1,4);
+        ctx.lineTo(4,14);
+        ctx.stroke();
+
+        ctx.strokeStyle=black;
+        ctx.lineWidth=4;
+        ctx.beginPath();
+        ctx.moveTo(12,0);
+        ctx.lineTo(20,0);
+        ctx.stroke();
+      }else if(l.gun==='shotgun'){
+        ctx.strokeStyle=black;
+        ctx.lineWidth=7;
+        ctx.beginPath();
+        ctx.moveTo(-19,0);
+        ctx.lineTo(23,0);
+        ctx.stroke();
+
+        ctx.strokeStyle='#996039';
+        ctx.lineWidth=6;
+        ctx.beginPath();
+        ctx.moveTo(-9,0);
+        ctx.lineTo(8,0);
+        ctx.stroke();
+
+        ctx.strokeStyle=def.color;
+        ctx.lineWidth=3;
+        ctx.beginPath();
+        ctx.moveTo(12,0);
+        ctx.lineTo(22,0);
+        ctx.stroke();
+      }else if(l.gun==='rifle'){
+        ctx.strokeStyle=black;
+        ctx.lineWidth=8;
+        ctx.beginPath();
+        ctx.moveTo(-19,0);
+        ctx.lineTo(22,0);
+        ctx.stroke();
+
+        ctx.strokeStyle=def.color;
+        ctx.lineWidth=5;
+        ctx.beginPath();
+        ctx.moveTo(-9,0);
+        ctx.lineTo(13,0);
+        ctx.stroke();
+
+        ctx.strokeStyle=dark;
+        ctx.lineWidth=5;
+        ctx.beginPath();
+        ctx.moveTo(1,4);
+        ctx.lineTo(6,14);
+        ctx.stroke();
+
+        ctx.strokeStyle=black;
+        ctx.lineWidth=4;
+        ctx.beginPath();
+        ctx.moveTo(18,0);
+        ctx.lineTo(27,0);
+        ctx.stroke();
+      }else{
+        ctx.strokeStyle=black;
+        ctx.lineWidth=7;
+        ctx.beginPath();
+        ctx.moveTo(-22,0);
+        ctx.lineTo(27,0);
+        ctx.stroke();
+
+        ctx.strokeStyle=def.color;
+        ctx.lineWidth=4;
+        ctx.beginPath();
+        ctx.moveTo(-10,0);
+        ctx.lineTo(18,0);
+        ctx.stroke();
+
+        // DMR Scope
+        ctx.strokeStyle=black;
+        ctx.lineWidth=5;
+        ctx.beginPath();
+        ctx.moveTo(-4,-7);
+        ctx.lineTo(12,-7);
+        ctx.stroke();
+
+        ctx.fillStyle=def.color;
+        ctx.beginPath();
+        ctx.arc(5,-7,3,0,Math.PI*2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    function drawGearLoot(l){
+      const levelColor=
+        l.level===3
+          ?'#ffd166'
+          :l.level===2
+            ?'#8bd7ff'
+            :'#e8ece8';
+
+      ctx.save();
+      ctx.translate(l.x,l.y);
+
+      ctx.fillStyle='rgba(50,54,53,.96)';
+      ctx.strokeStyle='#171b1a';
+      ctx.lineWidth=3;
+      ctx.beginPath();
+      ctx.arc(0,0,18,0,Math.PI*2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle=levelColor;
+      ctx.fillStyle=levelColor;
+      ctx.lineWidth=3;
+
+      if(l.type==='helmet'){
+        ctx.beginPath();
+        ctx.arc(0,-1,9,Math.PI,Math.PI*2);
+        ctx.lineTo(9,5);
+        ctx.lineTo(-9,5);
+        ctx.closePath();
+        ctx.stroke();
+      }else if(l.type==='vest'){
+        ctx.beginPath();
+        ctx.moveTo(-8,-9);
+        ctx.lineTo(-3,-9);
+        ctx.lineTo(0,-4);
+        ctx.lineTo(3,-9);
+        ctx.lineTo(8,-9);
+        ctx.lineTo(11,-3);
+        ctx.lineTo(7,10);
+        ctx.lineTo(-7,10);
+        ctx.lineTo(-11,-3);
+        ctx.closePath();
+        ctx.stroke();
+      }else{
+        ctx.strokeRect(-7,-6,14,15);
+        ctx.beginPath();
+        ctx.arc(0,-6,5,Math.PI,Math.PI*2);
         ctx.stroke();
       }
 
-      ctx.fillStyle='#efc178';
-      ctx.beginPath();
-      ctx.arc(e.r*.57,-5,4.5,0,Math.PI*2);
-      ctx.arc(e.r*.57,5,4.5,0,Math.PI*2);
-      ctx.fill();
+      ctx.font='950 7px system-ui';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.fillStyle=levelColor;
+      ctx.fillText(`L${l.level}`,0,12);
+
+      ctx.restore();
+    }
+
+    function drawHouseInterior(h){
+      ctx.save();
+
+      // Innenboden
+      ctx.fillStyle=h.floorColor??'#9c5633';
+
+      ctx.fillRect(
+        h.x,
+        h.y,
+        h.w,
+        h.h
+      );
+
+      if(h.warehouse){
+        ctx.strokeStyle='rgba(21,35,42,.34)';
+        ctx.lineWidth=1/cam.zoom;
+
+        for(let xx=h.x+18;xx<h.x+h.w;xx+=32){
+          ctx.beginPath();
+          ctx.moveTo(xx,h.y);
+          ctx.lineTo(xx,h.y+h.h);
+          ctx.stroke();
+        }
+      }else{
+        // Holzdielen statt simpler Fläche
+        ctx.strokeStyle='rgba(80,38,22,.34)';
+        ctx.lineWidth=1/cam.zoom;
+
+        for(let yy=h.y+14;yy<h.y+h.h;yy+=16){
+          ctx.beginPath();
+          ctx.moveTo(h.x,yy);
+          ctx.lineTo(h.x+h.w,yy);
+          ctx.stroke();
+        }
+
+        for(let xx=h.x+34;xx<h.x+h.w;xx+=56){
+          ctx.beginPath();
+          ctx.moveTo(xx,h.y);
+          ctx.lineTo(xx,h.y+h.h);
+          ctx.stroke();
+        }
+      }
+
+      // Möbel
+      for(const f of h.furniture??[]){
+        ctx.save();
+        ctx.translate(
+          f.x+f.w/2,
+          f.y+f.h/2
+        );
+        ctx.rotate(f.rot||0);
+
+        if(f.type==='rug'){
+          ctx.fillStyle='rgba(91,50,67,.72)';
+          ctx.fillRect(-f.w/2,-f.h/2,f.w,f.h);
+
+          ctx.strokeStyle='rgba(230,181,143,.40)';
+          ctx.lineWidth=2;
+          ctx.strokeRect(-f.w/2+3,-f.h/2+3,f.w-6,f.h-6);
+        }else if(f.type==='bed'){
+          ctx.fillStyle='#704d3b';
+          ctx.fillRect(-f.w/2,-f.h/2,f.w,f.h);
+
+          ctx.fillStyle='#d9cdb6';
+          ctx.fillRect(-f.w/2+3,-f.h/2+3,f.w*.34,f.h-6);
+
+          ctx.fillStyle='#8d6d5b';
+          ctx.fillRect(-f.w/2+f.w*.38,-f.h/2+3,f.w*.58,f.h-6);
+        }else if(f.type==='shelf'){
+          ctx.fillStyle='#263238';
+          ctx.fillRect(-f.w/2,-f.h/2,f.w,f.h);
+
+          ctx.strokeStyle='#6a7e87';
+          ctx.lineWidth=2;
+          ctx.strokeRect(-f.w/2,-f.h/2,f.w,f.h);
+        }else{
+          ctx.fillStyle=
+            f.type==='cabinet'
+              ?'#5f4635'
+              :'#6f4a31';
+
+          ctx.fillRect(
+            -f.w/2,
+            -f.h/2,
+            f.w,
+            f.h
+          );
+
+          ctx.strokeStyle='#3f2a1c';
+          ctx.lineWidth=2;
+          ctx.strokeRect(
+            -f.w/2,
+            -f.h/2,
+            f.w,
+            f.h
+          );
+        }
+
+        ctx.restore();
+      }
+
+      // Klarer Eingang: heller Porch/Threshold + dunkle Türschwelle.
+      const entrance=houseEntrance(h);
+
+      ctx.fillStyle='#b9b7a8';
+      ctx.strokeStyle='#595a53';
+      ctx.lineWidth=2;
+      ctx.fillRect(
+        entrance.pad.x,
+        entrance.pad.y,
+        entrance.pad.w,
+        entrance.pad.h
+      );
+      ctx.strokeRect(
+        entrance.pad.x,
+        entrance.pad.y,
+        entrance.pad.w,
+        entrance.pad.h
+      );
+
+      ctx.fillStyle='#252b2a';
+
+      if(h.doorSide===0||h.doorSide===2){
+        ctx.fillRect(
+          entrance.x-40,
+          entrance.y-5,
+          80,
+          10
+        );
+      }else{
+        ctx.fillRect(
+          entrance.x-5,
+          entrance.y-40,
+          10,
+          80
+        );
+      }
+
+      // Innen- und Außenwände mit dunkler Kontur.
+      for(const w of houseWalls(h)){
+        ctx.fillStyle='#3c1f1c';
+        ctx.fillRect(
+          w.x-2,
+          w.y-2,
+          w.w+4,
+          w.h+4
+        );
+
+        ctx.fillStyle=
+          h.warehouse
+            ?'#25323b'
+            :'#6d3228';
+
+        ctx.fillRect(
+          w.x,
+          w.y,
+          w.w,
+          w.h
+        );
+
+        ctx.fillStyle='rgba(255,255,255,.10)';
+
+        if(w.w>w.h){
+          ctx.fillRect(
+            w.x,
+            w.y,
+            w.w,
+            2
+          );
+        }else{
+          ctx.fillRect(
+            w.x,
+            w.y,
+            2,
+            w.h
+          );
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function drawHouseRoof(h){
+      if(
+        player&&
+        houseContains(player,h,4)
+      ){
+        return;
+      }
+
+      ctx.save();
+
+      ctx.shadowColor='rgba(0,0,0,.25)';
+      ctx.shadowBlur=10/cam.zoom;
+      ctx.shadowOffsetY=6/cam.zoom;
+
+      ctx.fillStyle=h.roofColor;
+      ctx.strokeStyle='#261815';
+      ctx.lineWidth=4/cam.zoom;
+
+      ctx.fillRect(
+        h.x-4,
+        h.y-4,
+        h.w+8,
+        h.h+8
+      );
+
+      ctx.strokeRect(
+        h.x-4,
+        h.y-4,
+        h.w+8,
+        h.h+8
+      );
+
+      ctx.shadowBlur=0;
+      ctx.shadowOffsetY=0;
+
+      ctx.strokeStyle=h.roofAccent;
+      ctx.lineWidth=3/cam.zoom;
+
+      if(h.warehouse){
+        for(let xx=h.x+18;xx<h.x+h.w;xx+=28){
+          ctx.beginPath();
+          ctx.moveTo(xx,h.y);
+          ctx.lineTo(xx,h.y+h.h);
+          ctx.stroke();
+        }
+      }else{
+        // Ein einfaches, deutlich lesbares Top-Down-Dach.
+        ctx.beginPath();
+        ctx.moveTo(h.x+h.w/2,h.y);
+        ctx.lineTo(h.x+h.w/2,h.y+h.h);
+        ctx.moveTo(h.x,h.y+h.h/2);
+        ctx.lineTo(h.x+h.w/2,h.y);
+        ctx.lineTo(h.x+h.w,h.y+h.h/2);
+        ctx.lineTo(h.x+h.w/2,h.y+h.h);
+        ctx.lineTo(h.x,h.y+h.h/2);
+        ctx.stroke();
+
+        // Ziegel-Linien
+        ctx.strokeStyle='rgba(34,15,15,.22)';
+        ctx.lineWidth=1/cam.zoom;
+
+        for(let yy=h.y+16;yy<h.y+h.h;yy+=17){
+          ctx.beginPath();
+          ctx.moveTo(h.x,yy);
+          ctx.lineTo(h.x+h.w,yy);
+          ctx.stroke();
+        }
+      }
+
+      // Auch bei geschlossenem Dach bleibt der Eingang außen offensichtlich.
+      const entrance=houseEntrance(h);
+
+      ctx.fillStyle='#d6d2bf';
+      ctx.strokeStyle='#242824';
+      ctx.lineWidth=2/cam.zoom;
+
+      ctx.fillRect(
+        entrance.pad.x,
+        entrance.pad.y,
+        entrance.pad.w,
+        entrance.pad.h
+      );
+
+      ctx.strokeRect(
+        entrance.pad.x,
+        entrance.pad.y,
+        entrance.pad.w,
+        entrance.pad.h
+      );
+
+      ctx.fillStyle='#171c1b';
+
+      if(h.doorSide===0||h.doorSide===2){
+        ctx.fillRect(
+          entrance.x-39,
+          entrance.y-5,
+          78,
+          10
+        );
+      }else{
+        ctx.fillRect(
+          entrance.x-5,
+          entrance.y-39,
+          10,
+          78
+        );
+      }
 
       ctx.restore();
     }
 
     function draw(){
-      // Screen-Hintergrund außerhalb der Map.
       ctx.setTransform(dpr,0,0,dpr,0,0);
       ctx.fillStyle='#182019';
       ctx.fillRect(0,0,W,H);
 
-      // Alles in der Spielwelt wird gemeinsam transformiert.
-      // Dadurch bleibt das Grid an Weltkoordinaten fix und Scope-Zoom skaliert
-      // wirklich die komplette Welt statt einzelne Elemente.
       ctx.save();
       ctx.translate(W/2,H/2);
       ctx.scale(cam.zoom,cam.zoom);
@@ -998,7 +2557,7 @@ export default{
       ctx.fillStyle='#70a043';
       ctx.fillRect(0,0,worldSize,worldSize);
 
-      // Fest in der Welt verankertes Grid.
+      // Welt-festes Grid
       const gs=150;
       ctx.strokeStyle='#315e2733';
       ctx.lineWidth=1/cam.zoom;
@@ -1015,6 +2574,9 @@ export default{
       }
 
       ctx.stroke();
+
+      // Fixed river and its two bridges are part of the authored map.
+      drawRiver(ctx,worldMap?.river,worldSize,cam.zoom);
 
       // Zone
       if(zone){
@@ -1035,7 +2597,11 @@ export default{
         ctx.stroke();
 
         if(zone.state==='wait'&&zone.stage>=0){
-          ctx.setLineDash([7/cam.zoom,7/cam.zoom]);
+          ctx.setLineDash([
+            7/cam.zoom,
+            7/cam.zoom
+          ]);
+
           ctx.strokeStyle='#ffffff66';
           ctx.lineWidth=2/cam.zoom;
           ctx.beginPath();
@@ -1045,29 +2611,8 @@ export default{
         }
       }
 
-      // Gebäude
-      for(const h of houses){
-        ctx.fillStyle=h.warehouse?'#314455':'#b56b3c';
-        ctx.fillRect(h.x,h.y,h.w,h.h);
-
-        if(!h.warehouse){
-          ctx.strokeStyle='rgba(83,43,24,.35)';
-          ctx.lineWidth=1/cam.zoom;
-
-          for(let yy=h.y+16;yy<h.y+h.h;yy+=18){
-            ctx.beginPath();
-            ctx.moveTo(h.x,yy);
-            ctx.lineTo(h.x+h.w,yy);
-            ctx.stroke();
-          }
-        }
-
-        ctx.fillStyle='#4b2420';
-
-        for(const w of h.walls){
-          ctx.fillRect(w.x,w.y,w.w,w.h);
-        }
-      }
+      // Häuser zeigen zunächst immer das Interior.
+      houses.forEach(drawHouseInterior);
 
       // Loot
       const ammoColor={
@@ -1080,48 +2625,26 @@ export default{
       for(const l of loot){
         if(!l.on)continue;
 
+        if(l.type==='gun'){
+          drawGroundWeapon(l);
+          continue;
+        }
+
+        if(
+          l.type==='vest'||
+          l.type==='helmet'||
+          l.type==='backpack'
+        ){
+          drawGearLoot(l);
+          continue;
+        }
+
         ctx.save();
         ctx.translate(l.x,l.y);
 
-        if(l.type==='gun'){
-          // Deutlicher dunkler Ring hinter Bodenwaffen.
-          ctx.fillStyle='rgba(45,48,49,.94)';
-          ctx.strokeStyle='rgba(16,19,20,.90)';
-          ctx.lineWidth=3;
-          ctx.beginPath();
-          ctx.arc(0,0,21,0,Math.PI*2);
-          ctx.fill();
-          ctx.stroke();
-
-          const wp=WEAPONS[l.gun];
-          const lengths={
-            pistol:20,
-            smg:24,
-            shotgun:33,
-            rifle:30,
-            dmr:36
-          };
-          const len=lengths[l.gun];
-
-          ctx.rotate(-.48);
-          ctx.strokeStyle='#13191d';
-          ctx.lineWidth=6;
-          ctx.lineCap='round';
-          ctx.beginPath();
-          ctx.moveTo(-len*.45,0);
-          ctx.lineTo(len*.55,0);
-          ctx.stroke();
-
-          ctx.strokeStyle=wp.color;
-          ctx.lineWidth=3;
-          ctx.beginPath();
-          ctx.moveTo(-len*.18,0);
-          ctx.lineTo(len*.50,0);
-          ctx.stroke();
-        }else if(l.type==='ammo'){
+        if(l.type==='ammo'){
           const c=ammoColor[l.ammo];
 
-          // Surviv.io-artige Ammo-Packs: dunkle Außenbox + klare Kaliberfarbe.
           ctx.fillStyle='#383c3b';
           ctx.strokeStyle='#171a1a';
           ctx.lineWidth=2;
@@ -1145,6 +2668,7 @@ export default{
           ctx.font='900 7px system-ui';
           ctx.textAlign='center';
           ctx.textBaseline='middle';
+
           ctx.fillText(
             l.ammo==='556'
               ?'5'
@@ -1193,25 +2717,12 @@ export default{
           ctx.fillStyle='#6bdd7e';
           ctx.fillRect(-3,-7,6,14);
           ctx.fillRect(-7,-3,14,6);
-        }else{
-          ctx.fillStyle='#3e4445';
-          ctx.strokeStyle='#171a1b';
-          ctx.lineWidth=2;
-          ctx.beginPath();
-          ctx.arc(0,0,12,0,Math.PI*2);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle='#5cc8ef';
-          ctx.beginPath();
-          ctx.arc(0,0,7,0,Math.PI*2);
-          ctx.fill();
         }
 
         ctx.restore();
       }
 
-      // Sichtbare, zerstörbare Kisten.
+      // Kisten
       for(const c of crates){
         if(!c.on)continue;
 
@@ -1220,7 +2731,7 @@ export default{
         ctx.rotate(c.rotation);
 
         const rr=c.r*c.scale;
-        const size=rr*1.72;
+        const size=rr*1.78;
 
         ctx.fillStyle='#a96e37';
         ctx.strokeStyle='#56351f';
@@ -1243,40 +2754,39 @@ export default{
         ctx.restore();
       }
 
-      // Natur-Objekte
+      // Natur
       for(const o of objects){
         ctx.save();
         ctx.translate(o.x,o.y);
 
         if(o.type==='tree'){
-          // Breiter Stamm in der Mitte.
-          ctx.fillStyle='#4d341f';
-          ctx.strokeStyle='#332214';
-          ctx.lineWidth=2;
-          ctx.beginPath();
-          ctx.arc(0,0,o.r*.55,0,Math.PI*2);
-          ctx.fill();
-          ctx.stroke();
+          const trunk=o.trunkR??Math.max(10,o.r*.34);
 
+          // Canopy is visual only: players and bullets can pass through it.
           ctx.fillStyle='#315827';
+          ctx.globalAlpha=.90;
 
           for(let i=0;i<9;i++){
             const a=i/9*Math.PI*2;
             ctx.beginPath();
             ctx.arc(
-              Math.cos(a)*o.r*.54,
-              Math.sin(a)*o.r*.54,
-              o.r*.43,
+              Math.cos(a)*o.r*.50,
+              Math.sin(a)*o.r*.50,
+              o.r*.46,
               0,
               Math.PI*2
             );
             ctx.fill();
           }
 
+          ctx.globalAlpha=1;
           ctx.fillStyle='#523720';
+          ctx.strokeStyle='#332214';
+          ctx.lineWidth=2;
           ctx.beginPath();
-          ctx.arc(0,0,o.r*.43,0,Math.PI*2);
+          ctx.arc(0,0,trunk,0,Math.PI*2);
           ctx.fill();
+          ctx.stroke();
         }else if(o.type==='rock'){
           ctx.fillStyle='#babdc0';
           ctx.strokeStyle='#44484b';
@@ -1316,16 +2826,59 @@ export default{
         ctx.restore();
       }
 
-      // Bullets
-      ctx.shadowBlur=0;
-
+      // Schüsse werden nicht als Punkte, sondern als lange weiße,
+      // nach hinten ausfadende Tracer-Lines dargestellt.
       for(const bl of bullets){
-        ctx.fillStyle=bl.c;
-        ctx.shadowBlur=6;
-        ctx.shadowColor=bl.c;
+        const speed=Math.max(1,Math.hypot(bl.vx,bl.vy));
+        const nx=bl.vx/speed;
+        const ny=bl.vy/speed;
+        const tracerLength=bl.tracer||58;
+
+        const tx=bl.x-nx*tracerLength;
+        const ty=bl.y-ny*tracerLength;
+
+        const gradient=ctx.createLinearGradient(
+          tx,
+          ty,
+          bl.x,
+          bl.y
+        );
+
+        gradient.addColorStop(
+          0,
+          'rgba(255,255,255,0)'
+        );
+
+        gradient.addColorStop(
+          .32,
+          'rgba(255,255,255,.18)'
+        );
+
+        gradient.addColorStop(
+          .72,
+          'rgba(255,255,255,.68)'
+        );
+
+        gradient.addColorStop(
+          1,
+          'rgba(255,255,255,.98)'
+        );
+
+        ctx.strokeStyle=gradient;
+        ctx.lineWidth=
+          bl.weaponId==='dmr'
+            ?2.3
+            :bl.weaponId==='shotgun'
+              ?1.55
+              :1.9;
+
+        ctx.lineCap='round';
+        ctx.shadowBlur=5/cam.zoom;
+        ctx.shadowColor='rgba(255,255,255,.70)';
         ctx.beginPath();
-        ctx.arc(bl.x,bl.y,2.2,0,Math.PI*2);
-        ctx.fill();
+        ctx.moveTo(tx,ty);
+        ctx.lineTo(bl.x,bl.y);
+        ctx.stroke();
       }
 
       ctx.shadowBlur=0;
@@ -1336,7 +2889,7 @@ export default{
         ctx.save();
         ctx.translate(e.x,e.y);
 
-        if(e.armor>0){
+        if(e.vest>0&&e.armor>0){
           ctx.strokeStyle='#69cdecaa';
           ctx.lineWidth=3;
           ctx.beginPath();
@@ -1344,31 +2897,88 @@ export default{
           ctx.stroke();
         }
 
-        ctx.fillStyle=e.color;
-        ctx.strokeStyle='#36424a';
+        // Dunkler Rücken-/Gear-Ring hinter dem hellen Körper.
+        ctx.fillStyle=
+          e.backpack>0
+            ?(
+              e.backpack===3
+                ?'#6a573c'
+                :e.backpack===2
+                  ?'#6a665c'
+                  :'#5d574b'
+            )
+            :'#4a4035';
+
+        ctx.beginPath();
+        ctx.arc(-4,2,e.r+3,0,Math.PI*2);
+        ctx.fill();
+
+        ctx.fillStyle=
+          e.isP
+            ?'#efc178'
+            :'#e8b96d';
+
+        ctx.strokeStyle='#5b4735';
         ctx.lineWidth=3;
         ctx.beginPath();
-        ctx.arc(0,0,e.r,0,Math.PI*2);
+        ctx.arc(2,-1,e.r,0,Math.PI*2);
         ctx.fill();
         ctx.stroke();
 
-        drawHeldWeapon(e,weapon(e));
+        // Helm direkt am Charakter
+        if(e.helmet>0){
+          ctx.strokeStyle=
+            e.helmet===3
+              ?'#ffd166'
+              :e.helmet===2
+                ?'#a9dcff'
+                :'#e8ece8';
 
-        ctx.fillStyle=e.isP?'#28dfff':'#e5edf4';
+          ctx.lineWidth=3;
+
+          ctx.beginPath();
+          ctx.arc(0,-2,e.r*.72,Math.PI,Math.PI*2);
+          ctx.stroke();
+        }
+
+        drawHeldWeapon(
+          e,
+          weapon(e)
+        );
+
+        ctx.fillStyle=
+          e.isP
+            ?'#28dfff'
+            :'#e5edf4';
+
         ctx.font='800 10px system-ui';
         ctx.textAlign='center';
         ctx.textBaseline='middle';
-        ctx.fillText(e.name,0,e.r+14);
+        ctx.fillText(
+          e.name,
+          0,
+          e.r+14
+        );
 
         if(!e.isP){
           ctx.fillStyle='#0008';
-          ctx.fillRect(-18,-e.r-12,36,4);
+          ctx.fillRect(
+            -18,
+            -e.r-12,
+            36,
+            4
+          );
 
           ctx.fillStyle='#ef6469';
           ctx.fillRect(
             -18,
             -e.r-12,
-            36*clamp(e.hp/100,0,1),
+            36*
+            clamp(
+              e.hp/100,
+              0,
+              1
+            ),
             4
           );
         }
@@ -1382,16 +2992,33 @@ export default{
             ctx.fillStyle='#ffffff';
             ctx.strokeStyle='#0b1118';
             ctx.lineWidth=4;
-            const label=`E · PICK UP ${lootName(pickup)}`;
-            ctx.strokeText(label,0,-e.r-41);
-            ctx.fillText(label,0,-e.r-41);
+
+            const label=
+              `E · PICK UP ${lootName(pickup)}`;
+
+            ctx.strokeText(
+              label,
+              0,
+              -e.r-41
+            );
+
+            ctx.fillText(
+              label,
+              0,
+              -e.r-41
+            );
           }
 
           if(active){
             const def=WEAPONS[active.id];
 
-            if(active.mag<=0&&active.reload<=0){
-              const reserve=e.ammo[def.ammo];
+            if(
+              active.mag<=0&&
+              active.reload<=0
+            ){
+              const reserve=
+                e.ammo[def.ammo];
+
               const reloadText=
                 reserve>0
                   ?'R · TO RELOAD'
@@ -1410,24 +3037,43 @@ export default{
 
               ctx.strokeStyle='#0b1118';
               ctx.lineWidth=4;
-              ctx.strokeText(reloadText,0,yy);
-              ctx.fillText(reloadText,0,yy);
+              ctx.strokeText(
+                reloadText,
+                0,
+                yy
+              );
+              ctx.fillText(
+                reloadText,
+                0,
+                yy
+              );
             }
 
             if(active.reload>0){
               const progress=
                 clamp(
-                  1-active.reload/def.reload,
+                  1-
+                  active.reload/
+                  def.reload,
                   0,
                   1
                 );
 
-              const radius=e.r+13;
+              const radius=
+                e.r+13;
 
-              ctx.strokeStyle='rgba(255,255,255,.18)';
+              ctx.strokeStyle=
+                'rgba(255,255,255,.18)';
+
               ctx.lineWidth=4;
               ctx.beginPath();
-              ctx.arc(0,0,radius,0,Math.PI*2);
+              ctx.arc(
+                0,
+                0,
+                radius,
+                0,
+                Math.PI*2
+              );
               ctx.stroke();
 
               ctx.strokeStyle='#ffffff';
@@ -1439,7 +3085,9 @@ export default{
                 0,
                 radius,
                 -Math.PI/2,
-                -Math.PI/2+Math.PI*2*progress
+                -Math.PI/2+
+                Math.PI*2*
+                progress
               );
               ctx.stroke();
 
@@ -1449,7 +3097,10 @@ export default{
               ctx.lineWidth=3;
 
               const countdown=
-                `${Math.max(0,active.reload).toFixed(1)}s`;
+                `${Math.max(
+                  0,
+                  active.reload
+                ).toFixed(1)}s`;
 
               ctx.strokeText(
                 countdown,
@@ -1485,16 +3136,27 @@ export default{
 
         ctx.fillStyle=p.c;
         ctx.beginPath();
-        ctx.arc(p.x,p.y,2.5,0,Math.PI*2);
+        ctx.arc(
+          p.x,
+          p.y,
+          2.5,
+          0,
+          Math.PI*2
+        );
         ctx.fill();
       }
 
       ctx.globalAlpha=1;
 
+      // Wenn man NICHT in einem Haus ist, verdeckt dessen Dach wieder Interior/Loot.
+      houses.forEach(drawHouseRoof);
+
       ctx.restore();
 
-      // Zone-Schadenoverlay bleibt Screen-space.
-      if(player?.alive&&!inside(player)){
+      if(
+        player?.alive&&
+        !inside(player)
+      ){
         ctx.fillStyle='#bf321424';
         ctx.fillRect(0,0,W,H);
       }
@@ -1517,6 +3179,8 @@ export default{
       if(!zone || !player) return;
 
       const sx=mw/worldSize,sy=mh/worldSize;
+
+      drawRiverMini(mctx,worldMap?.river,sx,sy);
 
       mctx.fillStyle='#7e5133';
       for(const h of houses){
@@ -1560,7 +3224,7 @@ export default{
     function update(dt){if(!running||ended)return;time+=dt;updateZone(dt);updatePlayer(dt);bots.forEach(b=>updateBot(b,dt));updateBullets(dt);updateFx(dt);updateCam();updateHud();if(player?.alive&&alive().length===1){placement=1;finish(true)}}
     function scoreFinal(win){return Math.max(0,Math.round(kills*800+damageDone*2+(preset.bots+2-placement)*120+(win?3000:0)))}
     function finish(win){if(ended)return;ended=true;running=false;mouse.down=false;if(!placement)placement=win?1:alive().length+1;const s=scoreFinal(win);services?.highscores?.saveHighscore?.(`survival-royale-${presetKey}`,s);$('.br-end-title').textContent=win?'WINNER WINNER!':`PLACED #${placement}`;$('.br-end-title').style.color=win?'#70e385':'#ff667d';$('.br-end-sub').textContent=`${PRESETS[presetKey].label} · ${DIFFICULTY[diffKey].label}`;$('.ep').textContent='#'+placement;$('.ek').textContent=kills;$('.ed').textContent=Math.round(damageDone);$('.et').textContent=fmt(time);$('.es').textContent=s.toLocaleString('de-DE');end.classList.remove('hide')}
-    function start(){preset=PRESETS[presetKey];diff=DIFFICULTY[diffKey];worldSize=preset.size;cam.zoom=1.45;cam.targetZoom=1.45;time=0;kills=0;damageDone=0;placement=0;nextId=1;bullets=[];fx=[];feed=[];generate();spawn();initZone();running=true;ended=false;menu.classList.add('hide');end.classList.add('hide');updateCam();updateHud();addFeed(`${preset.bots+1} players entered the match`)}
+    function start(){preset=PRESETS[presetKey];diff=DIFFICULTY[diffKey];worldSize=preset.size;cam.zoom=1.42;cam.targetZoom=1.42;time=0;kills=0;damageDone=0;placement=0;nextId=1;bullets=[];fx=[];feed=[];generate();spawn();initZone();running=true;ended=false;menu.classList.add('hide');end.classList.add('hide');updateCam();updateHud();addFeed(`${preset.bots+1} players entered the match`)}
     function loop(t){if(dead)return;const dt=Math.min(.033,Math.max(0,(t-last)/1000));last=t;update(dt);draw();raf=requestAnimationFrame(loop)}
 
     $$('.br-opt[data-p]').forEach(b=>b.onclick=()=>{presetKey=b.dataset.p;$$('.br-opt[data-p]').forEach(x=>x.classList.toggle('sel',x===b))});
@@ -1624,4 +3288,4 @@ export default{
     return{destroy:()=>{dead=true;running=false;cancelAnimationFrame(raf);ro.disconnect();try{audio?.close()}catch{}style.remove()}};
   }
 };
-export{DIFFICULTY,PRESETS,WEAPONS,CFG};
+export{DIFFICULTY,PRESETS,WEAPONS,CFG,GEAR};

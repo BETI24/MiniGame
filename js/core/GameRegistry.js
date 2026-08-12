@@ -1,6 +1,5 @@
 import NeonClicker from "../games/NeonClicker.js";
 import ShapeDodger from "../games/ShapeDodger.js";
-import ShapeDodgerV2 from "../games/ShapeDodgerV2.js";
 import Blackjack from "../games/Blackjack.js";
 import Crash from "../games/Crash.js";
 import PrismaClix from "../games/PrismaClix.js";
@@ -21,7 +20,6 @@ import CellArena from "../games/CellArena.js";
 export const GameRegistry = [
     NeonClicker,
     ShapeDodger,
-    ShapeDodgerV2,
     Blackjack,
     Crash,
     PrismaClix,

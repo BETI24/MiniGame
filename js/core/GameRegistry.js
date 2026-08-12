@@ -12,6 +12,7 @@ import IslandConquest from "../games/IslandConquest.js";
 import Plinko from "../games/Plinko.js";
 import Jackpot from "../games/Jackpot.js";
 import neon_swarm from "../games/neon_swarm.js";
+import craps from "../games/craps.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
@@ -29,5 +30,6 @@ export const GameRegistry = [
     zombies,
     Jackpot,
     neon_swarm,
-    Plinko
+    Plinko,
+    craps
 ];

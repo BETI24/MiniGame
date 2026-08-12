@@ -22,14 +22,12 @@ export class HubView {
                 position: relative;
                 border-radius: 16px;
                 padding: 2px;
-                /* Saubere weiße Standard-Border im Ruhezustand */
                 background: rgba(255, 255, 255, 0.25);
                 overflow: hidden;
                 transition: transform 0.3s ease, background 0.3s ease;
                 cursor: pointer;
             }
 
-            /* Container für den animierten Dreh-Effekt */
             .game-card::before {
                 content: '';
                 position: absolute;
@@ -45,7 +43,6 @@ export class HubView {
 
             .game-card:hover::before {
                 opacity: 1;
-                /* Startet kurz schnell (0.6s) und geht dann in eine flüssige, dauerhafte Rotation (3s) über */
                 animation: borderSpinStart 0.6s cubic-bezier(0, 0.8, 0.2, 1) 1, borderRotate 3s linear 0.6s infinite;
             }
 
@@ -59,7 +56,6 @@ export class HubView {
                 100% { transform: rotate(360deg); }
             }
 
-            /* Innerer Bereich deckt das Innere ab, sodass nur der 2px Rand leuchtet */
             .game-card .card-inner {
                 position: relative;
                 z-index: 1;
@@ -83,7 +79,6 @@ export class HubView {
         const container = document.createElement('div');
         container.className = 'hub-container';
 
-        // Globale Ambient-Effekte
         const ambientBg = document.createElement('div');
         ambientBg.className = 'ambient-background';
         ambientBg.innerHTML = `
@@ -104,10 +99,6 @@ export class HubView {
                         <p class="eyebrow">Nexus System · Arcade Hub</p>
                         <h1>Enter the<br><span>Nexus.</span></h1>
                         <p class="hero-desc">Keine Ladezeiten, pure Action. Starte ein Minispiel, setze deinen Einsatz und knacke den Highscore.</p>
-                    </div>
-                    <div class="search-container">
-                        <span class="search-icon">🔍</span>
-                        <input type="text" class="search-input" placeholder="Spiele oder Tags suchen..." aria-label="Spiele suchen">
                     </div>
                 </div>
 
@@ -133,18 +124,24 @@ export class HubView {
             </div>
         `;
 
+        const searchWrapper = document.createElement('div');
+        searchWrapper.className = 'search-container sticky-search';
+        searchWrapper.innerHTML = `
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" placeholder="Spiele oder Tags suchen..." aria-label="Spiele suchen">
+        `;
+
+        const searchInput = searchWrapper.querySelector('.search-input');
+        searchInput.addEventListener('input', (e) => {
+            this.renderGrid(e.target.value);
+        });
+
         this.gridContainer = document.createElement('div');
         this.gridContainer.className = 'game-grid';
 
         this.heroStats.moduleCount = hero.querySelector('.stat-active-count');
         this.heroStats.recordValue = hero.querySelector('.stat-global-record');
 
-        const searchInput = hero.querySelector('.search-input');
-        searchInput.addEventListener('input', (e) => {
-            this.renderGrid(e.target.value);
-        });
-
-        // Toggle-Button für Casino-Ausblendung (sichtbar oben rechts)
         const heroRight = hero.querySelector('.hero-right');
         const toggleBtn = document.createElement('button');
         toggleBtn.className = 'toggle-casino-btn';
@@ -156,10 +153,9 @@ export class HubView {
             toggleBtn.setAttribute('aria-pressed', String(this.hideCasino));
             this.renderGrid(searchInput.value);
         });
-        // Einfügen in heroRight (alternativ: fixed position via CSS)
+
         heroRight.insertBefore(toggleBtn, heroRight.firstChild);
 
-        // Füge ergänzende Styles, falls noch nicht vorhanden
         if (!document.getElementById('toggle-casino-styles')) {
             const s = document.createElement('style');
             s.id = 'toggle-casino-styles';
@@ -189,6 +185,7 @@ export class HubView {
         }
 
         container.appendChild(hero);
+        container.appendChild(searchWrapper);
         container.appendChild(this.gridContainer);
         this.root.appendChild(container);
 
@@ -215,7 +212,6 @@ export class HubView {
 
         const filteredGames = GameRegistry.filter(gameModule => {
             const manifest = gameModule.manifest;
-            // Wenn Casino ausgeblendet wird, diese Spiele überspringen
             if (this.hideCasino && manifest.tags.some(tag => tag.toLowerCase() === 'casino')) {
                 return false;
             }

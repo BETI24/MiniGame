@@ -13,65 +13,66 @@ const CIRCLE = 1;
 const SQUARE = 2;
 
 const PUZZLE_6X6 = {
-    name: 'QuickThinker 1',
-    size: 6,
+  name: "QuickThinker 1",
+  size: 6,
 
-    // Fixed cells: [row, column, value]
-    givens: [
-        [0, 0, CIRCLE],
-        [0, 4, SQUARE],
-        [1, 5, SQUARE],
-        [2, 1, CIRCLE],
-        [2, 2, SQUARE],
-        [2, 4, SQUARE],
-        [3, 1, SQUARE],
-        [3, 5, SQUARE],
-        [4, 1, CIRCLE],
-        [5, 0, SQUARE],
-        [5, 2, CIRCLE]
-    ],
+  // Fixed cells: [row, column, value]
+  givens: [
+    [0, 0, CIRCLE],
+    [0, 4, SQUARE],
+    [1, 5, SQUARE],
+    [2, 1, CIRCLE],
+    [2, 2, SQUARE],
+    [2, 4, SQUARE],
+    [3, 1, SQUARE],
+    [3, 5, SQUARE],
+    [4, 1, CIRCLE],
+    [5, 0, SQUARE],
+    [5, 2, CIRCLE],
+  ],
 
-    // Relations:
-    // type: 'same'      -> =
-    // type: 'different' -> ×
-    relations: [
-        { a:[0,0], b:[0,1], type:'same' },
-        { a:[0,1], b:[0,2], type:'different' },
-        { a:[0,4], b:[0,5], type:'same' },
+  // Relations:
+  // type: 'same'      -> =
+  // type: 'different' -> ×
+  relations: [
+    { a: [0, 0], b: [0, 1], type: "same" },
+    { a: [0, 1], b: [0, 2], type: "different" },
+    { a: [0, 4], b: [0, 5], type: "same" },
 
-        { a:[0,3], b:[1,3], type:'different' },
-        { a:[0,5], b:[1,5], type:'same' },
+    { a: [0, 3], b: [1, 3], type: "different" },
+    { a: [0, 5], b: [1, 5], type: "same" },
 
-        { a:[1,0], b:[2,0], type:'different' },
-        { a:[2,2], b:[3,2], type:'same' },
+    { a: [1, 0], b: [2, 0], type: "different" },
+    { a: [2, 2], b: [3, 2], type: "same" },
 
-        { a:[3,3], b:[4,3], type:'different' },
-        { a:[4,4], b:[5,4], type:'different' },
+    { a: [3, 3], b: [4, 3], type: "different" },
+    { a: [4, 4], b: [5, 4], type: "different" },
 
-        { a:[5,4], b:[5,5], type:'same' }
-    ]
+    { a: [5, 4], b: [5, 5], type: "same" },
+  ],
 };
 
 export default {
-    manifest: {
-        id: 'quick-thinker',
-        name: 'QuickThinker',
-        description: 'Fill the grid with circles and squares while obeying every logic rule.',
-        icon: '🧠',
-        tags: ['Puzzle', 'Logic', 'Singleplayer']
-    },
+  manifest: {
+    id: "quick-thinker",
+    name: "QuickThinker",
+    description:
+      "Fill the grid with circles and squares while obeying every logic rule.",
+    icon: "🧠",
+    tags: ["Puzzle", "Logic", "Singleplayer"],
+  },
 
-    init: (container) => {
-        const puzzle = PUZZLE_6X6;
+  init: (container) => {
+    const puzzle = PUZZLE_6X6;
 
-        let board = [];
-        let given = [];
-        let relationElements = [];
-        let won = false;
+    let board = [];
+    let given = [];
+    let relationElements = [];
+    let won = false;
 
-        const style = document.createElement('style');
+    const style = document.createElement("style");
 
-        style.textContent = `
+    style.textContent = `
             .qt-game{
                 width:100%;
                 height:100%;
@@ -324,10 +325,10 @@ export default {
             }
         `;
 
-        const root = document.createElement('div');
-        root.className = 'qt-game';
+    const root = document.createElement("div");
+    root.className = "qt-game";
 
-        root.innerHTML = `
+    root.innerHTML = `
             <div class="qt-wrap">
                 <h1 class="qt-title">QuickThinker</h1>
                 <div class="qt-subtitle">${puzzle.size} × ${puzzle.size}</div>
@@ -352,337 +353,294 @@ export default {
             </div>
         `;
 
-        container.append(style, root);
+    container.append(style, root);
 
-        const boardEl = root.querySelector('.qt-board');
-        const boardWrapEl = root.querySelector('.qt-board-wrap');
-        const checkBtn = root.querySelector('.qt-check');
+    const boardEl = root.querySelector(".qt-board");
+    const boardWrapEl = root.querySelector(".qt-board-wrap");
+    const checkBtn = root.querySelector(".qt-check");
 
-        const messageEl = root.querySelector('.qt-message');
-        const messageTitleEl = root.querySelector('.qt-message-title');
-        const messageTextEl = root.querySelector('.qt-message-text');
-        const messageCloseBtn = root.querySelector('.qt-message-close');
+    const messageEl = root.querySelector(".qt-message");
+    const messageTitleEl = root.querySelector(".qt-message-title");
+    const messageTextEl = root.querySelector(".qt-message-text");
+    const messageCloseBtn = root.querySelector(".qt-message-close");
 
-        // ------------------------------------------------------------
-        // Board setup
-        // ------------------------------------------------------------
+    // ------------------------------------------------------------
+    // Board setup
+    // ------------------------------------------------------------
 
-        const createEmptyBoard = size =>
-            Array.from(
-                { length:size },
-                () => Array(size).fill(0)
-            );
+    const createEmptyBoard = (size) =>
+      Array.from({ length: size }, () => Array(size).fill(0));
 
-        const applyGivens = () => {
-            for(const [row,col,value] of puzzle.givens){
-                board[row][col] = value;
-                given[row][col] = true;
-            }
-        };
+    const applyGivens = () => {
+      for (const [row, col, value] of puzzle.givens) {
+        board[row][col] = value;
+        given[row][col] = true;
+      }
+    };
 
-        const renderBoard = () => {
-            boardEl.innerHTML = '';
+    const renderBoard = () => {
+      boardEl.innerHTML = "";
 
-            for(let row=0;row<puzzle.size;row++){
-                for(let col=0;col<puzzle.size;col++){
-                    const cell = document.createElement('button');
+      for (let row = 0; row < puzzle.size; row++) {
+        for (let col = 0; col < puzzle.size; col++) {
+          const cell = document.createElement("button");
 
-                    cell.type = 'button';
-                    cell.className = 'qt-cell';
-                    cell.dataset.row = row;
-                    cell.dataset.col = col;
+          cell.type = "button";
+          cell.className = "qt-cell";
+          cell.dataset.row = row;
+          cell.dataset.col = col;
 
-                    cell.innerHTML = `<span class="qt-symbol"></span>`;
+          cell.innerHTML = `<span class="qt-symbol"></span>`;
 
-                    if(given[row][col]){
-                        cell.classList.add('given');
-                    }
+          if (given[row][col]) {
+            cell.classList.add("given");
+          }
 
-                    cell.addEventListener('click',()=>{
-                        if(given[row][col] || won){
-                            return;
-                        }
-
-                        // Requested cycle:
-                        // empty -> circle -> square -> circle -> square ...
-                        board[row][col] =
-                            board[row][col]===CIRCLE
-                                ?SQUARE
-                                :CIRCLE;
-
-                        renderCell(cell,row,col);
-                    });
-
-                    boardEl.appendChild(cell);
-
-                    renderCell(cell,row,col);
-                }
+          cell.addEventListener("click", () => {
+            if (given[row][col] || won) {
+              return;
             }
 
-            requestAnimationFrame(renderRelations);
-        };
+            // Requested cycle:
+            // empty -> circle -> square -> circle -> square ...
+            board[row][col] = board[row][col] === CIRCLE ? SQUARE : CIRCLE;
 
-        const renderCell = (cell,row,col) => {
-            const value = board[row][col];
+            renderCell(cell, row, col);
+          });
 
-            cell.classList.toggle('circle',value===CIRCLE);
-            cell.classList.toggle('square',value===SQUARE);
+          boardEl.appendChild(cell);
 
-            cell.setAttribute(
-                'aria-label',
-                value===CIRCLE
-                    ?'Circle'
-                    :value===SQUARE
-                        ?'Square'
-                        :'Empty'
-            );
-        };
+          renderCell(cell, row, col);
+        }
+      }
 
-        // ------------------------------------------------------------
-        // Relation markers (= / ×)
-        // ------------------------------------------------------------
+      requestAnimationFrame(renderRelations);
+    };
 
-        const renderRelations = () => {
-            for(const el of relationElements){
-                el.remove();
-            }
+    const renderCell = (cell, row, col) => {
+      const value = board[row][col];
 
-            relationElements = [];
+      cell.classList.toggle("circle", value === CIRCLE);
+      cell.classList.toggle("square", value === SQUARE);
 
-            const wrapRect = boardWrapEl.getBoundingClientRect();
+      cell.setAttribute(
+        "aria-label",
+        value === CIRCLE ? "Circle" : value === SQUARE ? "Square" : "Empty"
+      );
+    };
 
-            for(const relation of puzzle.relations){
-                const [ar,ac] = relation.a;
-                const [br,bc] = relation.b;
+    // ------------------------------------------------------------
+    // Relation markers (= / ×)
+    // ------------------------------------------------------------
 
-                const a =
-                    boardEl.querySelector(
-                        `[data-row="${ar}"][data-col="${ac}"]`
-                    );
+    const renderRelations = () => {
+      for (const el of relationElements) {
+        el.remove();
+      }
 
-                const b =
-                    boardEl.querySelector(
-                        `[data-row="${br}"][data-col="${bc}"]`
-                    );
+      relationElements = [];
 
-                if(!a || !b){
-                    continue;
-                }
+      const wrapRect = boardWrapEl.getBoundingClientRect();
 
-                const ra = a.getBoundingClientRect();
-                const rb = b.getBoundingClientRect();
+      for (const relation of puzzle.relations) {
+        const [ar, ac] = relation.a;
+        const [br, bc] = relation.b;
 
-                const ax = ra.left + ra.width/2;
-                const ay = ra.top + ra.height/2;
+        const a = boardEl.querySelector(`[data-row="${ar}"][data-col="${ac}"]`);
 
-                const bx = rb.left + rb.width/2;
-                const by = rb.top + rb.height/2;
+        const b = boardEl.querySelector(`[data-row="${br}"][data-col="${bc}"]`);
 
-                const marker = document.createElement('div');
+        if (!a || !b) {
+          continue;
+        }
 
-                marker.className = 'qt-relation';
-                marker.textContent =
-                    relation.type==='same'
-                        ?'='
-                        :'×';
+        const ra = a.getBoundingClientRect();
+        const rb = b.getBoundingClientRect();
 
-                marker.style.left =
-                    `${(ax+bx)/2-wrapRect.left}px`;
+        const ax = ra.left + ra.width / 2;
+        const ay = ra.top + ra.height / 2;
 
-                marker.style.top =
-                    `${(ay+by)/2-wrapRect.top}px`;
+        const bx = rb.left + rb.width / 2;
+        const by = rb.top + rb.height / 2;
 
-                boardWrapEl.appendChild(marker);
-                relationElements.push(marker);
-            }
-        };
+        const marker = document.createElement("div");
 
-        // ------------------------------------------------------------
-        // Validation
-        // ------------------------------------------------------------
+        marker.className = "qt-relation";
+        marker.textContent = relation.type === "same" ? "=" : "×";
 
-        const isBoardFull = () =>
-            board.every(
-                row => row.every(value=>value!==0)
-            );
+        marker.style.left = `${(ax + bx) / 2 - wrapRect.left}px`;
 
-        const hasEqualCounts = values => {
-            const half = puzzle.size/2;
+        marker.style.top = `${(ay + by) / 2 - wrapRect.top}px`;
 
-            let circles = 0;
-            let squares = 0;
+        boardWrapEl.appendChild(marker);
+        relationElements.push(marker);
+      }
+    };
 
-            for(const value of values){
-                if(value===CIRCLE) circles++;
-                if(value===SQUARE) squares++;
-            }
+    // ------------------------------------------------------------
+    // Validation
+    // ------------------------------------------------------------
 
-            return circles===half && squares===half;
-        };
+    const isBoardFull = () =>
+      board.every((row) => row.every((value) => value !== 0));
 
-        const hasNoTriple = values => {
-            for(let i=0;i<=values.length-3;i++){
-                if(
-                    values[i]===values[i+1] &&
-                    values[i]===values[i+2]
-                ){
-                    return false;
-                }
-            }
+    const hasEqualCounts = (values) => {
+      const half = puzzle.size / 2;
 
-            return true;
-        };
+      let circles = 0;
+      let squares = 0;
 
-        const relationsAreValid = () => {
-            for(const relation of puzzle.relations){
-                const [ar,ac] = relation.a;
-                const [br,bc] = relation.b;
+      for (const value of values) {
+        if (value === CIRCLE) circles++;
+        if (value === SQUARE) squares++;
+      }
 
-                const a = board[ar][ac];
-                const b = board[br][bc];
+      return circles === half && squares === half;
+    };
 
-                if(
-                    relation.type==='same' &&
-                    a!==b
-                ){
-                    return false;
-                }
+    const hasNoTriple = (values) => {
+      for (let i = 0; i <= values.length - 3; i++) {
+        if (values[i] === values[i + 1] && values[i] === values[i + 2]) {
+          return false;
+        }
+      }
 
-                if(
-                    relation.type==='different' &&
-                    a===b
-                ){
-                    return false;
-                }
-            }
+      return true;
+    };
 
-            return true;
-        };
+    const relationsAreValid = () => {
+      for (const relation of puzzle.relations) {
+        const [ar, ac] = relation.a;
+        const [br, bc] = relation.b;
 
-        const boardIsLegal = () => {
-            // Rows
-            for(let row=0;row<puzzle.size;row++){
-                const values = board[row];
+        const a = board[ar][ac];
+        const b = board[br][bc];
 
-                if(!hasEqualCounts(values)){
-                    return false;
-                }
+        if (relation.type === "same" && a !== b) {
+          return false;
+        }
 
-                if(!hasNoTriple(values)){
-                    return false;
-                }
-            }
+        if (relation.type === "different" && a === b) {
+          return false;
+        }
+      }
 
-            // Columns
-            for(let col=0;col<puzzle.size;col++){
-                const values =
-                    board.map(row=>row[col]);
+      return true;
+    };
 
-                if(!hasEqualCounts(values)){
-                    return false;
-                }
+    const boardIsLegal = () => {
+      // Rows
+      for (let row = 0; row < puzzle.size; row++) {
+        const values = board[row];
 
-                if(!hasNoTriple(values)){
-                    return false;
-                }
-            }
+        if (!hasEqualCounts(values)) {
+          return false;
+        }
 
-            return relationsAreValid();
-        };
+        if (!hasNoTriple(values)) {
+          return false;
+        }
+      }
 
-        // ------------------------------------------------------------
-        // Messages / Check button
-        // ------------------------------------------------------------
+      // Columns
+      for (let col = 0; col < puzzle.size; col++) {
+        const values = board.map((row) => row[col]);
 
-        const showMessage = (type,title,text) => {
-            messageEl.className =
-                `qt-message ${type} show`;
+        if (!hasEqualCounts(values)) {
+          return false;
+        }
 
-            messageTitleEl.textContent = title;
-            messageTextEl.textContent = text;
+        if (!hasNoTriple(values)) {
+          return false;
+        }
+      }
 
-            messageCloseBtn.textContent =
-                type==='win'
-                    ?'OK'
-                    :'CONTINUE';
-        };
+      return relationsAreValid();
+    };
 
-        const hideMessage = () => {
-            messageEl.classList.remove('show');
-        };
+    // ------------------------------------------------------------
+    // Messages / Check button
+    // ------------------------------------------------------------
 
-        const checkBoard = () => {
-            if(!isBoardFull()){
-                showMessage(
-                    'wrong',
-                    'Noch nicht fertig',
-                    'Fülle zuerst alle Felder aus und versuche es dann erneut.'
-                );
+    const showMessage = (type, title, text) => {
+      messageEl.className = `qt-message ${type} show`;
 
-                return;
-            }
+      messageTitleEl.textContent = title;
+      messageTextEl.textContent = text;
 
-            if(!boardIsLegal()){
-                boardEl.classList.remove('shake');
+      messageCloseBtn.textContent = type === "win" ? "OK" : "CONTINUE";
+    };
 
-                // Restart the animation even on repeated checks.
-                void boardEl.offsetWidth;
+    const hideMessage = () => {
+      messageEl.classList.remove("show");
+    };
 
-                boardEl.classList.add('shake');
-
-                showMessage(
-                    'wrong',
-                    'Nicht ganz richtig',
-                    'Mindestens eine Regel ist verletzt. Du kannst direkt weiterlösen und danach erneut auf Check klicken.'
-                );
-
-                return;
-            }
-
-            won = true;
-
-            showMessage(
-                'win',
-                'Richtig gelöst!',
-                'Das gesamte Board wurde legal ausgefüllt. QuickThinker geschafft!'
-            );
-        };
-
-        checkBtn.addEventListener('click',checkBoard);
-        messageCloseBtn.addEventListener('click',hideMessage);
-
-        // ------------------------------------------------------------
-        // Start
-        // ------------------------------------------------------------
-
-        board = createEmptyBoard(puzzle.size);
-        given = createEmptyBoard(puzzle.size).map(
-            row => row.map(()=>false)
+    const checkBoard = () => {
+      if (!isBoardFull()) {
+        showMessage(
+          "wrong",
+          "Noch nicht fertig",
+          "Fülle zuerst alle Felder aus und versuche es dann erneut."
         );
 
-        applyGivens();
-        renderBoard();
+        return;
+      }
 
-        const onResize = () => renderRelations();
+      if (!boardIsLegal()) {
+        boardEl.classList.remove("shake");
 
-        window.addEventListener('resize',onResize);
+        // Restart the animation even on repeated checks.
+        void boardEl.offsetWidth;
 
-        return {
-            destroy:()=>{
-                window.removeEventListener('resize',onResize);
+        boardEl.classList.add("shake");
 
-                for(const el of relationElements){
-                    el.remove();
-                }
+        showMessage(
+          "wrong",
+          "Nicht ganz richtig",
+          "Mindestens eine Regel ist verletzt. Du kannst direkt weiterlösen und danach erneut auf Check klicken."
+        );
 
-                style.remove();
-            }
-        };
-    }
+        return;
+      }
+
+      won = true;
+
+      showMessage(
+        "win",
+        "Richtig gelöst!",
+        "Das gesamte Board wurde legal ausgefüllt. QuickThinker geschafft!"
+      );
+    };
+
+    checkBtn.addEventListener("click", checkBoard);
+    messageCloseBtn.addEventListener("click", hideMessage);
+
+    // ------------------------------------------------------------
+    // Start
+    // ------------------------------------------------------------
+
+    board = createEmptyBoard(puzzle.size);
+    given = createEmptyBoard(puzzle.size).map((row) => row.map(() => false));
+
+    applyGivens();
+    renderBoard();
+
+    const onResize = () => renderRelations();
+
+    window.addEventListener("resize", onResize);
+
+    return {
+      destroy: () => {
+        window.removeEventListener("resize", onResize);
+
+        for (const el of relationElements) {
+          el.remove();
+        }
+
+        style.remove();
+      },
+    };
+  },
 };
 
-export {
-    CIRCLE,
-    SQUARE,
-    PUZZLE_6X6
-};
+export { CIRCLE, SQUARE, PUZZLE_6X6 };

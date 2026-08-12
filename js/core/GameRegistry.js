@@ -17,6 +17,7 @@ import CellArena from "../games/CellArena.js";
 import NeonSerpent from "../games/NeonSerpent.js";
 import NeonFlail from "../games/NeonFlail.js";
 import ForestFrenzy from "../games/ForestFrenzy.js";
+import QuickThinker from "../games/QuickThinker.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
@@ -40,4 +41,5 @@ export const GameRegistry = [
   NeonSerpent,
   NeonFlail,
   ForestFrenzy,
+  QuickThinker,
 ];

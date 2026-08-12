@@ -1,6 +1,5 @@
 import NeonClicker from "../games/NeonClicker.js";
 import ShapeDodger from "../games/ShapeDodger.js";
-import ShapeDodgerV2 from "../games/ShapeDodgerV2.js";
 import Blackjack from "../games/Blackjack.js";
 import Crash from "../games/Crash.js";
 import PrismaClix from "../games/PrismaClix.js";

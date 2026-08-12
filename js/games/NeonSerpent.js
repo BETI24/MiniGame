@@ -8,9 +8,9 @@ const CONFIG = {
     startScore: 28,
     minScore: 18,
 
-    segmentSpacing: 9.5,
-    bodyRadius: 9.8,
-    headRadius: 11.8,
+    segmentSpacing: 8.2,
+    bodyRadius: 10.2,
+    headRadius: 12.4,
 
     baseSpeed: 128,
     boostSpeed: 205,
@@ -777,6 +777,7 @@ export default {
 
                 speed:CONFIG.baseSpeed,
                 radius:CONFIG.bodyRadius,
+                boosting:false,
 
                 eyeBlink:rand(1.4,4.3),
 
@@ -932,6 +933,11 @@ export default {
                 snake.boostTick=0;
             }
 
+            snake.boosting=
+                boosting &&
+                snake.score>CONFIG.minScore &&
+                snake.boostEnergy>2;
+
             snake.speed += (speed-snake.speed)*Math.min(1,delta*8);
 
             snake.x += Math.cos(snake.angle)*snake.speed*delta;
@@ -940,33 +946,65 @@ export default {
             snake.x=clamp(snake.x,CONFIG.headRadius,CONFIG.worldSize-CONFIG.headRadius);
             snake.y=clamp(snake.y,CONFIG.headRadius,CONFIG.worldSize-CONFIG.headRadius);
 
-            snake.body.unshift({x:snake.x,y:snake.y});
+            updateSnakeBodyLength(snake);
 
-            let accumulated=0;
-            let next=[snake.body[0]];
+            if(!snake.body.length){
+                snake.body.push({x:snake.x,y:snake.y});
+            }
+
+            // Kopf ist Segment 0. Danach folgt jedes Segment dem vorherigen
+            // mit festem Abstand. Dadurch bewegt sich die komplette Schlange
+            // kontinuierlich und Kurven wandern sichtbar bis zum Schwanz.
+            snake.body[0].x=snake.x;
+            snake.body[0].y=snake.y;
+
+            const followSpacing=CONFIG.segmentSpacing;
 
             for(let i=1;i<snake.body.length;i++){
-                const prev=next[next.length-1];
+                const prev=snake.body[i-1];
                 const cur=snake.body[i];
-                const d=Math.hypot(cur.x-prev.x,cur.y-prev.y);
 
-                accumulated+=d;
+                let dx=cur.x-prev.x;
+                let dy=cur.y-prev.y;
+                let d=Math.hypot(dx,dy);
 
-                if(accumulated>=CONFIG.segmentSpacing){
-                    next.push(cur);
-                    accumulated=0;
+                if(d<0.0001){
+                    const fallbackAngle=
+                        snake.angle+Math.PI;
+
+                    dx=Math.cos(fallbackAngle);
+                    dy=Math.sin(fallbackAngle);
+                    d=1;
                 }
 
-                if(next.length>=snake.length) break;
-            }
+                const nx=dx/d;
+                const ny=dy/d;
 
-            while(next.length<snake.length){
-                const tail=next[next.length-1]??{x:snake.x,y:snake.y};
-                next.push({x:tail.x,y:tail.y});
-            }
+                const targetX=
+                    prev.x+
+                    nx*
+                    followSpacing;
 
-            snake.body=next;
-            updateSnakeBodyLength(snake);
+                const targetY=
+                    prev.y+
+                    ny*
+                    followSpacing;
+
+                // Fast vollständig folgen, aber ein winziger Rest-Lerp
+                // verhindert hartes Knicken bei abrupten Richtungswechseln.
+                const follow=
+                    i<5
+                        ?.96
+                        :.91;
+
+                cur.x +=
+                    (targetX-cur.x)*
+                    follow;
+
+                cur.y +=
+                    (targetY-cur.y)*
+                    follow;
+            }
 
             snake.eyeBlink-=delta;
             if(snake.eyeBlink<=0) snake.eyeBlink=rand(2.3,5.2);
@@ -1416,43 +1454,233 @@ export default {
             y:height/2+(y-camera.y)*camera.zoom
         });
 
-        const drawBackground = () => {
-            ctx.fillStyle=darkMode?'#0d1219':'#eef2f5';
-            ctx.fillRect(0,0,width,height);
-
-            const left=camera.x-width/2/camera.zoom;
-            const right=camera.x+width/2/camera.zoom;
-            const top=camera.y-height/2/camera.zoom;
-            const bottom=camera.y+height/2/camera.zoom;
-
-            const g=CONFIG.gridSize;
-            const sx=Math.floor(left/g)*g;
-            const sy=Math.floor(top/g)*g;
-
-            ctx.strokeStyle=darkMode?'rgba(125,160,190,.070)':'rgba(60,80,95,.085)';
-            ctx.lineWidth=1;
+        const drawHexPath = (cx,cy,size) => {
             ctx.beginPath();
 
-            for(let x=sx;x<=right;x+=g){
-                const p=screen(x,0).x;
-                ctx.moveTo(p,0);
-                ctx.lineTo(p,height);
+            for(let i=0;i<6;i++){
+                const a=
+                    Math.PI/3*i-
+                    Math.PI/6;
+
+                const x=
+                    cx+
+                    Math.cos(a)*
+                    size;
+
+                const y=
+                    cy+
+                    Math.sin(a)*
+                    size;
+
+                if(i===0){
+                    ctx.moveTo(x,y);
+                }else{
+                    ctx.lineTo(x,y);
+                }
             }
 
-            for(let y=sy;y<=bottom;y+=g){
-                const p=screen(0,y).y;
-                ctx.moveTo(0,p);
-                ctx.lineTo(width,p);
+            ctx.closePath();
+        };
+
+        const drawBackground = () => {
+            const baseTop=
+                darkMode
+                    ?'#121a26'
+                    :'#e9eef3';
+
+            const baseBottom=
+                darkMode
+                    ?'#080d14'
+                    :'#dce5ec';
+
+            const background=
+                ctx.createRadialGradient(
+                    width*.50,
+                    height*.46,
+                    20,
+                    width*.50,
+                    height*.48,
+                    Math.max(width,height)*.78
+                );
+
+            background.addColorStop(
+                0,
+                baseTop
+            );
+
+            background.addColorStop(
+                1,
+                baseBottom
+            );
+
+            ctx.fillStyle=background;
+            ctx.fillRect(0,0,width,height);
+
+            // Weltfeste Wabenstruktur. Die Kamera bewegt sich über das Muster,
+            // anstatt dass die Textur am Screen klebt.
+            const left=
+                camera.x-
+                width/2/camera.zoom;
+
+            const right=
+                camera.x+
+                width/2/camera.zoom;
+
+            const top=
+                camera.y-
+                height/2/camera.zoom;
+
+            const bottom=
+                camera.y+
+                height/2/camera.zoom;
+
+            const hexSize=48;
+            const hexW=
+                Math.sqrt(3)*
+                hexSize;
+
+            const rowStep=
+                hexSize*
+                1.5;
+
+            const firstRow=
+                Math.floor(top/rowStep)-2;
+
+            const lastRow=
+                Math.ceil(bottom/rowStep)+2;
+
+            ctx.lineWidth=
+                Math.max(
+                    .75,
+                    camera.zoom*.85
+                );
+
+            for(let row=firstRow;row<=lastRow;row++){
+                const cy=
+                    row*
+                    rowStep;
+
+                const offset=
+                    Math.abs(row)%2
+                        ?hexW*.5
+                        :0;
+
+                const firstCol=
+                    Math.floor(
+                        (left-offset)/
+                        hexW
+                    )-2;
+
+                const lastCol=
+                    Math.ceil(
+                        (right-offset)/
+                        hexW
+                    )+2;
+
+                for(let col=firstCol;col<=lastCol;col++){
+                    const cx=
+                        col*
+                        hexW+
+                        offset;
+
+                    const p=
+                        screen(cx,cy);
+
+                    const size=
+                        hexSize*
+                        camera.zoom;
+
+                    const hash=
+                        Math.abs(
+                            (
+                                row*92821+
+                                col*68917
+                            )%
+                            17
+                        );
+
+                    if(hash===0||hash===7){
+                        ctx.fillStyle=
+                            darkMode
+                                ?'rgba(56,99,138,.045)'
+                                :'rgba(98,141,174,.050)';
+
+                        drawHexPath(
+                            p.x,
+                            p.y,
+                            size
+                        );
+
+                        ctx.fill();
+                    }
+
+                    ctx.strokeStyle=
+                        darkMode
+                            ?'rgba(112,151,190,.085)'
+                            :'rgba(82,112,136,.10)';
+
+                    drawHexPath(
+                        p.x,
+                        p.y,
+                        size
+                    );
+
+                    ctx.stroke();
+                }
             }
 
-            ctx.stroke();
+            // Leichte dunkle Vignette wie bei einer Neon-Arena.
+            const vignette=
+                ctx.createRadialGradient(
+                    width*.5,
+                    height*.5,
+                    Math.min(width,height)*.20,
+                    width*.5,
+                    height*.5,
+                    Math.max(width,height)*.72
+                );
+
+            vignette.addColorStop(
+                0,
+                'rgba(0,0,0,0)'
+            );
+
+            vignette.addColorStop(
+                1,
+                darkMode
+                    ?'rgba(0,0,0,.35)'
+                    :'rgba(25,45,60,.11)'
+            );
+
+            ctx.fillStyle=vignette;
+            ctx.fillRect(0,0,width,height);
 
             const a=screen(0,0);
             const z=screen(CONFIG.worldSize,CONFIG.worldSize);
 
-            ctx.strokeStyle=darkMode?'rgba(255,255,255,.23)':'rgba(0,0,0,.28)';
+            ctx.strokeStyle=
+                darkMode
+                    ?'rgba(94,195,255,.42)'
+                    :'rgba(0,0,0,.28)';
+
+            ctx.shadowBlur=
+                darkMode
+                    ?10
+                    :0;
+
+            ctx.shadowColor=
+                'rgba(74,188,255,.35)';
+
             ctx.lineWidth=4;
-            ctx.strokeRect(a.x,a.y,z.x-a.x,z.y-a.y);
+
+            ctx.strokeRect(
+                a.x,
+                a.y,
+                z.x-a.x,
+                z.y-a.y
+            );
+
+            ctx.shadowBlur=0;
         };
 
         const drawFood = () => {
@@ -1472,13 +1700,28 @@ export default {
                 ctx.fillStyle=p.color;
 
                 if(p.rare){
-                    ctx.shadowBlur=18*camera.zoom;
+                    ctx.shadowBlur=26*camera.zoom;
                     ctx.shadowColor=p.color;
                 }else{
-                    ctx.shadowBlur=7*camera.zoom;
-                    ctx.shadowColor=p.color+'88';
+                    ctx.shadowBlur=13*camera.zoom;
+                    ctx.shadowColor=p.color;
                 }
 
+                ctx.globalAlpha=p.rare?.24:.15;
+                ctx.beginPath();
+                ctx.arc(
+                    s.x,
+                    s.y,
+                    Math.max(
+                        3,
+                        r*(p.rare?2.5:2.0)
+                    ),
+                    0,
+                    Math.PI*2
+                );
+                ctx.fill();
+
+                ctx.globalAlpha=1;
                 ctx.beginPath();
                 ctx.arc(s.x,s.y,Math.max(1.6,r),0,Math.PI*2);
                 ctx.fill();
@@ -1504,107 +1747,384 @@ export default {
             if(!snake.alive) return;
 
             const colors=snake.skin.colors;
+            const glowColor=colors[0];
 
-            for(let i=snake.body.length-1;i>=1;i--){
+            const visible=[];
+
+            for(let i=snake.body.length-1;i>=0;i--){
                 const b=snake.body[i];
-                const s=screen(b.x,b.y);
-                const r=CONFIG.bodyRadius*camera.zoom;
+                const p=screen(b.x,b.y);
 
-                if(
-                    s.x<-r*2||s.y<-r*2||
-                    s.x>width+r*2||s.y>height+r*2
-                ) continue;
+                visible.push({
+                    x:p.x,
+                    y:p.y,
+                    index:i
+                });
+            }
 
-                const stripe=Math.floor(i/3)%colors.length;
+            if(!visible.length) return;
 
-                ctx.fillStyle=colors[stripe];
-                ctx.strokeStyle='rgba(0,0,0,.18)';
-                ctx.lineWidth=Math.max(1,r*.12);
+            ctx.save();
 
-                ctx.beginPath();
-                ctx.arc(s.x,s.y,r,0,Math.PI*2);
-                ctx.fill();
-                ctx.stroke();
+            // Breiter Outer-Glow unter dem ganzen Körper.
+            ctx.lineCap='round';
+            ctx.lineJoin='round';
+            ctx.strokeStyle=glowColor;
+            ctx.globalAlpha=
+                snake.boosting
+                    ?.34
+                    :.22;
 
-                if(i%6===0){
-                    ctx.fillStyle='rgba(255,255,255,.10)';
-                    ctx.beginPath();
-                    ctx.arc(
-                        s.x-r*.25,
-                        s.y-r*.26,
-                        r*.48,
-                        0,
-                        Math.PI*2
-                    );
-                    ctx.fill();
+            ctx.lineWidth=
+                CONFIG.bodyRadius*
+                camera.zoom*
+                (snake.boosting?3.15:2.75);
+
+            ctx.shadowBlur=
+                camera.zoom*
+                (snake.boosting?28:21);
+
+            ctx.shadowColor=glowColor;
+
+            ctx.beginPath();
+
+            for(let i=0;i<visible.length;i++){
+                const p=visible[i];
+
+                if(i===0){
+                    ctx.moveTo(p.x,p.y);
+                }else{
+                    ctx.lineTo(p.x,p.y);
                 }
             }
 
+            ctx.stroke();
+
+            ctx.globalAlpha=1;
+            ctx.shadowBlur=0;
+
+            // Dunkle Unterkontur macht den Körper trotz starkem Glow lesbar.
+            ctx.strokeStyle=
+                darkMode
+                    ?'rgba(0,0,0,.42)'
+                    :'rgba(30,42,50,.30)';
+
+            ctx.lineWidth=
+                CONFIG.bodyRadius*
+                camera.zoom*
+                2.15;
+
+            ctx.beginPath();
+
+            for(let i=0;i<visible.length;i++){
+                const p=visible[i];
+
+                if(i===0){
+                    ctx.moveTo(p.x,p.y);
+                }else{
+                    ctx.lineTo(p.x,p.y);
+                }
+            }
+
+            ctx.stroke();
+
+            // Überlappende runde Segmente ergeben den typischen glatten,
+            // aber noch leicht gegliederten Slither-Look.
+            for(let i=snake.body.length-1;i>=1;i--){
+                const b=snake.body[i];
+                const s=screen(b.x,b.y);
+                const r=
+                    CONFIG.bodyRadius*
+                    camera.zoom;
+
+                if(
+                    s.x<-r*3||
+                    s.y<-r*3||
+                    s.x>width+r*3||
+                    s.y>height+r*3
+                ){
+                    continue;
+                }
+
+                const stripe=
+                    Math.floor(i/3)%
+                    colors.length;
+
+                ctx.fillStyle=
+                    colors[stripe];
+
+                ctx.shadowBlur=
+                    snake.boosting
+                        ?12*camera.zoom
+                        :7*camera.zoom;
+
+                ctx.shadowColor=
+                    colors[stripe];
+
+                ctx.beginPath();
+                ctx.arc(
+                    s.x,
+                    s.y,
+                    r,
+                    0,
+                    Math.PI*2
+                );
+                ctx.fill();
+
+                // Glänzende obere linke Kante.
+                const shine=
+                    ctx.createRadialGradient(
+                        s.x-r*.35,
+                        s.y-r*.38,
+                        0,
+                        s.x-r*.18,
+                        s.y-r*.15,
+                        r*.92
+                    );
+
+                shine.addColorStop(
+                    0,
+                    'rgba(255,255,255,.30)'
+                );
+
+                shine.addColorStop(
+                    .42,
+                    'rgba(255,255,255,.08)'
+                );
+
+                shine.addColorStop(
+                    1,
+                    'rgba(255,255,255,0)'
+                );
+
+                ctx.fillStyle=shine;
+                ctx.beginPath();
+                ctx.arc(
+                    s.x,
+                    s.y,
+                    r*.96,
+                    0,
+                    Math.PI*2
+                );
+                ctx.fill();
+            }
+
+            ctx.shadowBlur=0;
+
             const h=screen(snake.x,snake.y);
-            const hr=CONFIG.headRadius*camera.zoom;
+            const hr=
+                CONFIG.headRadius*
+                camera.zoom;
 
             ctx.save();
             ctx.translate(h.x,h.y);
             ctx.rotate(snake.angle);
 
+            // Extra Neon-Halo am Kopf.
             ctx.fillStyle=colors[0];
-            ctx.strokeStyle='rgba(0,0,0,.22)';
-            ctx.lineWidth=Math.max(1.3,hr*.11);
+            ctx.globalAlpha=
+                snake.boosting
+                    ?.32
+                    :.22;
+
+            ctx.shadowBlur=
+                snake.boosting
+                    ?34*camera.zoom
+                    :24*camera.zoom;
+
+            ctx.shadowColor=colors[0];
 
             ctx.beginPath();
-            ctx.arc(0,0,hr,0,Math.PI*2);
+            ctx.arc(
+                0,
+                0,
+                hr*1.22,
+                0,
+                Math.PI*2
+            );
+            ctx.fill();
+
+            ctx.globalAlpha=1;
+
+            ctx.fillStyle=colors[0];
+            ctx.strokeStyle=
+                'rgba(0,0,0,.25)';
+
+            ctx.lineWidth=
+                Math.max(
+                    1.4,
+                    hr*.11
+                );
+
+            ctx.beginPath();
+            ctx.arc(
+                0,
+                0,
+                hr,
+                0,
+                Math.PI*2
+            );
             ctx.fill();
             ctx.stroke();
 
-            const eyeY=hr*.43;
-            const eyeX=hr*.46;
-            const eyeR=Math.max(2.0,hr*.26);
-            const pupilR=Math.max(1.0,eyeR*.44);
+            // Kopf-Highlight
+            const headShine=
+                ctx.createRadialGradient(
+                    -hr*.34,
+                    -hr*.34,
+                    0,
+                    0,
+                    0,
+                    hr
+                );
 
-            const blink=snake.eyeBlink<.12?.12:1;
+            headShine.addColorStop(
+                0,
+                'rgba(255,255,255,.35)'
+            );
+
+            headShine.addColorStop(
+                .48,
+                'rgba(255,255,255,.08)'
+            );
+
+            headShine.addColorStop(
+                1,
+                'rgba(255,255,255,0)'
+            );
+
+            ctx.fillStyle=headShine;
+            ctx.beginPath();
+            ctx.arc(
+                0,
+                0,
+                hr*.96,
+                0,
+                Math.PI*2
+            );
+            ctx.fill();
+
+            ctx.shadowBlur=0;
+
+            // Große seitliche Cartoon-Augen.
+            const eyeY=hr*.46;
+            const eyeX=hr*.49;
+            const eyeR=
+                Math.max(
+                    2.3,
+                    hr*.29
+                );
+
+            const pupilR=
+                Math.max(
+                    1.15,
+                    eyeR*.45
+                );
+
+            const blink=
+                snake.eyeBlink<.12
+                    ?.12
+                    :1;
 
             ctx.fillStyle='#fff';
 
-            ctx.save();
-            ctx.translate(eyeX,-eyeY);
-            ctx.scale(1,blink);
+            for(const y of [-eyeY,eyeY]){
+                ctx.save();
+                ctx.translate(eyeX,y);
+                ctx.scale(1,blink);
+
+                ctx.shadowBlur=
+                    darkMode
+                        ?5
+                        :1;
+
+                ctx.shadowColor=
+                    '#ffffff88';
+
+                ctx.beginPath();
+                ctx.arc(
+                    0,
+                    0,
+                    eyeR,
+                    0,
+                    Math.PI*2
+                );
+                ctx.fill();
+                ctx.restore();
+            }
+
+            ctx.shadowBlur=0;
+
+            ctx.fillStyle='#14202b';
+
             ctx.beginPath();
-            ctx.arc(0,0,eyeR,0,Math.PI*2);
+            ctx.arc(
+                eyeX+eyeR*.29,
+                -eyeY,
+                pupilR,
+                0,
+                Math.PI*2
+            );
+
+            ctx.arc(
+                eyeX+eyeR*.29,
+                eyeY,
+                pupilR,
+                0,
+                Math.PI*2
+            );
+
             ctx.fill();
+
             ctx.restore();
 
-            ctx.save();
-            ctx.translate(eyeX,eyeY);
-            ctx.scale(1,blink);
-            ctx.beginPath();
-            ctx.arc(0,0,eyeR,0,Math.PI*2);
-            ctx.fill();
-            ctx.restore();
-
-            ctx.fillStyle='#172028';
-
-            ctx.beginPath();
-            ctx.arc(eyeX+eyeR*.28,-eyeY,pupilR,0,Math.PI*2);
-            ctx.arc(eyeX+eyeR*.28,eyeY,pupilR,0,Math.PI*2);
-            ctx.fill();
-
-            ctx.restore();
-
+            // Name über dem Kopf.
             if(hr>8){
-                ctx.fillStyle=darkMode?'rgba(255,255,255,.92)':'rgba(25,35,45,.86)';
-                ctx.strokeStyle=darkMode?'rgba(0,0,0,.60)':'rgba(255,255,255,.70)';
+                ctx.fillStyle=
+                    darkMode
+                        ?'rgba(255,255,255,.96)'
+                        :'rgba(24,34,44,.90)';
+
+                ctx.strokeStyle=
+                    darkMode
+                        ?'rgba(0,0,0,.70)'
+                        :'rgba(255,255,255,.82)';
+
                 ctx.lineWidth=3;
                 ctx.textAlign='center';
                 ctx.textBaseline='middle';
 
-                const font=Math.max(8,Math.min(14,hr*.82));
-                ctx.font=`900 ${font}px Arial`;
+                const font=
+                    Math.max(
+                        8,
+                        Math.min(
+                            14,
+                            hr*.82
+                        )
+                    );
 
-                const y=-hr-11;
+                ctx.font=
+                    `900 ${font}px Arial`;
 
-                ctx.strokeText(snake.name,h.x,y);
-                ctx.fillText(snake.name,h.x,y);
+                const y=
+                    h.y-
+                    hr-
+                    13;
+
+                ctx.strokeText(
+                    snake.name,
+                    h.x,
+                    y
+                );
+
+                ctx.fillText(
+                    snake.name,
+                    h.x,
+                    y
+                );
             }
+
+            ctx.restore();
         };
 
         const drawParticles = () => {
@@ -1614,7 +2134,7 @@ export default {
                 ctx.save();
                 ctx.globalAlpha=clamp(p.life/p.maxLife,0,1);
                 ctx.fillStyle=p.color;
-                ctx.shadowBlur=6;
+                ctx.shadowBlur=13*camera.zoom;
                 ctx.shadowColor=p.color;
                 ctx.beginPath();
                 ctx.arc(s.x,s.y,p.size*camera.zoom,0,Math.PI*2);
@@ -1639,6 +2159,56 @@ export default {
 
             mctx.fillStyle=darkMode?'#111923':'#eef2f5';
             mctx.fillRect(0,0,mw,mh);
+
+            // Dezente Mini-Wabenstruktur.
+            const hs=12;
+            const hw=Math.sqrt(3)*hs;
+            const hy=hs*1.5;
+
+            mctx.strokeStyle=
+                darkMode
+                    ?'rgba(120,160,195,.07)'
+                    :'rgba(70,100,125,.08)';
+
+            mctx.lineWidth=.6;
+
+            for(let row=-1;row<Math.ceil(mh/hy)+1;row++){
+                const cy=row*hy;
+                const offset=
+                    Math.abs(row)%2
+                        ?hw*.5
+                        :0;
+
+                for(let col=-1;col<Math.ceil(mw/hw)+1;col++){
+                    const cx=
+                        col*hw+
+                        offset;
+
+                    mctx.beginPath();
+
+                    for(let k=0;k<6;k++){
+                        const a=
+                            Math.PI/3*k-
+                            Math.PI/6;
+
+                        const x=
+                            cx+
+                            Math.cos(a)*
+                            hs;
+
+                        const y=
+                            cy+
+                            Math.sin(a)*
+                            hs;
+
+                        if(k===0)mctx.moveTo(x,y);
+                        else mctx.lineTo(x,y);
+                    }
+
+                    mctx.closePath();
+                    mctx.stroke();
+                }
+            }
 
             mctx.strokeStyle=darkMode?'rgba(255,255,255,.20)':'rgba(0,0,0,.22)';
             mctx.strokeRect(.5,.5,mw-1,mh-1);

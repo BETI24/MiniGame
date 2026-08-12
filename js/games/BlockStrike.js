@@ -1,7 +1,10 @@
 const CONFIG = {
     tile: 96,
     fov: 82 * Math.PI / 180,
-    adsFov: 58 * Math.PI / 180,
+    adsFov: 66 * Math.PI / 180,
+    sniperAdsFov: 34 * Math.PI / 180,
+    adsInSpeed: 12.0,
+    adsOutSpeed: 15.0,
     rayStepPx: 2,
     playerRadius: 19,
 
@@ -26,9 +29,14 @@ const CONFIG = {
     botThinkMax: 0.20,
 
     mouseSensitivity: 0.00225,
-    maxPitch: 185,
+    pitchSensitivity: 0.00195,
+    maxPitch: 0.92,
 
-    maxParticles: 180,
+    maxParticles: 220,
+    maxTracers: 120,
+    eyeHeight: 64,
+    botHeight: 150,
+    botHeadStart: 108,
     leaderboardSize: 7
 };
 
@@ -330,11 +338,14 @@ export default {
 
         let depthBuffer = [];
         let particles = [];
+        let tracers = [];
         let killFeed = [];
         let medals = [];
 
         let mouseDown = false;
         let adsDown = false;
+        let adsProgress = 0;
+        let currentFov = CONFIG.fov;
         let fireLatch = false;
 
         let recoil = 0;
@@ -1273,9 +1284,9 @@ export default {
             return true;
         };
 
-        const castWallRay = angle => {
-            const posX=player.x/CONFIG.tile;
-            const posY=player.y/CONFIG.tile;
+        const castWallRayFrom = (originX,originY,angle) => {
+            const posX=originX/CONFIG.tile;
+            const posY=originY/CONFIG.tile;
 
             const rayDirX=Math.cos(angle);
             const rayDirY=Math.sin(angle);
@@ -1308,9 +1319,9 @@ export default {
             }
 
             let side=0;
-            let cell=0;
+            let cell=1;
 
-            for(let i=0;i<120;i++){
+            for(let i=0;i<140;i++){
                 if(sideDistX<sideDistY){
                     sideDistX+=deltaDistX;
                     mapX+=stepX;
@@ -1353,23 +1364,78 @@ export default {
                 dist:worldDist,
                 side,
                 cell,
-                wallX
+                wallX,
+                x:originX+Math.cos(angle)*worldDist,
+                y:originY+Math.sin(angle)*worldDist
             };
         };
 
-        const shootRay = (shooter,angle,spread,pitch=0,weaponId=null) => {
-            const def=WEAPONS[weaponId??(shooter.isPlayer?playerWeapon().id:shooter.weapon.id)];
+        const castWallRay = angle =>
+            castWallRayFrom(
+                player.x,
+                player.y,
+                angle
+            );
 
-            const rayAngle=angle+rand(-spread,spread);
+        const shootRay = (
+            shooter,
+            angle,
+            horizontalSpread,
+            pitch=0,
+            weaponId=null
+        ) => {
+            const def=
+                WEAPONS[
+                    weaponId??
+                    (
+                        shooter.isPlayer
+                            ?playerWeapon().id
+                            :shooter.weapon.id
+                    )
+                ];
 
-            const wall=shooter.isPlayer
-                ?castWallRay(rayAngle)
-                :castWallFrom(shooter.x,shooter.y,rayAngle);
+            const rayAngle=
+                angle+
+                rand(
+                    -horizontalSpread,
+                    horizontalSpread
+                );
+
+            const verticalSpread=
+                horizontalSpread*
+                .72;
+
+            const rayPitch=
+                pitch+
+                rand(
+                    -verticalSpread,
+                    verticalSpread
+                );
+
+            const wall=
+                castWallRayFrom(
+                    shooter.x,
+                    shooter.y,
+                    rayAngle
+                );
 
             let best=null;
-            let bestDist=wall.dist;
+            let bestDist=
+                Math.min(
+                    wall.dist,
+                    def.range
+                );
 
-            const candidates=[player,...bots];
+            const shooterEye=
+                CONFIG.eyeHeight+
+                (
+                    shooter.isPlayer
+                        ?shooter.z
+                        :0
+                );
+
+            const candidates=
+                [player,...bots];
 
             for(const target of candidates){
                 if(
@@ -1380,54 +1446,107 @@ export default {
                     continue;
                 }
 
-                const dx=target.x-shooter.x;
-                const dy=target.y-shooter.y;
+                const dx=
+                    target.x-
+                    shooter.x;
 
-                const dist=Math.hypot(dx,dy);
+                const dy=
+                    target.y-
+                    shooter.y;
 
-                if(dist>=bestDist||dist>def.range) continue;
+                const dist=
+                    Math.hypot(dx,dy);
 
-                const angleTo=Math.atan2(dy,dx);
-                const delta=Math.abs(normAngle(angleTo-rayAngle));
+                if(
+                    dist>=bestDist||
+                    dist>def.range
+                ){
+                    continue;
+                }
+
+                const angleTo=
+                    Math.atan2(dy,dx);
+
+                const yawDelta=
+                    Math.abs(
+                        normAngle(
+                            angleTo-
+                            rayAngle
+                        )
+                    );
 
                 const angularRadius=
                     Math.atan2(
-                        CONFIG.playerRadius*1.15,
+                        CONFIG.playerRadius*1.22,
                         dist
                     );
 
-                if(delta>angularRadius) continue;
-
-                if(!canSee(shooter,target)) continue;
-
-                let head=false;
-
-                if(shooter.isPlayer){
-                    // In the billboard projection, negative pitch aims upward.
-                    // The upper ~30% of the target counts as a headshot.
-                    const verticalAim=
-                        pitch/
-                        Math.max(
-                            1,
-                            1300/dist
-                        );
-
-                    head=
-                        verticalAim<
-                        -7 &&
-                        verticalAim>
-                        -80;
-                }else{
-                    head=
-                        Math.random()<
-                        (
-                            difficultyKey==='hard'
-                                ?.12
-                                :difficultyKey==='normal'
-                                    ?.055
-                                    :.025
-                        );
+                if(
+                    yawDelta>
+                    angularRadius
+                ){
+                    continue;
                 }
+
+                if(!canSee(shooter,target)){
+                    continue;
+                }
+
+                // Real vertical hit window instead of the old fake
+                // pixel-based pitch check. This makes looking up/down
+                // genuinely affect what part of an enemy is hit.
+                const feetZ=0;
+                const topZ=
+                    CONFIG.botHeight;
+
+                const headBottom=
+                    CONFIG.botHeadStart;
+
+                const bottomAngle=
+                    Math.atan2(
+                        feetZ-
+                        shooterEye,
+                        dist
+                    );
+
+                const topAngle=
+                    Math.atan2(
+                        topZ-
+                        shooterEye,
+                        dist
+                    );
+
+                const low=
+                    Math.min(
+                        bottomAngle,
+                        topAngle
+                    );
+
+                const high=
+                    Math.max(
+                        bottomAngle,
+                        topAngle
+                    );
+
+                if(
+                    rayPitch<
+                    low||
+                    rayPitch>
+                    high
+                ){
+                    continue;
+                }
+
+                const headAngle=
+                    Math.atan2(
+                        headBottom-
+                        shooterEye,
+                        dist
+                    );
+
+                const head=
+                    rayPitch>=
+                    headAngle;
 
                 best={
                     target,
@@ -1438,26 +1557,134 @@ export default {
                 bestDist=dist;
             }
 
+            const travel=
+                best
+                    ?best.dist
+                    :Math.min(
+                        wall.dist,
+                        def.range
+                    );
+
+            const endZ=
+                shooterEye+
+                Math.tan(rayPitch)*
+                travel;
+
             return {
                 hit:best,
                 wallDist:wall.dist,
-                wall
+                wall,
+                rayAngle,
+                rayPitch,
+                travel,
+                endX:
+                    shooter.x+
+                    Math.cos(rayAngle)*
+                    travel,
+                endY:
+                    shooter.y+
+                    Math.sin(rayAngle)*
+                    travel,
+                endZ
             };
         };
 
-        const castWallFrom = (x,y,angle) => {
-            const oldX=player.x;
-            const oldY=player.y;
+        const castWallFrom = (x,y,angle) =>
+            castWallRayFrom(
+                x,
+                y,
+                angle
+            );
 
-            player.x=x;
-            player.y=y;
+        const addTracer = (
+            shooter,
+            result,
+            weaponId
+        ) => {
+            if(
+                tracers.length>=
+                CONFIG.maxTracers
+            ){
+                tracers.shift();
+            }
 
-            const result=castWallRay(angle);
+            const def=
+                WEAPONS[weaponId];
 
-            player.x=oldX;
-            player.y=oldY;
+            const isPlayer=
+                shooter.isPlayer;
 
-            return result;
+            const life=
+                weaponId==='sniper'
+                    ?.11
+                    :weaponId==='shotgun'
+                        ?.055
+                        :.075;
+
+            tracers.push({
+                id:nextId++,
+                ownerId:shooter.id,
+                playerShot:isPlayer,
+                x1:shooter.x,
+                y1:shooter.y,
+                z1:
+                    CONFIG.eyeHeight+
+                    (
+                        isPlayer
+                            ?shooter.z
+                            :0
+                    )-
+                    5,
+                x2:result.endX,
+                y2:result.endY,
+                z2:result.endZ,
+                life,
+                maxLife:life,
+                color:
+                    weaponId==='sniper'
+                        ?'#fff7bf'
+                        :weaponId==='shotgun'
+                            ?'#ffd39a'
+                            :'#fff3cf',
+                width:
+                    weaponId==='sniper'
+                        ?2.6
+                        :1.45,
+                weaponId
+            });
+        };
+
+        const spawnImpactParticles = (
+            x,
+            y,
+            z,
+            color='#e8e3d5',
+            count=5
+        ) => {
+            for(let i=0;i<count;i++){
+                if(
+                    particles.length>=
+                    CONFIG.maxParticles
+                ){
+                    break;
+                }
+
+                const life=
+                    rand(.10,.26);
+
+                particles.push({
+                    x,
+                    y,
+                    vx:rand(-38,38),
+                    vy:rand(-38,38),
+                    z:Math.max(2,z),
+                    vz:rand(-15,55),
+                    life,
+                    maxLife:life,
+                    color,
+                    size:rand(1.2,2.8)
+                });
+            }
         };
 
         const spawnParticles = (x,y,color,count=9) => {
@@ -1595,7 +1822,6 @@ export default {
             }
 
             if(victim.isPlayer){
-                player.deaths++;
                 respawnOverlay.classList.remove('hidden');
             }
         };
@@ -1629,8 +1855,14 @@ export default {
             state.reserve-=take;
         };
 
-        const fireWeapon = shooter,state,botAimAngle=null) => {
-            const def=WEAPONS[state.id];
+        const fireWeapon = (
+            shooter,
+            state,
+            botAimAngle=null,
+            botAimPitch=null
+        ) => {
+            const def=
+                WEAPONS[state.id];
 
             if(
                 !shooter.alive||
@@ -1640,50 +1872,77 @@ export default {
                 return;
             }
 
-            if(!def.melee&&state.mag<=0){
+            if(
+                !def.melee&&
+                state.mag<=0
+            ){
                 if(shooter.isPlayer){
                     beginReload(state);
                 }
+
                 return;
             }
 
             if(
                 shooter.isPlayer&&
                 def.adsRequired&&
-                !adsDown
+                adsProgress<.72
             ){
                 return;
             }
 
-            state.cooldown=1/def.fireRate;
+            state.cooldown=
+                1/def.fireRate;
 
             if(!def.melee){
                 state.mag--;
             }
 
-            const speed=Math.hypot(shooter.vx||0,shooter.vy||0);
+            const speed=
+                Math.hypot(
+                    shooter.vx||0,
+                    shooter.vy||0
+                );
 
-            let spread=def.spread;
+            let spread=
+                def.spread;
 
             if(speed>85){
-                spread+=def.moveSpread;
+                spread+=
+                    def.moveSpread;
             }
 
-            if(shooter.isPlayer&&adsDown){
-                spread=def.adsSpread;
+            if(
+                shooter.isPlayer&&
+                adsProgress>.45
+            ){
+                spread=
+                    def.spread+
+                    (
+                        def.adsSpread-
+                        def.spread
+                    )*
+                    adsProgress;
             }
 
-            if(shooter.isPlayer&&shooter.z>2){
-                spread*=1.35;
+            if(
+                shooter.isPlayer&&
+                shooter.z>2
+            ){
+                spread*=1.28;
             }
 
             const baseAngle=
-                botAimAngle??shooter.angle;
+                botAimAngle??
+                shooter.angle;
 
             const pitch=
                 shooter.isPlayer
                     ?shooter.pitch
-                    :0;
+                    :(
+                        botAimPitch??
+                        0
+                    );
 
             const pellets=
                 def.pellets||1;
@@ -1700,19 +1959,35 @@ export default {
                         state.id
                     );
 
-                if(!result.hit) continue;
+                if(!def.melee){
+                    addTracer(
+                        shooter,
+                        result,
+                        state.id
+                    );
+                }
+
+                if(!result.hit){
+                    continue;
+                }
 
                 anyHit=true;
 
                 const falloff=
                     state.id==='shotgun'
                         ?clamp(
-                            1-result.hit.dist/def.range*.55,
+                            1-
+                            result.hit.dist/
+                            def.range*
+                            .55,
                             .35,
                             1
                         )
                         :clamp(
-                            1-result.hit.dist/def.range*.18,
+                            1-
+                            result.hit.dist/
+                            def.range*
+                            .18,
                             .72,
                             1
                         );
@@ -1733,22 +2008,47 @@ export default {
                     result.hit.head,
                     result.hit.dist
                 );
+
+                if(
+                    result.hit.target
+                ){
+                    spawnImpactParticles(
+                        result.endX,
+                        result.endY,
+                        result.endZ,
+                        '#ffd4b0',
+                        4
+                    );
+                }
             }
 
-            if(shooter.isPlayer){
+            if(
+                shooter.isPlayer
+            ){
                 player.shots++;
 
-                recoil=Math.min(
-                    2.5,
-                    recoil+def.kick
-                );
+                recoil=
+                    Math.min(
+                        2.5,
+                        recoil+
+                        def.kick*
+                        (
+                            .72+
+                            .28*
+                            (
+                                1-
+                                adsProgress
+                            )
+                        )
+                    );
 
-                crosshairBloom=Math.min(
-                    22,
-                    crosshairBloom+
-                    8+
-                    def.kick*5
-                );
+                crosshairBloom=
+                    Math.min(
+                        22,
+                        crosshairBloom+
+                        7+
+                        def.kick*4.5
+                    );
 
                 muzzleFlash=.055;
 
@@ -1759,7 +2059,8 @@ export default {
                         :state.id==='shotgun'
                             ?.07
                             :.035,
-                    state.id==='sniper'||state.id==='shotgun'
+                    state.id==='sniper'||
+                    state.id==='shotgun'
                         ?.018
                         :.010,
                     state.id==='smg'
@@ -1768,8 +2069,17 @@ export default {
                 );
             }
 
-            if(!anyHit&&shooter.isPlayer&&def.melee){
-                tone(220,.03,.004,'triangle');
+            if(
+                !anyHit&&
+                shooter.isPlayer&&
+                def.melee
+            ){
+                tone(
+                    220,
+                    .03,
+                    .004,
+                    'triangle'
+                );
             }
         };
 
@@ -2128,6 +2438,30 @@ export default {
                         bot.weapon.id!=='shotgun'||
                         dist<650
                     ){
+                        const targetHeight=
+                            (
+                                Math.random()<
+                                (
+                                    difficultyKey==='hard'
+                                        ?.18
+                                        :difficultyKey==='normal'
+                                            ?.08
+                                            :.035
+                                )
+                            )
+                                ?132
+                                :76;
+
+                        const botAimPitch=
+                            Math.atan2(
+                                targetHeight-
+                                CONFIG.eyeHeight,
+                                Math.max(
+                                    1,
+                                    dist
+                                )
+                            );
+
                         fireWeapon(
                             bot,
                             bot.weapon,
@@ -2135,6 +2469,11 @@ export default {
                             rand(
                                 -diff.aim,
                                 diff.aim
+                            ),
+                            botAimPitch+
+                            rand(
+                                -diff.aim*.55,
+                                diff.aim*.55
                             )
                         );
 
@@ -2327,6 +2666,14 @@ export default {
         };
 
         const updateParticles = delta => {
+            for(let i=tracers.length-1;i>=0;i--){
+                tracers[i].life-=delta;
+
+                if(tracers[i].life<=0){
+                    tracers.splice(i,1);
+                }
+            }
+
             for(let i=particles.length-1;i>=0;i--){
                 const p=particles[i];
 
@@ -2462,9 +2809,21 @@ export default {
             b.style.top=`${spread}px`;
 
             crosshair.style.opacity=
-                adsDown&&def.id==='sniper'
-                    ?'0'
-                    :'1';
+                def.id==='sniper'
+                    ?String(
+                        clamp(
+                            1-
+                            adsProgress*
+                            1.35,
+                            0,
+                            1
+                        )
+                    )
+                    :String(
+                        1-
+                        adsProgress*
+                        .48
+                    );
 
             clickEl.style.display=
                 running&&
@@ -2482,87 +2841,141 @@ export default {
         };
 
         const renderWorld = () => {
-            const ads=
-                adsDown&&
-                player?.alive;
+            const state=
+                playerWeapon();
 
-            const state=playerWeapon();
-            const def=weaponDef(state);
+            const def=
+                weaponDef(state);
 
             const fov=
-                ads
-                    ?CONFIG.adsFov
-                    :CONFIG.fov;
+                currentFov;
+
+            const focal=
+                cameraFocal(fov);
+
+            const bobOffset=
+                Math.sin(player.bob)*
+                Math.min(
+                    7,
+                    Math.hypot(
+                        player.vx,
+                        player.vy
+                    )*
+                    .018
+                );
 
             const horizon=
                 height*.50+
-                player.pitch+
-                (
-                    Math.sin(player.bob)*
-                    Math.min(
-                        7,
-                        Math.hypot(player.vx,player.vy)*.018
-                    )
-                )+
+                Math.tan(
+                    player.pitch
+                )*
+                focal+
+                bobOffset+
                 (
                     player.slideTimer>0
                         ?34
                         :0
                 )+
-                recoil*10-
-                player.z*.18;
+                recoil*10;
 
             const sky=
                 ctx.createLinearGradient(
                     0,
                     0,
                     0,
-                    horizon
+                    Math.max(
+                        1,
+                        clamp(
+                            horizon,
+                            -height,
+                            height*2
+                        )
+                    )
                 );
 
-            sky.addColorStop(0,'#7fa4c2');
-            sky.addColorStop(1,'#b7c6d1');
+            sky.addColorStop(
+                0,
+                '#789dbc'
+            );
+
+            sky.addColorStop(
+                1,
+                '#bacbd7'
+            );
 
             ctx.fillStyle=sky;
-            ctx.fillRect(0,0,width,Math.max(0,horizon));
+            ctx.fillRect(
+                0,
+                0,
+                width,
+                clamp(
+                    horizon,
+                    0,
+                    height
+                )
+            );
 
             const floor=
                 ctx.createLinearGradient(
                     0,
-                    horizon,
+                    clamp(
+                        horizon,
+                        0,
+                        height
+                    ),
                     0,
                     height
                 );
 
-            floor.addColorStop(0,'#777f83');
-            floor.addColorStop(.55,'#5e666a');
-            floor.addColorStop(1,'#454c50');
-
-            ctx.fillStyle=floor;
-            ctx.fillRect(
+            floor.addColorStop(
                 0,
-                Math.max(0,horizon),
-                width,
-                height-horizon
+                '#7a8286'
             );
 
-            // Simple low-poly horizon strips.
-            ctx.strokeStyle='rgba(255,255,255,.035)';
-            ctx.lineWidth=1;
+            floor.addColorStop(
+                .55,
+                '#5f686c'
+            );
 
-            for(let y=horizon+30;y<height;y+=40){
-                ctx.beginPath();
-                ctx.moveTo(0,y);
-                ctx.lineTo(width,y);
-                ctx.stroke();
-            }
+            floor.addColorStop(
+                1,
+                '#454d51'
+            );
+
+            ctx.fillStyle=floor;
+
+            ctx.fillRect(
+                0,
+                clamp(
+                    horizon,
+                    0,
+                    height
+                ),
+                width,
+                Math.max(
+                    0,
+                    height-
+                    clamp(
+                        horizon,
+                        0,
+                        height
+                    )
+                )
+            );
 
             depthBuffer=
                 new Array(
-                    Math.ceil(width/CONFIG.rayStepPx)
+                    Math.ceil(
+                        width/
+                        CONFIG.rayStepPx
+                    )
                 );
 
-            for(let x=0,ci=0;x<width;x+=CONFIG.rayStepPx,ci++){
+            for(
+                let x=0,ci=0;
+                x<width;
+                x+=CONFIG.rayStepPx,ci++
+            ){
                 const cameraX=
                     2*x/width-1;
 
@@ -2570,44 +2983,68 @@ export default {
                     player.angle+
                     Math.atan(
                         cameraX*
-                        Math.tan(fov/2)
+                        Math.tan(
+                            fov/2
+                        )
                     );
 
-                const ray=castWallRay(rayAngle);
+                const ray=
+                    castWallRay(
+                        rayAngle
+                    );
 
                 const corrected=
                     ray.dist*
-                    Math.cos(rayAngle-player.angle);
+                    Math.cos(
+                        rayAngle-
+                        player.angle
+                    );
 
-                depthBuffer[ci]=corrected;
+                depthBuffer[ci]=
+                    corrected;
 
                 const wallH=
                     clamp(
                         CONFIG.tile/
-                        Math.max(1,corrected)*
-                        height*
-                        .92,
+                        Math.max(
+                            1,
+                            corrected
+                        )*
+                        focal,
                         1,
-                        height*2.2
+                        height*3
                     );
 
-                const top=horizon-wallH/2;
+                const top=
+                    horizon-
+                    wallH*.5;
 
-                const palette=wallPalette(ray.cell);
+                const palette=
+                    wallPalette(
+                        ray.cell
+                    );
 
                 let shade=
                     ray.side===1
                         ?.78
                         :1;
 
-                shade*=clamp(
-                    1-corrected/3000*.38,
-                    .56,
-                    1
-                );
+                shade*=
+                    clamp(
+                        1-
+                        corrected/
+                        3000*
+                        .38,
+                        .56,
+                        1
+                    );
 
                 const stripe=
-                    Math.floor(ray.wallX*8)%2;
+                    Math.floor(
+                        ray.wallX*
+                        8
+                    )%
+                    2;
 
                 ctx.fillStyle=
                     shadeHex(
@@ -2623,9 +3060,15 @@ export default {
                 );
 
                 if(
-                    Math.floor(ray.wallX*12)%6===0
+                    Math.floor(
+                        ray.wallX*
+                        12
+                    )%
+                    6===
+                    0
                 ){
-                    ctx.fillStyle='rgba(255,255,255,.035)';
+                    ctx.fillStyle=
+                        'rgba(255,255,255,.035)';
 
                     ctx.fillRect(
                         x,
@@ -2636,22 +3079,85 @@ export default {
                 }
             }
 
-            renderBots(horizon,fov);
-            renderParticles(horizon,fov);
-            renderWeaponView(def);
+            renderBots(
+                horizon,
+                fov
+            );
+
+            renderTracers(
+                fov
+            );
+
+            renderParticles(
+                horizon,
+                fov
+            );
+
+            renderWeaponView(
+                def
+            );
 
             if(
-                ads&&
-                def.id==='sniper'
+                def.id==='sniper'&&
+                adsProgress>.82
             ){
                 renderScope();
+            }else if(
+                adsProgress>.08
+            ){
+                // Mild peripheral darkening gives ADS a spatial feel
+                // beyond the FOV change.
+                const alpha=
+                    adsProgress*
+                    .16;
+
+                const v=
+                    ctx.createRadialGradient(
+                        width*.5,
+                        height*.5,
+                        Math.min(
+                            width,
+                            height
+                        )*
+                        .18,
+                        width*.5,
+                        height*.5,
+                        Math.max(
+                            width,
+                            height
+                        )*
+                        .70
+                    );
+
+                v.addColorStop(
+                    0,
+                    'rgba(0,0,0,0)'
+                );
+
+                v.addColorStop(
+                    1,
+                    `rgba(0,0,0,${alpha})`
+                );
+
+                ctx.fillStyle=v;
+                ctx.fillRect(
+                    0,
+                    0,
+                    width,
+                    height
+                );
             }
 
             if(damageFlash>0){
                 ctx.fillStyle=
                     `rgba(190,0,0,${damageFlash*.52})`;
 
-                ctx.fillRect(0,0,width,height);
+                ctx.fillRect(
+                    0,
+                    0,
+                    width,
+                    height
+                );
             }
         };
 
@@ -2665,108 +3171,293 @@ export default {
             return `rgb(${r},${g},${b})`;
         };
 
-        const projectEntity = (x,y,horizon,fov) => {
-            const dx=x-player.x;
-            const dy=y-player.y;
+        const cameraFocal = fov =>
+            width/
+            (
+                2*
+                Math.tan(
+                    fov/2
+                )
+            );
 
-            const dist=Math.hypot(dx,dy);
-            const angleTo=Math.atan2(dy,dx);
+        const projectPoint3D = (
+            x,
+            y,
+            z,
+            fov=currentFov
+        ) => {
+            const dx=
+                x-
+                player.x;
 
-            const rel=normAngle(angleTo-player.angle);
+            const dy=
+                y-
+                player.y;
+
+            const dist=
+                Math.hypot(dx,dy);
+
+            const angleTo=
+                Math.atan2(dy,dx);
+
+            const rel=
+                normAngle(
+                    angleTo-
+                    player.angle
+                );
 
             if(
                 Math.abs(rel)>
-                fov*.65
+                fov*.67
             ){
                 return null;
             }
 
-            const screenX=
-                width/2+
-                Math.tan(rel)/
-                Math.tan(fov/2)*
-                width/2;
-
-            const corrected=
+            const depth=
                 dist*
                 Math.cos(rel);
 
-            const scale=
-                height/
-                Math.max(1,corrected);
+            if(depth<=1){
+                return null;
+            }
+
+            const focal=
+                cameraFocal(fov);
+
+            const screenX=
+                width/2+
+                Math.tan(rel)*
+                focal;
+
+            const cameraZ=
+                CONFIG.eyeHeight+
+                player.z;
+
+            const vertical=
+                z-
+                cameraZ;
+
+            const horizon=
+                height*.5+
+                Math.tan(
+                    player.pitch
+                )*
+                focal+
+                (
+                    Math.sin(player.bob)*
+                    Math.min(
+                        7,
+                        Math.hypot(
+                            player.vx,
+                            player.vy
+                        )*
+                        .018
+                    )
+                )+
+                (
+                    player.slideTimer>0
+                        ?34
+                        :0
+                )+
+                recoil*10;
+
+            const screenY=
+                horizon-
+                vertical/
+                depth*
+                focal;
 
             return {
                 x:screenX,
-                dist:corrected,
-                scale
+                y:screenY,
+                dist:depth,
+                scale:
+                    focal/
+                    depth,
+                focal,
+                horizon
             };
         };
 
-        const renderBots = (horizon,fov) => {
-            const visible=bots
-                .filter(b=>b.alive)
-                .map(bot=>({
-                    bot,
-                    p:projectEntity(
-                        bot.x,
-                        bot.y,
-                        horizon,
-                        fov
-                    )
-                }))
-                .filter(item=>item.p)
-                .sort((a,b)=>b.p.dist-a.p.dist);
+        const projectEntity = (
+            x,
+            y,
+            horizon,
+            fov
+        ) => {
+            const p=
+                projectPoint3D(
+                    x,
+                    y,
+                    0,
+                    fov
+                );
 
-            for(const {bot,p} of visible){
-                const col=
-                    clamp(
-                        Math.floor(
-                            p.x/
-                            CONFIG.rayStepPx
-                        ),
-                        0,
-                        depthBuffer.length-1
+            if(!p){
+                return null;
+            }
+
+            return {
+                x:p.x,
+                dist:p.dist,
+                scale:
+                    p.focal/
+                    Math.max(
+                        1,
+                        p.dist
+                    ),
+                horizon:p.horizon
+            };
+        };
+
+        const renderBots = (
+            horizon,
+            fov
+        ) => {
+            const visible=
+                bots
+                    .filter(
+                        b=>b.alive
+                    )
+                    .map(
+                        bot=>({
+                            bot,
+                            p:
+                                projectPoint3D(
+                                    bot.x,
+                                    bot.y,
+                                    0,
+                                    fov
+                                )
+                        })
+                    )
+                    .filter(
+                        item=>item.p
+                    )
+                    .sort(
+                        (a,b)=>
+                            b.p.dist-
+                            a.p.dist
                     );
 
-                if(
-                    depthBuffer[col]<
-                    p.dist-
-                    CONFIG.playerRadius
-                ){
-                    continue;
-                }
+            for(const {bot,p} of visible){
+                const focal=
+                    p.focal;
 
                 const bodyH=
                     clamp(
-                        150*p.scale,
-                        10,
-                        height*1.3
+                        CONFIG.botHeight/
+                        Math.max(
+                            1,
+                            p.dist
+                        )*
+                        focal,
+                        8,
+                        height*1.8
                     );
 
                 const bodyW=
-                    bodyH*.36;
+                    bodyH*
+                    .36;
 
                 const feet=
-                    horizon+
-                    bodyH*.47;
+                    p.horizon+
+                    CONFIG.eyeHeight/
+                    Math.max(
+                        1,
+                        p.dist
+                    )*
+                    focal;
 
                 const headSize=
-                    bodyW*.70;
+                    bodyW*
+                    .70;
 
                 const headY=
                     feet-
                     bodyH;
 
+                const left=
+                    p.x-
+                    bodyW*
+                    .60;
+
+                const right=
+                    p.x+
+                    bodyW*
+                    .95;
+
+                // Clip only the horizontal portions actually visible in
+                // front of the depth buffer. This prevents the previous
+                // all-or-nothing "center column" disappearance bug.
+                ctx.save();
+                ctx.beginPath();
+
+                let hasVisibleSlice=false;
+
+                const step=
+                    Math.max(
+                        2,
+                        CONFIG.rayStepPx*
+                        2
+                    );
+
+                for(
+                    let sx=left;
+                    sx<=right;
+                    sx+=step
+                ){
+                    const col=
+                        clamp(
+                            Math.floor(
+                                sx/
+                                CONFIG.rayStepPx
+                            ),
+                            0,
+                            depthBuffer.length-1
+                        );
+
+                    if(
+                        depthBuffer[col]>=
+                        p.dist-
+                        CONFIG.playerRadius*
+                        .72
+                    ){
+                        hasVisibleSlice=true;
+
+                        ctx.rect(
+                            sx,
+                            headY-25,
+                            step+1,
+                            bodyH+38
+                        );
+                    }
+                }
+
+                if(!hasVisibleSlice){
+                    ctx.restore();
+                    continue;
+                }
+
+                ctx.clip();
+
                 const classData=
-                    CLASSES.find(c=>c.id===bot.classId)||
+                    CLASSES.find(
+                        c=>
+                            c.id===
+                            bot.classId
+                    )||
                     CLASSES[0];
 
                 const accent=
-                    WEAPONS[classData.weapon].color;
+                    WEAPONS[
+                        classData.weapon
+                    ].color;
 
-                ctx.save();
+                // Shadow.
+                ctx.fillStyle=
+                    'rgba(0,0,0,.18)';
 
-                ctx.fillStyle='rgba(0,0,0,.18)';
                 ctx.fillRect(
                     p.x-bodyW*.56,
                     feet-bodyH*.52,
@@ -2801,7 +3492,11 @@ export default {
                     bodyH*.48
                 );
 
-                ctx.fillStyle=shadeHex(accent,.72);
+                ctx.fillStyle=
+                    shadeHex(
+                        accent,
+                        .72
+                    );
 
                 ctx.fillRect(
                     p.x-bodyW*.50,
@@ -2830,8 +3525,29 @@ export default {
                     bodyH*.08
                 );
 
-                if(p.dist<750){
-                    ctx.fillStyle='rgba(0,0,0,.52)';
+                // Tiny muzzle flash for bots currently firing.
+                if(
+                    bot.weapon.cooldown>
+                    1/
+                    WEAPONS[
+                        bot.weapon.id
+                    ].fireRate-
+                    .045
+                ){
+                    ctx.fillStyle='#ffd46e';
+
+                    ctx.fillRect(
+                        p.x+bodyW*.89,
+                        feet-bodyH*.75,
+                        bodyW*.18,
+                        bodyH*.06
+                    );
+                }
+
+                if(p.dist<900){
+                    ctx.fillStyle=
+                        'rgba(0,0,0,.52)';
+
                     ctx.fillRect(
                         p.x-bodyW*.55,
                         headY-13,
@@ -2840,16 +3556,25 @@ export default {
                     );
 
                     ctx.fillStyle='#ef5960';
+
                     ctx.fillRect(
                         p.x-bodyW*.55,
                         headY-13,
                         bodyW*1.1*
-                        clamp(bot.hp/bot.maxHp,0,1),
+                        clamp(
+                            bot.hp/
+                            bot.maxHp,
+                            0,
+                            1
+                        ),
                         5
                     );
 
                     ctx.fillStyle='#fff';
-                    ctx.font=`800 ${clamp(bodyW*.22,7,11)}px Arial`;
+
+                    ctx.font=
+                        `800 ${clamp(bodyW*.22,7,11)}px Arial`;
+
                     ctx.textAlign='center';
 
                     ctx.fillText(
@@ -2863,17 +3588,166 @@ export default {
             }
         };
 
-        const renderParticles = (horizon,fov) => {
+        const renderTracers = fov => {
+            if(!tracers.length){
+                return;
+            }
+
+            ctx.save();
+            ctx.globalCompositeOperation='lighter';
+            ctx.lineCap='round';
+
+            for(const tr of tracers){
+                const alpha=
+                    clamp(
+                        tr.life/
+                        tr.maxLife,
+                        0,
+                        1
+                    );
+
+                if(tr.playerShot){
+                    // Start at the visible muzzle rather than the camera eye.
+                    const state=
+                        playerWeapon();
+
+                    const def=
+                        weaponDef(state);
+
+                    const muzzleX=
+                        width*
+                        (
+                            .64+
+                            (
+                                .50-
+                                .64
+                            )*
+                            adsProgress
+                        )+
+                        48;
+
+                    const muzzleY=
+                        height-
+                        78-
+                        recoil*
+                        12;
+
+                    const end=
+                        projectPoint3D(
+                            tr.x2,
+                            tr.y2,
+                            tr.z2,
+                            fov
+                        );
+
+                    if(!end){
+                        continue;
+                    }
+
+                    const grad=
+                        ctx.createLinearGradient(
+                            muzzleX,
+                            muzzleY,
+                            end.x,
+                            end.y
+                        );
+
+                    grad.addColorStop(
+                        0,
+                        `rgba(255,245,210,${alpha*.15})`
+                    );
+
+                    grad.addColorStop(
+                        .45,
+                        `rgba(255,248,220,${alpha*.78})`
+                    );
+
+                    grad.addColorStop(
+                        1,
+                        `rgba(255,255,255,${alpha})`
+                    );
+
+                    ctx.strokeStyle=grad;
+                    ctx.lineWidth=
+                        tr.width;
+
+                    ctx.shadowBlur=7;
+                    ctx.shadowColor='#fff2bf';
+
+                    ctx.beginPath();
+                    ctx.moveTo(
+                        muzzleX,
+                        muzzleY
+                    );
+                    ctx.lineTo(
+                        end.x,
+                        end.y
+                    );
+                    ctx.stroke();
+                }else{
+                    // Enemy tracers exist in world space, so incoming fire
+                    // visibly crosses the player's view.
+                    const start=
+                        projectPoint3D(
+                            tr.x1,
+                            tr.y1,
+                            tr.z1,
+                            fov
+                        );
+
+                    const end=
+                        projectPoint3D(
+                            tr.x2,
+                            tr.y2,
+                            tr.z2,
+                            fov
+                        );
+
+                    if(!start||!end){
+                        continue;
+                    }
+
+                    ctx.strokeStyle=
+                        `rgba(255,238,190,${alpha*.90})`;
+
+                    ctx.lineWidth=
+                        tr.width;
+
+                    ctx.shadowBlur=5;
+                    ctx.shadowColor='#ffe7a3';
+
+                    ctx.beginPath();
+                    ctx.moveTo(
+                        start.x,
+                        start.y
+                    );
+                    ctx.lineTo(
+                        end.x,
+                        end.y
+                    );
+                    ctx.stroke();
+                }
+            }
+
+            ctx.restore();
+        };
+
+        const renderParticles = (
+            horizon,
+            fov
+        ) => {
             for(const p of particles){
                 const proj=
-                    projectEntity(
+                    projectPoint3D(
                         p.x,
                         p.y,
-                        horizon,
+                        p.z,
                         fov
                     );
 
-                if(!proj) continue;
+                if(!proj){
+                    continue;
+                }
 
                 const col=
                     clamp(
@@ -2885,28 +3759,42 @@ export default {
                         depthBuffer.length-1
                     );
 
-                if(depthBuffer[col]<proj.dist) continue;
-
-                const y=
-                    horizon-
-                    p.z*
-                    proj.scale;
+                if(
+                    depthBuffer[col]<
+                    proj.dist-
+                    4
+                ){
+                    continue;
+                }
 
                 ctx.save();
+
                 ctx.globalAlpha=
                     clamp(
-                        p.life/p.maxLife,
+                        p.life/
+                        p.maxLife,
                         0,
                         1
                     );
 
-                ctx.fillStyle=p.color;
+                ctx.fillStyle=
+                    p.color;
+
+                const size=
+                    Math.max(
+                        1,
+                        p.size*
+                        proj.scale*
+                        .45
+                    );
 
                 ctx.fillRect(
-                    proj.x,
-                    y,
-                    Math.max(1,p.size*proj.scale*.45),
-                    Math.max(1,p.size*proj.scale*.45)
+                    proj.x-
+                    size*.5,
+                    proj.y-
+                    size*.5,
+                    size,
+                    size
                 );
 
                 ctx.restore();
@@ -2916,52 +3804,95 @@ export default {
         const renderWeaponView = def => {
             if(!player.alive) return;
 
-            const ads=
-                adsDown;
-
             const speed=
-                Math.hypot(player.vx,player.vy);
+                Math.hypot(
+                    player.vx,
+                    player.vy
+                );
+
+            const hipSway=
+                1-
+                adsProgress*
+                .82;
 
             const swayX=
-                Math.sin(player.bob*.5)*
+                Math.sin(
+                    player.bob*.5
+                )*
                 Math.min(
                     12,
                     speed*.03
-                );
+                )*
+                hipSway;
 
             const swayY=
                 Math.abs(
-                    Math.cos(player.bob)
+                    Math.cos(
+                        player.bob
+                    )
                 )*
                 Math.min(
                     8,
                     speed*.02
-                );
+                )*
+                hipSway;
 
             const recoilY=
                 recoil*
-                18;
-
-            let cx=
-                width*
                 (
-                    ads
-                        ?.50
-                        :.64
-                )+
+                    18-
+                    adsProgress*
+                    7
+                );
+
+            const hipX=
+                width*.64;
+
+            const adsX=
+                width*.50;
+
+            const hipY=
+                height;
+
+            const adsY=
+                height-
+                (
+                    def.id==='sniper'
+                        ?32
+                        :18
+                );
+
+            const cx=
+                hipX+
+                (
+                    adsX-
+                    hipX
+                )*
+                adsProgress+
                 swayX;
 
-            let cy=
-                height+
+            const cy=
+                hipY+
+                (
+                    adsY-
+                    hipY
+                )*
+                adsProgress+
                 swayY+
                 recoilY;
 
             ctx.save();
 
             if(def.id==='knife'){
-                ctx.translate(cx,cy);
+                ctx.translate(
+                    cx,
+                    cy
+                );
 
-                ctx.rotate(-.35-recoil*.15);
+                ctx.rotate(
+                    -.35-
+                    recoil*.15
+                );
 
                 ctx.fillStyle='#d5d9dc';
 
@@ -2974,19 +3905,32 @@ export default {
                 ctx.fill();
 
                 ctx.fillStyle='#272b2e';
-                ctx.fillRect(-14,-58,26,75);
+
+                ctx.fillRect(
+                    -14,
+                    -58,
+                    26,
+                    75
+                );
 
                 ctx.restore();
                 return;
             }
 
             const scale=
-                ads
-                    ?.90
-                    :1.0;
+                1-
+                adsProgress*
+                .08;
 
-            ctx.translate(cx,cy);
-            ctx.scale(scale,scale);
+            ctx.translate(
+                cx,
+                cy
+            );
+
+            ctx.scale(
+                scale,
+                scale
+            );
 
             const body=
                 def.id==='sniper'
@@ -3008,7 +3952,8 @@ export default {
                 78
             );
 
-            ctx.fillStyle=def.color;
+            ctx.fillStyle=
+                def.color;
 
             ctx.fillRect(
                 -body*.36,
@@ -3026,7 +3971,10 @@ export default {
                 13
             );
 
-            if(def.id==='ar'||def.id==='smg'){
+            if(
+                def.id==='ar'||
+                def.id==='smg'
+            ){
                 ctx.fillStyle='#2a3136';
 
                 ctx.beginPath();
@@ -3036,6 +3984,20 @@ export default {
                 ctx.lineTo(-5,-8);
                 ctx.closePath();
                 ctx.fill();
+
+                // Simple centered iron sight becomes visible while ADSing.
+                if(adsProgress>.18){
+                    ctx.strokeStyle='#0a0d0f';
+                    ctx.lineWidth=4;
+
+                    ctx.beginPath();
+                    ctx.moveTo(5,-103);
+                    ctx.lineTo(5,-87);
+                    ctx.moveTo(-6,-97);
+                    ctx.lineTo(5,-103);
+                    ctx.lineTo(16,-97);
+                    ctx.stroke();
+                }
             }
 
             if(def.id==='shotgun'){
@@ -3047,6 +4009,16 @@ export default {
                     65,
                     18
                 );
+
+                if(adsProgress>.18){
+                    ctx.fillStyle='#111';
+                    ctx.fillRect(
+                        10,
+                        -99,
+                        5,
+                        16
+                    );
+                }
             }
 
             if(def.id==='sniper'){
@@ -3062,11 +4034,20 @@ export default {
                 ctx.fillStyle='#151a1d';
 
                 ctx.beginPath();
-                ctx.arc(12,-106,16,0,Math.PI*2);
+                ctx.arc(
+                    12,
+                    -106,
+                    16,
+                    0,
+                    Math.PI*2
+                );
                 ctx.fill();
             }
 
-            if(muzzleFlash>0&&!def.melee){
+            if(
+                muzzleFlash>0&&
+                !def.melee
+            ){
                 ctx.fillStyle=
                     `rgba(255,210,95,${clamp(muzzleFlash/.055,0,1)})`;
 
@@ -3089,14 +4070,38 @@ export default {
                     width,
                     height
                 )*
-                .43;
+                (
+                    .40+
+                    adsProgress*
+                    .035
+                );
 
             ctx.save();
 
-            ctx.fillStyle='rgba(0,0,0,.93)';
+            const alpha=
+                clamp(
+                    (
+                        adsProgress-
+                        .78
+                    )/
+                    .22,
+                    0,
+                    1
+                );
+
+            ctx.globalAlpha=alpha;
+
+            ctx.fillStyle=
+                'rgba(0,0,0,.96)';
 
             ctx.beginPath();
-            ctx.rect(0,0,width,height);
+            ctx.rect(
+                0,
+                0,
+                width,
+                height
+            );
+
             ctx.arc(
                 width/2,
                 height/2,
@@ -3108,8 +4113,8 @@ export default {
 
             ctx.fill('evenodd');
 
-            ctx.strokeStyle='#111';
-            ctx.lineWidth=5;
+            ctx.strokeStyle='#080a0b';
+            ctx.lineWidth=7;
 
             ctx.beginPath();
             ctx.arc(
@@ -3121,17 +4126,112 @@ export default {
             );
             ctx.stroke();
 
-            ctx.strokeStyle='rgba(0,0,0,.85)';
-            ctx.lineWidth=1.5;
+            ctx.strokeStyle=
+                'rgba(0,0,0,.90)';
+
+            ctx.lineWidth=1.25;
 
             ctx.beginPath();
-            ctx.moveTo(width/2-radius,height/2);
-            ctx.lineTo(width/2+radius,height/2);
-            ctx.moveTo(width/2,height/2-radius);
-            ctx.lineTo(width/2,height/2+radius);
+            ctx.moveTo(
+                width/2-radius,
+                height/2
+            );
+
+            ctx.lineTo(
+                width/2+radius,
+                height/2
+            );
+
+            ctx.moveTo(
+                width/2,
+                height/2-radius
+            );
+
+            ctx.lineTo(
+                width/2,
+                height/2+radius
+            );
+
             ctx.stroke();
 
+            ctx.fillStyle=
+                'rgba(255,255,255,.28)';
+
+            ctx.beginPath();
+            ctx.arc(
+                width/2,
+                height/2,
+                2.2,
+                0,
+                Math.PI*2
+            );
+            ctx.fill();
+
             ctx.restore();
+        };
+
+        const updateAds = delta => {
+            const target=
+                (
+                    adsDown&&
+                    player?.alive&&
+                    !weaponDef(playerWeapon())?.melee
+                )
+                    ?1
+                    :0;
+
+            const speed=
+                target>adsProgress
+                    ?CONFIG.adsInSpeed
+                    :CONFIG.adsOutSpeed;
+
+            adsProgress +=
+                (
+                    target-
+                    adsProgress
+                )*
+                (
+                    1-
+                    Math.exp(
+                        -speed*
+                        delta
+                    )
+                );
+
+            adsProgress=
+                clamp(
+                    adsProgress,
+                    0,
+                    1
+                );
+
+            const state=
+                playerWeapon();
+
+            const def=
+                weaponDef(state);
+
+            const targetAdsFov=
+                def?.id==='sniper'
+                    ?CONFIG.sniperAdsFov
+                    :CONFIG.adsFov;
+
+            const smooth=
+                adsProgress*
+                adsProgress*
+                (
+                    3-
+                    2*
+                    adsProgress
+                );
+
+            currentFov=
+                CONFIG.fov+
+                (
+                    targetAdsFov-
+                    CONFIG.fov
+                )*
+                smooth;
         };
 
         const update = delta => {
@@ -3139,6 +4239,7 @@ export default {
 
             matchTime-=delta;
 
+            updateAds(delta);
             updatePlayerMovement(delta);
             updatePlayerWeapons(delta);
 
@@ -3148,13 +4249,21 @@ export default {
 
             updateParticles(delta);
 
-            const winner=[player,...bots]
-                .filter(Boolean)
-                .sort((a,b)=>b.kills-a.kills||b.score-a.score)[0];
+            const winner=
+                [player,...bots]
+                    .filter(Boolean)
+                    .sort(
+                        (a,b)=>
+                            b.kills-
+                            a.kills||
+                            b.score-
+                            a.score
+                    )[0];
 
             if(
                 matchTime<=0||
-                winner?.kills>=CONFIG.scoreLimit
+                winner?.kills>=
+                CONFIG.scoreLimit
             ){
                 finishMatch();
             }
@@ -3214,6 +4323,7 @@ export default {
             nextId=1;
             bots=[];
             particles=[];
+            tracers=[];
             killFeed=[];
             medals=[];
 
@@ -3222,6 +4332,8 @@ export default {
             hitMarker=0;
             damageFlash=0;
             crosshairBloom=0;
+            adsProgress=0;
+            currentFov=CONFIG.fov;
             streak=0;
             lastPlayerKillAt=-99;
 
@@ -3283,20 +4395,30 @@ export default {
             const sens=
                 CONFIG.mouseSensitivity*
                 (
-                    adsDown
-                        ?.67
-                        :1
+                    1-
+                    adsProgress*
+                    .36
                 );
 
             player.angle +=
                 event.movementX*
                 sens;
 
+            // Mouse up must look up. movementY is negative when moving up,
+            // therefore the sign is intentionally inverted here.
             player.pitch=
                 clamp(
-                    player.pitch+
+                    player.pitch-
                     event.movementY*
-                    .31,
+                    CONFIG.pitchSensitivity*
+                    (
+                        .72+
+                        .28*
+                        (
+                            1-
+                            adsProgress
+                        )
+                    ),
                     -CONFIG.maxPitch,
                     CONFIG.maxPitch
                 );

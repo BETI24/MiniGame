@@ -48,7 +48,7 @@ export default{
     name:'Survival Royale',
     description:'Top-down Battle Royale gegen KI: looten, schießen, Deckung nutzen und der Zone entkommen.',
     icon:'🎯',
-    tags:['Battle Royale','Shooter','AI','Survival']
+    tags:['Battle Royale','Shooter','AI',]
   },
   init:(container,services)=>{
     let dead=false,raf=0,last=performance.now(),running=false,ended=false;

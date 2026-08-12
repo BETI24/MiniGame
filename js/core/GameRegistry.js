@@ -12,7 +12,7 @@ import IslandConquest from "../games/IslandConquest.js";
 import Plinko from "../games/Plinko.js";
 import Jackpot from "../games/Jackpot.js";
 import neon_swarm from "../games/neon_swarm.js";
-import craps from "../games/craps.js";
+import craps from "../games/Craps.js";
 import SurvivalRoyale from "../games/SurvivalRoyale.js";
 import CellArena from "../games/CellArena.js";
 import NeonSerpent from "../games/NeonSerpent.js";

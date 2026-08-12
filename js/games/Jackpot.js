@@ -5,7 +5,7 @@ export default {
         description: 'Setze deine Credits in den Pot. Je höher dein Einsatz, desto krasser deine Gewinnchance. High Roller Casino Action.',
         icon: '🎰',
         imageUrl: 'js/assets/images/CyberJackpot.png',
-        tags: ['Casino', 'Jackpot', 'Gambling', 'Neon']
+        tags: ['Casino', 'Jackpot', 'Neon']
     },
     init: (container, services) => {
         // --- Spielzustand & Timer-Logik ---

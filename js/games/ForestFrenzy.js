@@ -93,6 +93,42 @@ const SPECIES = {
         speed: [0, 0],
         band: [0.27, 0.55],
         layer: [0.78, 0.96]
+    },
+    goose: {
+        name: 'Goose',
+        icon: '🪿',
+        points: 155,
+        hitRadius: 28,
+        speed: [132, 195],
+        band: [0.16, 0.34],
+        layer: [0.76, 1.02]
+    },
+    fox: {
+        name: 'Fox',
+        icon: '🦊',
+        points: 195,
+        hitRadius: 25,
+        speed: [150, 220],
+        band: [0.60, 0.76],
+        layer: [0.88, 1.10]
+    },
+    pheasant: {
+        name: 'Pheasant',
+        icon: '🐦',
+        points: 170,
+        hitRadius: 21,
+        speed: [165, 245],
+        band: [0.28, 0.47],
+        layer: [0.74, 0.98]
+    },
+    goat: {
+        name: 'Mountain Goat',
+        icon: '🐐',
+        points: 225,
+        hitRadius: 29,
+        speed: [92, 148],
+        band: [0.51, 0.67],
+        layer: [0.84, 1.05]
     }
 };
 
@@ -159,18 +195,69 @@ const WEAPONS = {
 const ROUNDS = [
     {
         name: 'Morning Meadow',
+        area: 'Green Valley',
         quotas: { duck: 5, rabbit: 5, boar: 4 },
-        palette: 'meadow'
+        speciesPool: ['duck','rabbit','boar'],
+        palette: 'meadow',
+        sceneWidth: 2500,
+        timeMult: 1.00,
+        spawnMult: 1.00,
+        maxAnimals: 13
     },
     {
         name: 'Forest Edge',
+        area: 'Pine Woods',
         quotas: { deer: 4, mole: 5, duck: 6 },
-        palette: 'forest'
+        speciesPool: ['deer','mole','duck','woodpecker','rabbit'],
+        palette: 'forest',
+        sceneWidth: 2650,
+        timeMult: 1.02,
+        spawnMult: .96,
+        maxAnimals: 14
     },
     {
         name: 'Wild Clearing',
+        area: 'Golden Clearing',
         quotas: { boar: 6, rabbit: 6, deer: 5, woodpecker: 3 },
-        palette: 'golden'
+        speciesPool: ['boar','rabbit','deer','woodpecker','duck'],
+        palette: 'golden',
+        sceneWidth: 2780,
+        timeMult: 1.04,
+        spawnMult: .92,
+        maxAnimals: 15
+    },
+    {
+        name: 'Marsh Run',
+        area: 'Foggy Wetlands',
+        quotas: { goose: 6, fox: 4, duck: 5, mole: 4 },
+        speciesPool: ['goose','fox','duck','mole','deer'],
+        palette: 'swamp',
+        sceneWidth: 2920,
+        timeMult: 1.08,
+        spawnMult: .90,
+        maxAnimals: 15
+    },
+    {
+        name: 'Autumn Trail',
+        area: 'Redleaf Forest',
+        quotas: { pheasant: 6, fox: 6, boar: 5, deer: 5 },
+        speciesPool: ['pheasant','fox','boar','deer','rabbit'],
+        palette: 'autumn',
+        sceneWidth: 3060,
+        timeMult: 1.10,
+        spawnMult: .86,
+        maxAnimals: 16
+    },
+    {
+        name: 'Alpine Ridge',
+        area: 'Snowline Mountains',
+        quotas: { goat: 6, fox: 5, deer: 6, goose: 5, pheasant: 4 },
+        speciesPool: ['goat','fox','deer','goose','pheasant'],
+        palette: 'alpine',
+        sceneWidth: 3220,
+        timeMult: 1.14,
+        spawnMult: .83,
+        maxAnimals: 17
     }
 ];
 
@@ -215,6 +302,7 @@ export default {
 
         let cameraX = 0;
         let cameraTargetX = 0;
+        let sceneWidth = CONFIG.sceneWidth;
 
         let spawnTimer = 0.3;
         let nextAnimalId = 1;
@@ -307,14 +395,14 @@ export default {
             }
 
             .ff-time-num{
-                font-size:1.35rem;
+                font-size:1.68rem;
                 font-weight:1000;
                 line-height:1;
             }
 
             .ff-round-name{
                 margin-top:2px;
-                font-size:.52rem;
+                font-size:.65rem;
                 font-weight:900;
                 text-transform:uppercase;
             }
@@ -336,7 +424,7 @@ export default {
                 gap:4px;
                 padding:3px 5px;
                 border-right:1px solid rgba(78,51,22,.25);
-                font-size:.69rem;
+                font-size:.84rem;
                 font-weight:1000;
             }
 
@@ -347,7 +435,7 @@ export default {
                 opacity:.72;
             }
 
-            .ff-quota-icon{font-size:1rem}
+            .ff-quota-icon{font-size:1.22rem}
 
             .ff-score{
                 min-width:124px;
@@ -356,13 +444,13 @@ export default {
             }
 
             .ff-score-label{
-                font-size:.48rem;
+                font-size:.61rem;
                 font-weight:1000;
                 text-transform:uppercase;
             }
 
             .ff-score-num{
-                font-size:1.25rem;
+                font-size:1.58rem;
                 font-weight:1000;
                 line-height:1.05;
             }
@@ -384,12 +472,12 @@ export default {
             }
 
             .ff-weapon-box{
-                min-width:210px;
-                padding:7px 9px;
+                min-width:300px;
+                padding:9px 11px;
             }
 
             .ff-weapon-name{
-                font-size:.66rem;
+                font-size:.92rem;
                 font-weight:1000;
                 text-transform:uppercase;
             }
@@ -397,15 +485,127 @@ export default {
             .ff-weapon-hint{
                 margin-top:2px;
                 color:#705b41;
-                font-size:.53rem;
+                font-size:.64rem;
                 font-weight:800;
             }
+
+            .ff-weapon-topline{
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                gap:10px;
+                margin-bottom:3px;
+            }
+
+            .ff-equipped-label{
+                color:#806443;
+                font-size:.58rem;
+                font-weight:1000;
+                letter-spacing:.10em;
+                text-transform:uppercase;
+            }
+
+            .ff-reload-state{
+                color:#31673a;
+                font-size:.62rem;
+                font-weight:1000;
+                text-transform:uppercase;
+            }
+
+            .ff-reload-state.warn{color:#9f3c26}
+            .ff-reload-state.loading{color:#9a681f}
+
+            .ff-weapon-slotbar{
+                display:grid;
+                grid-template-columns:repeat(4,1fr);
+                gap:4px;
+                margin-top:7px;
+            }
+
+            .ff-weapon-slot{
+                min-width:0;
+                padding:4px 5px;
+                border:1px solid #7b5b36;
+                background:rgba(116,88,53,.10);
+                color:#70573d;
+                font-size:.54rem;
+                font-weight:1000;
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
+                text-align:center;
+            }
+
+            .ff-weapon-slot b{
+                display:block;
+                color:#4b3827;
+                font-size:.67rem;
+            }
+
+            .ff-weapon-slot.active{
+                background:#557c3f;
+                border-color:#365529;
+                color:#f4eccb;
+                box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);
+            }
+
+            .ff-weapon-slot.active b{color:#fff7d2}
+
+            .ff-weapon-slot.locked{
+                opacity:.34;
+                filter:grayscale(1);
+            }
+
+            .ff-reload-track{
+                position:relative;
+                height:7px;
+                margin-top:6px;
+                border:1px solid #725332;
+                background:rgba(68,47,30,.20);
+                overflow:hidden;
+            }
+
+            .ff-reload-fill{
+                height:100%;
+                width:0%;
+                background:#d49532;
+                transition:width .05s linear;
+            }
+
+            .ff-ammo-label{
+                color:#76583a;
+                font-size:.55rem;
+                font-weight:1000;
+                text-align:right;
+                text-transform:uppercase;
+            }
+
+            .ff-reload-alert{
+                position:absolute;
+                left:50%;
+                bottom:23%;
+                transform:translateX(-50%);
+                min-width:190px;
+                padding:8px 13px;
+                border:3px solid #5b321d;
+                background:rgba(240,206,117,.96);
+                color:#8c341e;
+                font-size:.87rem;
+                font-weight:1000;
+                text-align:center;
+                text-transform:uppercase;
+                box-shadow:0 4px 0 rgba(0,0,0,.16);
+                opacity:0;
+                transition:opacity .08s;
+            }
+
+            .ff-reload-alert.on{opacity:1}
 
             .ff-combo{
                 width:max-content;
                 padding:4px 7px;
                 color:#98431f;
-                font-size:.60rem;
+                font-size:.76rem;
                 font-weight:1000;
                 opacity:0;
                 transition:opacity .12s;
@@ -417,8 +617,8 @@ export default {
                 bottom:12px;
                 display:flex;
                 align-items:flex-end;
-                gap:5px;
-                padding:7px 9px;
+                gap:8px;
+                padding:9px 11px;
                 border:2px solid #3d2b1e;
                 background:rgba(239,216,158,.92);
                 box-shadow:0 3px 0 rgba(0,0,0,.16);
@@ -447,7 +647,7 @@ export default {
             .ff-ammo-text{
                 min-width:48px;
                 color:#473627;
-                font-size:.60rem;
+                font-size:.79rem;
                 font-weight:1000;
                 text-align:right;
             }
@@ -461,7 +661,7 @@ export default {
                 border:2px solid #51371e;
                 background:rgba(242,218,153,.94);
                 color:#693b1d;
-                font-size:.75rem;
+                font-size:.92rem;
                 font-weight:1000;
                 text-transform:uppercase;
                 opacity:0;
@@ -496,7 +696,7 @@ export default {
                 background:#d8bd76;
                 color:#392b1f;
                 font:inherit;
-                font-size:.55rem;
+                font-size:.66rem;
                 font-weight:1000;
                 cursor:pointer;
                 pointer-events:auto;
@@ -545,7 +745,7 @@ export default {
                 margin:10px auto 17px;
                 max-width:570px;
                 color:#684c31;
-                font-size:.77rem;
+                font-size:.86rem;
                 line-height:1.5;
                 font-weight:700;
             }
@@ -553,7 +753,7 @@ export default {
             .ff-section{
                 margin:13px 0 6px;
                 color:#5b412b;
-                font-size:.59rem;
+                font-size:.67rem;
                 font-weight:1000;
                 text-transform:uppercase;
                 letter-spacing:.08em;
@@ -571,7 +771,7 @@ export default {
                 background:#d6b56c;
                 color:#4d371f;
                 font:inherit;
-                font-size:.63rem;
+                font-size:.72rem;
                 font-weight:1000;
                 cursor:pointer;
             }
@@ -608,7 +808,7 @@ export default {
                 border:2px solid rgba(93,61,31,.25);
                 background:rgba(255,246,207,.45);
                 color:#74563a;
-                font-size:.58rem;
+                font-size:.66rem;
                 line-height:1.42;
             }
 
@@ -693,9 +893,15 @@ export default {
 
                 <div class="ff-bottom-left">
                     <div class="ff-weapon-box">
+                        <div class="ff-weapon-topline">
+                            <span class="ff-equipped-label">Equipped Weapon</span>
+                            <span class="ff-reload-state">READY</span>
+                        </div>
                         <div class="ff-weapon-name">OLD SHOTGUN</div>
+                        <div class="ff-weapon-slotbar"></div>
+                        <div class="ff-reload-track"><div class="ff-reload-fill"></div></div>
                         <div class="ff-weapon-hint">
-                            LMB shoot · RMB/R reload · 1–4 switch weapon · move cursor to screen edges to pan
+                            LMB Shoot · R / RMB Reload · 1–4 Switch · Edge of screen pans camera
                         </div>
                     </div>
                     <div class="ff-combo">COMBO ×2</div>
@@ -703,9 +909,13 @@ export default {
 
                 <div class="ff-ammo">
                     <div class="ff-shells"></div>
-                    <div class="ff-ammo-text">5 / ∞</div>
+                    <div>
+                        <div class="ff-ammo-label">Magazine / Reserve</div>
+                        <div class="ff-ammo-text">5 / ∞</div>
+                    </div>
                 </div>
 
+                <div class="ff-reload-alert">R · RELOAD</div>
                 <div class="ff-message"></div>
                 <div class="ff-bonus-label">BONUS SHOT!</div>
             </div>
@@ -778,6 +988,10 @@ export default {
         const scoreEl = root.querySelector('.ff-score-num');
 
         const weaponNameEl = root.querySelector('.ff-weapon-name');
+        const weaponSlotbarEl = root.querySelector('.ff-weapon-slotbar');
+        const reloadStateEl = root.querySelector('.ff-reload-state');
+        const reloadFillEl = root.querySelector('.ff-reload-fill');
+        const reloadAlertEl = root.querySelector('.ff-reload-alert');
         const shellsEl = root.querySelector('.ff-shells');
         const ammoTextEl = root.querySelector('.ff-ammo-text');
         const comboEl = root.querySelector('.ff-combo');
@@ -908,19 +1122,88 @@ export default {
 
             const n=index+1;
 
+            const lateBiomes=[
+                {
+                    palette:'swamp',
+                    area:'Deep Wetlands',
+                    pool:['goose','fox','duck','mole','deer']
+                },
+                {
+                    palette:'autumn',
+                    area:'Old Redleaf Woods',
+                    pool:['pheasant','fox','boar','deer','rabbit']
+                },
+                {
+                    palette:'alpine',
+                    area:'High Mountain Pass',
+                    pool:['goat','fox','deer','goose','pheasant']
+                },
+                {
+                    palette:'forest',
+                    area:'Black Pine Forest',
+                    pool:['fox','deer','boar','woodpecker','pheasant']
+                }
+            ];
+
+            const biome=
+                lateBiomes[
+                    (index-ROUNDS.length)%
+                    lateBiomes.length
+                ];
+
+            const qA=
+                biome.pool[
+                    index%
+                    biome.pool.length
+                ];
+
+            const qB=
+                biome.pool[
+                    (index+2)%
+                    biome.pool.length
+                ];
+
+            const qC=
+                biome.pool[
+                    (index+4)%
+                    biome.pool.length
+                ];
+
             return {
-                name:`Deep Forest ${n}`,
-                palette:
-                    index%3===0
-                        ?'meadow'
-                        :index%3===1
-                            ?'forest'
-                            :'golden',
+                name:`Expedition ${n}`,
+                area:biome.area,
+                palette:biome.palette,
+                speciesPool:biome.pool,
+                sceneWidth:
+                    3200+
+                    Math.min(
+                        750,
+                        (index-5)*70
+                    ),
+                timeMult:
+                    1.10+
+                    Math.min(
+                        .18,
+                        (index-5)*.012
+                    ),
+                spawnMult:
+                    Math.max(
+                        .72,
+                        .84-
+                        (index-5)*.01
+                    ),
+                maxAnimals:
+                    Math.min(
+                        20,
+                        16+
+                        Math.floor(
+                            (index-5)/2
+                        )
+                    ),
                 quotas:{
-                    duck:5+Math.floor(index*.65),
-                    rabbit:4+Math.floor(index*.52),
-                    boar:3+Math.floor(index*.46),
-                    deer:2+Math.floor(index*.40)
+                    [qA]:6+Math.floor(index*.45),
+                    [qB]:5+Math.floor(index*.38),
+                    [qC]:4+Math.floor(index*.32)
                 }
             };
         };
@@ -953,6 +1236,22 @@ export default {
 
             phase='hunt';
 
+            sceneWidth=
+                preset.sceneWidth??
+                CONFIG.sceneWidth;
+
+            cameraX=
+                clamp(
+                    cameraX,
+                    0,
+                    Math.max(
+                        0,
+                        sceneWidth-width
+                    )
+                );
+
+            cameraTargetX=cameraX;
+
             quota={...preset.quotas};
             quotaDone={};
 
@@ -962,7 +1261,8 @@ export default {
 
             roundTime=
                 CONFIG.baseRoundTime*
-                diff.timeMult+
+                diff.timeMult*
+                (preset.timeMult??1)+
                 carryTime;
 
             carryTime=0;
@@ -984,7 +1284,10 @@ export default {
 
             bestRound=Math.max(bestRound,index+1);
 
-            showMessage(`Round ${index+1}: ${preset.name}`,1.8);
+            showMessage(
+                `Round ${index+1} · ${preset.area??'Forest'} · ${preset.name}`,
+                2.1
+            );
             updateHud();
         };
 
@@ -1025,7 +1328,12 @@ export default {
                 return needed[rint(0,needed.length-1)];
             }
 
-            const pool=Object.keys(SPECIES);
+            const preset=
+                roundPreset(roundIndex);
+
+            const pool=
+                preset.speciesPool??
+                Object.keys(SPECIES);
 
             return pool[rint(0,pool.length-1)];
         };
@@ -1058,7 +1366,7 @@ export default {
                     cameraX+
                     rand(width*.08,width*.92),
                     120,
-                    CONFIG.sceneWidth-120
+                    sceneWidth-120
                 );
             }
 
@@ -1086,7 +1394,17 @@ export default {
         };
 
         const spawnAnimal = () => {
-            if(animals.filter(a=>!a.dead).length>=CONFIG.maxAnimals){
+            const preset=
+                roundPreset(roundIndex);
+
+            const maxAnimals=
+                preset.maxAnimals??
+                CONFIG.maxAnimals;
+
+            if(
+                animals.filter(a=>!a.dead).length>=
+                maxAnimals
+            ){
                 return;
             }
 
@@ -1136,7 +1454,7 @@ export default {
                     0,
                     Math.max(
                         0,
-                        CONFIG.sceneWidth-width
+                        sceneWidth-width
                     )
                 );
 
@@ -1182,7 +1500,7 @@ export default {
                 if(
                     a.life<=0||
                     a.x<-450||
-                    a.x>CONFIG.sceneWidth+450
+                    a.x>sceneWidth+450
                 ){
                     animals.splice(i,1);
                 }
@@ -1213,12 +1531,20 @@ export default {
                     s;
             }
 
-            if(a.type==='duck'){
+            if(
+                a.type==='duck'||
+                a.type==='goose'||
+                a.type==='pheasant'
+            ){
                 y+=
                     Math.sin(
                         a.phase*.62
                     )*
-                    13*
+                    (
+                        a.type==='pheasant'
+                            ?10
+                            :13
+                    )*
                     s;
             }
 
@@ -1881,6 +2207,11 @@ export default {
             reloading=false;
             reloadTimer=0;
 
+            showMessage(
+                `Equipped: ${WEAPONS[id].name}`,
+                .85
+            );
+
             tone(350,.025,.004,'triangle');
 
             updateHud();
@@ -2023,6 +2354,9 @@ export default {
                         .24
                     );
 
+                const preset=
+                    roundPreset(roundIndex);
+
                 spawnTimer=
                     Math.max(
                         CONFIG.spawnMin,
@@ -2031,6 +2365,7 @@ export default {
                             intensity
                         )*
                         diff.spawnMult*
+                        (preset.spawnMult??1)*
                         rand(.72,1.25)
                     );
             }
@@ -2088,6 +2423,7 @@ export default {
 
             cameraX=0;
             cameraTargetX=0;
+            sceneWidth=CONFIG.sceneWidth;
 
             animals=[];
             particles=[];
@@ -2151,17 +2487,70 @@ export default {
             const preset=roundPreset(roundIndex);
             const palette=preset.palette;
 
-            const skyTop=
-                palette==='golden'
-                    ?'#87b8d4'
-                    :palette==='forest'
-                        ?'#83b8d5'
-                        :'#8fc9df';
-
-            const skyBottom=
-                palette==='golden'
-                    ?'#eac87f'
-                    :'#d7e6b4';
+            const biome={
+                meadow:{
+                    skyTop:'#8fc9df',
+                    skyBottom:'#d7e6b4',
+                    far:'#779b79',
+                    forest:'#347349',
+                    ground:'#62a94f',
+                    foreground:'#397d3e',
+                    path:'#9d7b50'
+                },
+                forest:{
+                    skyTop:'#83b8d5',
+                    skyBottom:'#c8dcb0',
+                    far:'#537a62',
+                    forest:'#285f3a',
+                    ground:'#4e8a45',
+                    foreground:'#2e6838',
+                    path:'#856a4a'
+                },
+                golden:{
+                    skyTop:'#87b8d4',
+                    skyBottom:'#eac87f',
+                    far:'#8b8b60',
+                    forest:'#5f7741',
+                    ground:'#87a94f',
+                    foreground:'#608c3b',
+                    path:'#a97d49'
+                },
+                swamp:{
+                    skyTop:'#789fa6',
+                    skyBottom:'#c5c39a',
+                    far:'#617866',
+                    forest:'#3e644b',
+                    ground:'#557b4e',
+                    foreground:'#355f42',
+                    path:'#637e7e'
+                },
+                autumn:{
+                    skyTop:'#8eb7cd',
+                    skyBottom:'#efbd7a',
+                    far:'#987763',
+                    forest:'#8f623f',
+                    ground:'#9b8247',
+                    foreground:'#755a34',
+                    path:'#a8794b'
+                },
+                alpine:{
+                    skyTop:'#87b8dc',
+                    skyBottom:'#e6eef0',
+                    far:'#8197a5',
+                    forest:'#385d55',
+                    ground:'#d7e4df',
+                    foreground:'#b8d0c8',
+                    path:'#aebfc0'
+                }
+            }[palette]??{
+                skyTop:'#8fc9df',
+                skyBottom:'#d7e6b4',
+                far:'#779b79',
+                forest:'#347349',
+                ground:'#62a94f',
+                foreground:'#397d3e',
+                path:'#9d7b50'
+            };
 
             const sky=
                 ctx.createLinearGradient(
@@ -2171,53 +2560,90 @@ export default {
                     height*.57
                 );
 
-            sky.addColorStop(0,skyTop);
-            sky.addColorStop(1,skyBottom);
+            sky.addColorStop(0,biome.skyTop);
+            sky.addColorStop(1,biome.skyBottom);
 
             ctx.fillStyle=sky;
             ctx.fillRect(0,0,width,height);
 
-            // Far mountains / hills.
-            const parallax=.12;
             const farOffset=
                 cameraX*
-                parallax;
+                .12;
 
-            ctx.fillStyle=
-                palette==='golden'
-                    ?'#77956a'
-                    :'#779b79';
+            // Mountains / distant ridges.
+            ctx.fillStyle=biome.far;
 
             ctx.beginPath();
-            ctx.moveTo(-200, height*.48);
+            ctx.moveTo(-220,height*.49);
 
-            for(let x=-200;x<width+300;x+=180){
+            for(let x=-220;x<width+340;x+=170){
                 const wx=
                     x+
                     farOffset%
-                    180;
+                    170;
 
-                ctx.lineTo(
-                    wx,
+                let ridge=
                     height*
                     (
-                        .33+
+                        .34+
                         Math.sin(
                             (x+farOffset)*
                             .008
                         )*
-                        .035
-                    )
-                );
+                        .036
+                    );
+
+                if(palette==='alpine'){
+                    ridge-=
+                        Math.abs(
+                            Math.sin(
+                                (x+farOffset)*
+                                .012
+                            )
+                        )*
+                        height*.10;
+                }
+
+                ctx.lineTo(wx,ridge);
             }
 
-            ctx.lineTo(width+300,height*.58);
-            ctx.lineTo(-200,height*.58);
+            ctx.lineTo(width+340,height*.58);
+            ctx.lineTo(-220,height*.58);
             ctx.closePath();
             ctx.fill();
 
-            // Far forest line.
-            for(let i=-2;i<24;i++){
+            if(palette==='alpine'){
+                ctx.fillStyle='rgba(245,250,250,.78)';
+
+                ctx.beginPath();
+                ctx.moveTo(-200,height*.43);
+
+                for(let x=-200;x<width+300;x+=180){
+                    const wx=
+                        x+
+                        (cameraX*.10)%180;
+
+                    ctx.lineTo(
+                        wx,
+                        height*
+                        (
+                            .31+
+                            Math.sin(
+                                (x+cameraX*.1)*
+                                .009
+                            )*
+                            .025
+                        )
+                    );
+                }
+
+                ctx.lineTo(width+300,height*.47);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Distant forest line.
+            for(let i=-2;i<25;i++){
                 const wx=
                     i*150-
                     (cameraX*.32)%150;
@@ -2236,81 +2662,167 @@ export default {
                     wx,
                     height*.55,
                     h,
-                    palette==='forest'
-                        ?'#285f3a'
-                        :'#347349',
+                    biome.forest,
                     .70
                 );
             }
 
-            // Grass back.
-            ctx.fillStyle=
-                palette==='golden'
-                    ?'#87a94f'
-                    :palette==='forest'
-                        ?'#4e8a45'
-                        :'#62a94f';
+            ctx.fillStyle=biome.ground;
+            ctx.fillRect(0,height*.52,width,height*.48);
 
-            ctx.fillRect(
-                0,
-                height*.52,
-                width,
-                height*.48
-            );
+            if(palette==='swamp'){
+                // Broad water channel instead of a dry track.
+                ctx.fillStyle=biome.path;
 
-            // Mid dirt track.
-            ctx.fillStyle='#9d7b50';
+                ctx.beginPath();
+                ctx.moveTo(0,height*.61);
+                ctx.bezierCurveTo(
+                    width*.28,
+                    height*.56,
+                    width*.66,
+                    height*.70,
+                    width,
+                    height*.60
+                );
+                ctx.lineTo(width,height*.76);
+                ctx.bezierCurveTo(
+                    width*.68,
+                    height*.82,
+                    width*.27,
+                    height*.67,
+                    0,
+                    height*.77
+                );
+                ctx.closePath();
+                ctx.fill();
 
-            ctx.beginPath();
-            ctx.moveTo(
-                0,
-                height*.63
-            );
+                ctx.strokeStyle='rgba(219,236,217,.23)';
+                ctx.lineWidth=2;
 
-            ctx.bezierCurveTo(
-                width*.30,
-                height*.59,
-                width*.70,
-                height*.68,
-                width,
-                height*.61
-            );
+                for(let y=height*.64;y<height*.76;y+=18){
+                    ctx.beginPath();
+                    ctx.moveTo(0,y);
+                    ctx.lineTo(width,y+Math.sin(y*.03)*5);
+                    ctx.stroke();
+                }
 
-            ctx.lineTo(
-                width,
-                height*.72
-            );
+                // Lily pads.
+                for(let i=0;i<8;i++){
+                    const x=
+                        (
+                            i*220-
+                            cameraX*.55
+                        )%
+                        (width+240);
 
-            ctx.bezierCurveTo(
-                width*.72,
-                height*.77,
-                width*.28,
-                height*.69,
-                0,
-                height*.75
-            );
+                    const xx=x<0?x+width+240:x;
 
-            ctx.closePath();
-            ctx.fill();
+                    ctx.fillStyle='#467747';
+                    ctx.beginPath();
+                    ctx.ellipse(
+                        xx,
+                        height*(.67+(i%3)*.022),
+                        22,
+                        8,
+                        -.12,
+                        0,
+                        Math.PI*2
+                    );
+                    ctx.fill();
+                }
+            }else{
+                ctx.fillStyle=biome.path;
 
-            // World anchored trees / cabin / logs.
+                ctx.beginPath();
+                ctx.moveTo(0,height*.63);
+                ctx.bezierCurveTo(
+                    width*.30,
+                    height*.59,
+                    width*.70,
+                    height*.68,
+                    width,
+                    height*.61
+                );
+                ctx.lineTo(width,height*.72);
+                ctx.bezierCurveTo(
+                    width*.72,
+                    height*.77,
+                    width*.28,
+                    height*.69,
+                    0,
+                    height*.75
+                );
+                ctx.closePath();
+                ctx.fill();
+            }
+
             drawScenery();
 
-            // Foreground grass.
-            ctx.fillStyle=
-                palette==='golden'
-                    ?'#608c3b'
-                    :'#397d3e';
-
-            ctx.fillRect(
-                0,
-                height*.82,
-                width,
-                height*.18
-            );
+            ctx.fillStyle=biome.foreground;
+            ctx.fillRect(0,height*.82,width,height*.18);
 
             drawForegroundPlants();
+
+            if(palette==='swamp'){
+                // Subtle mist.
+                const mist=
+                    ctx.createLinearGradient(
+                        0,
+                        height*.35,
+                        0,
+                        height*.78
+                    );
+
+                mist.addColorStop(0,'rgba(220,230,213,0)');
+                mist.addColorStop(.55,'rgba(220,230,213,.08)');
+                mist.addColorStop(1,'rgba(220,230,213,0)');
+
+                ctx.fillStyle=mist;
+                ctx.fillRect(0,height*.30,width,height*.55);
+            }
+
+            if(palette==='alpine'){
+                // Small world-independent snowfall for atmosphere.
+                ctx.fillStyle='rgba(255,255,255,.72)';
+
+                for(let i=0;i<42;i++){
+                    const x=
+                        (
+                            i*79+
+                            matchlessHash(i,roundIndex)*11
+                        )%
+                        width;
+
+                    const y=
+                        (
+                            i*137+
+                            (performance.now()*.018)*
+                            (1+i%3)
+                        )%
+                        (height*.82);
+
+                    ctx.beginPath();
+                    ctx.arc(
+                        x,
+                        y,
+                        1+(i%3)*.55,
+                        0,
+                        Math.PI*2
+                    );
+                    ctx.fill();
+                }
+            }
         };
+
+        const matchlessHash = (a,b) =>
+            Math.abs(
+                Math.sin(
+                    a*12.9898+
+                    b*78.233
+                )*
+                43758.5453
+            )%
+            1;
 
         const drawPine = (x,baseY,h,color,alpha=1) => {
             ctx.save();
@@ -2398,11 +2910,17 @@ export default {
             ctx.closePath();
             ctx.fill();
 
-            const greens=[
-                '#2f7f3c',
-                '#3b9144',
-                '#4b9f49'
-            ];
+            const palette=
+                roundPreset(roundIndex).palette;
+
+            const greens=
+                palette==='autumn'
+                    ?['#b4552c','#d17732','#d6a13b']
+                    :palette==='alpine'
+                        ?['#28574a','#35695a','#467b67']
+                        :palette==='swamp'
+                            ?['#315e3e','#3d7045','#4b7d4e']
+                            :['#2f7f3c','#3b9144','#4b9f49'];
 
             for(let i=0;i<10;i++){
                 const a=i/10*Math.PI*2;
@@ -2611,7 +3129,78 @@ export default {
         };
 
         const drawForegroundPlants = () => {
-            ctx.strokeStyle='#2d6c37';
+            const palette=
+                roundPreset(roundIndex).palette;
+
+            if(palette==='swamp'){
+                ctx.strokeStyle='#315d3c';
+                ctx.lineWidth=4;
+
+                for(let x=-10;x<width+25;x+=28){
+                    const h=
+                        30+
+                        (
+                            (
+                                x+
+                                Math.floor(cameraX)
+                            )%
+                            42
+                        );
+
+                    ctx.beginPath();
+                    ctx.moveTo(x,height);
+                    ctx.lineTo(x+4,height-h);
+                    ctx.stroke();
+
+                    ctx.fillStyle='#67502d';
+                    ctx.fillRect(
+                        x+1,
+                        height-h-7,
+                        6,
+                        13
+                    );
+                }
+
+                return;
+            }
+
+            if(palette==='alpine'){
+                ctx.strokeStyle='#638879';
+                ctx.lineWidth=2;
+
+                for(let x=0;x<width;x+=34){
+                    const h=8+(x%17);
+
+                    ctx.beginPath();
+                    ctx.moveTo(x,height);
+                    ctx.lineTo(x+2,height-h);
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle='rgba(255,255,255,.58)';
+
+                for(let x=-30;x<width+40;x+=95){
+                    ctx.beginPath();
+                    ctx.ellipse(
+                        x,
+                        height-14-(x%3)*6,
+                        32,
+                        9,
+                        0,
+                        0,
+                        Math.PI*2
+                    );
+                    ctx.fill();
+                }
+
+                return;
+            }
+
+            ctx.strokeStyle=
+                palette==='autumn'
+                    ?'#6d5a32'
+                    :'#2d6c37';
+
             ctx.lineWidth=3;
 
             for(let x=-10;x<width+20;x+=22){
@@ -2636,11 +3225,10 @@ export default {
                 ctx.stroke();
             }
 
-            const flowerColors=[
-                '#e44f48',
-                '#f1cf4e',
-                '#f2f0d7'
-            ];
+            const flowerColors=
+                palette==='autumn'
+                    ?['#d45c31','#e39b38','#b9432f']
+                    :['#e44f48','#f1cf4e','#f2f0d7'];
 
             for(let i=0;i<12;i++){
                 const x=
@@ -2658,7 +3246,10 @@ export default {
                         :x;
 
                 ctx.fillStyle=
-                    flowerColors[i%flowerColors.length];
+                    flowerColors[
+                        i%
+                        flowerColors.length
+                    ];
 
                 ctx.beginPath();
                 ctx.arc(
@@ -2729,8 +3320,16 @@ export default {
                 drawDeer(a.phase);
             }else if(a.type==='mole'){
                 drawMole();
-            }else{
+            }else if(a.type==='woodpecker'){
                 drawWoodpecker();
+            }else if(a.type==='goose'){
+                drawGoose();
+            }else if(a.type==='fox'){
+                drawFox(a.phase);
+            }else if(a.type==='pheasant'){
+                drawPheasant(a.phase);
+            }else{
+                drawGoat(a.phase);
             }
 
             ctx.restore();
@@ -3012,6 +3611,242 @@ export default {
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
+        };
+
+        const drawGoose = () => {
+            outline();
+
+            ctx.fillStyle='#e7e3d7';
+
+            ctx.beginPath();
+            ctx.ellipse(-4,0,31,17,0,0,Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.strokeStyle='#d8d4ca';
+            ctx.lineWidth=12;
+
+            ctx.beginPath();
+            ctx.moveTo(18,-4);
+            ctx.quadraticCurveTo(28,-18,24,-35);
+            ctx.stroke();
+
+            ctx.fillStyle='#e7e3d7';
+
+            ctx.beginPath();
+            ctx.arc(24,-39,10,0,Math.PI*2);
+            ctx.fill();
+            outline();
+            ctx.stroke();
+
+            ctx.fillStyle='#e89f34';
+
+            ctx.beginPath();
+            ctx.moveTo(32,-41);
+            ctx.lineTo(48,-36);
+            ctx.lineTo(32,-33);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle='#fff';
+            ctx.beginPath();
+            ctx.arc(27,-42,2.7,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle='#171717';
+            ctx.beginPath();
+            ctx.arc(28,-42,1.2,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle='#bab7ac';
+            ctx.beginPath();
+            ctx.ellipse(-7,-5,17,8,-.45,0,Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+        };
+
+        const drawFox = phase => {
+            outline();
+
+            ctx.fillStyle='#c96130';
+
+            ctx.beginPath();
+            ctx.ellipse(-3,1,28,16,0,0,Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(18,-8);
+            ctx.lineTo(38,-17);
+            ctx.lineTo(42,-3);
+            ctx.lineTo(28,8);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // ears
+            ctx.beginPath();
+            ctx.moveTo(25,-14);
+            ctx.lineTo(28,-29);
+            ctx.lineTo(35,-16);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(35,-15);
+            ctx.lineTo(42,-27);
+            ctx.lineTo(43,-10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // tail
+            ctx.fillStyle='#d5743b';
+            ctx.beginPath();
+            ctx.ellipse(-31,0,25,10,-.45,0,Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle='#f0e5cf';
+            ctx.beginPath();
+            ctx.ellipse(-49,-7,8,7,-.45,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle='#fff';
+            ctx.beginPath();
+            ctx.arc(34,-10,3,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle='#111';
+            ctx.beginPath();
+            ctx.arc(35,-10,1.35,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle='#242424';
+            ctx.beginPath();
+            ctx.arc(43,-3,2.8,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.strokeStyle='#8f4828';
+            ctx.lineWidth=4;
+
+            const leg=Math.sin(phase)*6;
+
+            ctx.beginPath();
+            ctx.moveTo(-13,13);
+            ctx.lineTo(-13+leg,27);
+            ctx.moveTo(13,12);
+            ctx.lineTo(13-leg,26);
+            ctx.stroke();
+        };
+
+        const drawPheasant = phase => {
+            outline();
+
+            ctx.fillStyle='#8e562d';
+            ctx.beginPath();
+            ctx.ellipse(-4,0,25,14,0,0,Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle='#376448';
+            ctx.beginPath();
+            ctx.arc(19,-9,9,0,Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle='#b93431';
+            ctx.beginPath();
+            ctx.arc(24,-10,5,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle='#d2a43f';
+            ctx.beginPath();
+            ctx.moveTo(26,-10);
+            ctx.lineTo(39,-6);
+            ctx.lineTo(26,-3);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.strokeStyle='#5c432d';
+            ctx.lineWidth=5;
+
+            ctx.beginPath();
+            ctx.moveTo(-24,2);
+            ctx.lineTo(-58,13+Math.sin(phase)*4);
+            ctx.moveTo(-21,6);
+            ctx.lineTo(-54,24+Math.cos(phase)*3);
+            ctx.stroke();
+
+            ctx.fillStyle='#fff';
+            ctx.beginPath();
+            ctx.arc(21,-12,2.6,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle='#111';
+            ctx.beginPath();
+            ctx.arc(22,-12,1.2,0,Math.PI*2);
+            ctx.fill();
+        };
+
+        const drawGoat = phase => {
+            outline();
+
+            ctx.fillStyle='#b9b2a1';
+            ctx.beginPath();
+            ctx.ellipse(-5,1,30,18,0,0,Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle='#c9c1af';
+            ctx.beginPath();
+            ctx.ellipse(25,-9,16,12,-.08,0,Math.PI*2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.strokeStyle='#6d624f';
+            ctx.lineWidth=3;
+
+            ctx.beginPath();
+            ctx.moveTo(25,-19);
+            ctx.quadraticCurveTo(20,-34,10,-30);
+            ctx.moveTo(33,-18);
+            ctx.quadraticCurveTo(40,-32,49,-26);
+            ctx.stroke();
+
+            ctx.fillStyle='#fff';
+            ctx.beginPath();
+            ctx.arc(31,-11,3,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle='#111';
+            ctx.beginPath();
+            ctx.arc(32,-11,1.3,0,Math.PI*2);
+            ctx.fill();
+
+            ctx.strokeStyle='#817767';
+            ctx.lineWidth=5;
+
+            const leg=Math.sin(phase)*5;
+
+            ctx.beginPath();
+            ctx.moveTo(-18,16);
+            ctx.lineTo(-18+leg,38);
+            ctx.moveTo(11,16);
+            ctx.lineTo(12-leg,38);
+            ctx.stroke();
+
+            // beard
+            ctx.fillStyle='#8d8678';
+            ctx.beginPath();
+            ctx.moveTo(31,1);
+            ctx.lineTo(36,17);
+            ctx.lineTo(26,8);
+            ctx.closePath();
+            ctx.fill();
         };
 
         const drawProp = p => {
@@ -3436,10 +4271,15 @@ export default {
                 formatTime(roundTime);
 
             roundNameEl.textContent=
-                preset.name;
+                `${preset.name} · ${preset.area??'Forest'}`;
 
             scoreEl.textContent=
-                String(Math.max(0,score)).padStart(6,'0');
+                String(
+                    Math.max(
+                        0,
+                        score
+                    )
+                ).padStart(6,'0');
 
             quotaPanel.innerHTML=
                 Object.entries(quota)
@@ -3459,11 +4299,32 @@ export default {
                     })
                     .join('');
 
-            const weapon=WEAPONS[weaponId];
-            const state=weaponStates[weaponId];
+            const weapon=
+                WEAPONS[weaponId];
+
+            const state=
+                weaponStates[weaponId];
 
             weaponNameEl.textContent=
-                weapon.short;
+                weapon.name.toUpperCase();
+
+            weaponSlotbarEl.innerHTML=
+                Object.values(WEAPONS)
+                    .map((w,index)=>{
+                        const s=
+                            weaponStates[w.id];
+
+                        const unlocked=
+                            !!s?.unlocked;
+
+                        return `
+                            <div class="ff-weapon-slot ${w.id===weaponId?'active':''} ${unlocked?'':'locked'}">
+                                <b>${index+1}</b>
+                                ${unlocked?w.short:'LOCKED'}
+                            </div>
+                        `;
+                    })
+                    .join('');
 
             shellsEl.innerHTML='';
 
@@ -3474,7 +4335,8 @@ export default {
                 );
 
             for(let i=0;i<visualCount;i++){
-                const shell=document.createElement('i');
+                const shell=
+                    document.createElement('i');
 
                 shell.className=
                     `ff-shell ${i>=state.mag?'empty':''}`;
@@ -3483,14 +4345,93 @@ export default {
             }
 
             const reserve=
-                Number.isFinite(state.reserve)
+                Number.isFinite(
+                    state.reserve
+                )
                     ?state.reserve
                     :'∞';
 
             ammoTextEl.innerHTML=
                 reloading
-                    ?`RELOAD<br>${Math.max(0,reloadTimer).toFixed(1)}s`
+                    ?`${state.mag} / ${reserve}<br><b>${Math.max(0,reloadTimer).toFixed(1)}s</b>`
                     :`${state.mag} / ${reserve}`;
+
+            const canReload=
+                state.mag<
+                weapon.magSize&&
+                (
+                    !Number.isFinite(
+                        state.reserve
+                    )||
+                    state.reserve>0
+                );
+
+            if(reloading){
+                reloadStateEl.textContent=
+                    `RELOADING ${Math.max(0,reloadTimer).toFixed(1)}s`;
+
+                reloadStateEl.className=
+                    'ff-reload-state loading';
+
+                reloadFillEl.style.width=
+                    `${clamp(
+                        1-
+                        reloadTimer/
+                        Math.max(
+                            .001,
+                            weapon.reload
+                        ),
+                        0,
+                        1
+                    )*100}%`;
+
+                reloadAlertEl.textContent=
+                    `RELOADING · ${Math.max(0,reloadTimer).toFixed(1)}s`;
+
+                reloadAlertEl.classList.add('on');
+            }else if(
+                state.mag<=0&&
+                canReload
+            ){
+                reloadStateEl.textContent=
+                    'EMPTY · PRESS R';
+
+                reloadStateEl.className=
+                    'ff-reload-state warn';
+
+                reloadFillEl.style.width='0%';
+
+                reloadAlertEl.textContent=
+                    'R / RMB · RELOAD';
+
+                reloadAlertEl.classList.add('on');
+            }else if(
+                state.mag<=Math.max(
+                    1,
+                    Math.floor(
+                        weapon.magSize*.25
+                    )
+                )&&
+                canReload
+            ){
+                reloadStateEl.textContent=
+                    'LOW AMMO';
+
+                reloadStateEl.className=
+                    'ff-reload-state warn';
+
+                reloadFillEl.style.width='0%';
+                reloadAlertEl.classList.remove('on');
+            }else{
+                reloadStateEl.textContent=
+                    'READY';
+
+                reloadStateEl.className=
+                    'ff-reload-state';
+
+                reloadFillEl.style.width='0%';
+                reloadAlertEl.classList.remove('on');
+            }
 
             comboEl.textContent=
                 `COMBO ×${Math.max(1,combo)}`;
@@ -3500,7 +4441,8 @@ export default {
                     ?'1'
                     :'0';
 
-            messageEl.textContent=message;
+            messageEl.textContent=
+                message;
 
             messageEl.style.opacity=
                 messageTimer>0
@@ -3552,7 +4494,7 @@ export default {
                     0,
                     Math.max(
                         0,
-                        CONFIG.sceneWidth-width
+                        sceneWidth-width
                     )
                 );
 
@@ -3606,7 +4548,7 @@ export default {
                         0,
                         Math.max(
                             0,
-                            CONFIG.sceneWidth-width
+                            sceneWidth-width
                         )
                     );
             }
@@ -3618,7 +4560,7 @@ export default {
                         0,
                         Math.max(
                             0,
-                            CONFIG.sceneWidth-width
+                            sceneWidth-width
                         )
                     );
             }

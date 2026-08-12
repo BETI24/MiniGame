@@ -16,30 +16,32 @@ import SurvivalRoyale from "../games/SurvivalRoyale.js";
 import CellArena from "../games/CellArena.js";
 import NeonSerpent from "../games/NeonSerpent.js";
 import NeonFlail from "../games/NeonFlail.js";
+import neonSnake from "../games/NeonSnake.js";
 import ForestFrenzy from "../games/ForestFrenzy.js";
 import QuickThinker from "../games/QuickThinker.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
 export const GameRegistry = [
-  NeonClicker,
-  ShapeDodger,
-  Blackjack,
-  Crash,
-  PrismaClix,
-  Mines,
-  BlockBuster,
-  PrismaDefense,
-  IslandConquest,
-  zombies,
-  Jackpot,
-  neon_swarm,
-  Plinko,
-  SurvivalRoyale,
-  CellArena,
-  craps,
-  NeonSerpent,
-  NeonFlail,
-  ForestFrenzy,
-  QuickThinker,
+    NeonClicker,
+    ShapeDodger,
+    Blackjack,
+    Crash,
+    PrismaClix,
+    Mines,
+    BlockBuster,
+    PrismaDefense,
+    IslandConquest,
+    zombies,
+    Jackpot,
+    neon_swarm,
+    Plinko,
+    SurvivalRoyale,
+    CellArena,
+    craps,
+    NeonSerpent,
+    NeonFlail,
+    ForestFrenzy,
+    QuickThinker,
+    neonSnake
 ];

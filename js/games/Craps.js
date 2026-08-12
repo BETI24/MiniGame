@@ -4,8 +4,8 @@ export default {
         name: 'Vegas Craps 3D',
         description: 'Der laute Casino-Klassiker mit echter 3D-Physik. Setze auf die Pass Line und werde zum Shooter!',
         icon: '🎲',
-        imageUrl: 'js/assets/images/craps.png',
-        tags: ['Casino', 'Dice', 'Physics']
+        image: 'js/assets/images/games/craps.png',
+        tags: ['Casino', 'Dice', '3D', 'Physics']
     },
     init: (container, services) => {
         // --- State Management ---
@@ -28,40 +28,42 @@ export default {
         const style = document.createElement('style');
         style.textContent = [
             "@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Inter:wght@400;600;800&display=swap');",
-            ".craps-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; background: #0a0e17; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; border-radius: 12px; border: 2px solid #1a2332; position: relative; }",
-            ".craps-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 30px; background: #0d131f; border-bottom: 2px solid #1a2332; z-index: 10; }",
+            ".craps-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; background: #06070a; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; border-radius: 12px; border: 2px solid #1a2332; position: relative; }",
+            ".craps-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 30px; background: #0d131f; border-bottom: 1px solid #1a2332; z-index: 10; }",
             ".craps-stat { text-align: center; }",
             ".craps-stat span { display: block; font-size: 0.8rem; color: #64748b; text-transform: uppercase; font-weight: 600; }",
             ".craps-stat strong { font-family: 'Orbitron', sans-serif; font-size: 1.5rem; color: #00ffcc; text-shadow: 0 0 10px rgba(0,255,204,0.3); }",
-            ".craps-table { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; background: radial-gradient(circle, #104a26 0%, #062110 100%); border: 8px solid #381c0b; border-radius: 40px; margin: 20px; box-shadow: inset 0 0 50px rgba(0,0,0,0.8); overflow: hidden; }",
+
+            /* Neon Tisch Design */
+            ".craps-table { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; background: radial-gradient(circle, #131722 0%, #06070a 100%); border: 2px solid #00ffcc; border-radius: 12px; margin: 20px; box-shadow: 0 0 30px rgba(0,255,204,0.15), inset 0 0 40px rgba(0,255,204,0.1); overflow: hidden; }",
 
             /* 3D Container */
             ".craps-3d-arena { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }",
 
             /* Status Banner */
-            ".craps-board-status { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); font-family: 'Orbitron', sans-serif; font-size: 2rem; color: #facc15; text-transform: uppercase; text-shadow: 0 4px 15px rgba(0,0,0,0.9); letter-spacing: 2px; text-align: center; pointer-events: none; z-index: 10; transition: opacity 0.3s, transform 0.1s; background: rgba(0,0,0,0.7); padding: 15px 30px; border-radius: 15px; border: 2px solid rgba(250, 204, 21, 0.3); backdrop-filter: blur(4px); white-space: nowrap; }",
+            ".craps-board-status { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); font-family: 'Orbitron', sans-serif; font-size: 2rem; color: #00ffcc; text-transform: uppercase; text-shadow: 0 0 15px rgba(0,255,204,0.8); letter-spacing: 2px; text-align: center; pointer-events: none; z-index: 10; transition: opacity 0.3s, transform 0.1s; background: rgba(6,7,10,0.85); padding: 15px 30px; border-radius: 15px; border: 1px solid #00ffcc; box-shadow: 0 0 20px rgba(0,255,204,0.2); backdrop-filter: blur(4px); white-space: nowrap; }",
             ".craps-board-sub { font-size: 1rem; color: #fff; margin-top: 5px; opacity: 0.9; font-family: 'Inter', sans-serif; text-shadow: none; letter-spacing: normal; }",
 
             /* UI Controls */
-            ".craps-controls { display: flex; justify-content: space-between; align-items: center; padding: 20px 30px; background: #0d131f; border-top: 2px solid #1a2332; z-index: 10; }",
+            ".craps-controls { display: flex; justify-content: space-between; align-items: center; padding: 20px 30px; background: #0d131f; border-top: 1px solid #1a2332; z-index: 10; }",
             ".craps-bet-section { display: flex; align-items: center; gap: 8px; }",
-            ".craps-btn-small { background: #1a2332; border: 1px solid #2d3748; color: #e2e8f0; padding: 10px 12px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; font-size: 0.9rem; }",
-            ".craps-btn-small:hover { background: #2d3748; color: #fff; }",
-            ".craps-btn-small:disabled { opacity: 0.5; cursor: not-allowed; }",
+            ".craps-btn-small { background: #131722; border: 1px solid #222838; color: #00ffcc; padding: 10px 12px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; font-size: 0.9rem; }",
+            ".craps-btn-small:hover { background: #1c2333; border-color: #00ffcc; box-shadow: 0 0 10px rgba(0,255,204,0.2); }",
+            ".craps-btn-small:disabled { opacity: 0.4; cursor: not-allowed; border-color: #222838; box-shadow: none; }",
             ".craps-roll-btn { background: linear-gradient(135deg, #00ffcc 0%, #00b386 100%); color: #000; font-family: 'Orbitron', sans-serif; font-size: 1.5rem; font-weight: 900; border: none; border-radius: 30px; padding: 15px 40px; cursor: pointer; box-shadow: 0 0 20px rgba(0,255,204,0.4); text-transform: uppercase; transition: 0.1s; }",
             ".craps-roll-btn:active { transform: scale(0.95); }",
-            ".craps-roll-btn:disabled { background: #2d3748; color: #64748b; box-shadow: none; cursor: not-allowed; transform: none; }",
+            ".craps-roll-btn:disabled { background: #131722; color: #4a5568; box-shadow: none; cursor: not-allowed; transform: none; }",
 
             /* Modal für Regeln */
-            ".craps-modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; display: none; justify-content: center; align-items: center; backdrop-filter: blur(5px); }",
+            ".craps-modal { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(6,7,10,0.9); z-index: 100; display: none; justify-content: center; align-items: center; backdrop-filter: blur(8px); }",
             ".craps-modal.show { display: flex; }",
-            ".craps-modal-content { background: #0d131f; border: 2px solid #1a2332; border-radius: 12px; padding: 30px; max-width: 500px; color: #e2e8f0; }",
-            ".craps-modal-content h3 { color: #facc15; font-family: 'Orbitron', sans-serif; margin-bottom: 20px; font-size: 1.5rem; text-align: center; }",
+            ".craps-modal-content { background: #0d131f; border: 1px solid #00ffcc; border-radius: 12px; padding: 30px; max-width: 500px; color: #e2e8f0; box-shadow: 0 0 40px rgba(0,255,204,0.1); }",
+            ".craps-modal-content h3 { color: #00ffcc; font-family: 'Orbitron', sans-serif; margin-bottom: 20px; font-size: 1.5rem; text-align: center; text-shadow: 0 0 10px rgba(0,255,204,0.5); }",
             ".craps-modal-content ul { padding-left: 20px; margin-bottom: 25px; line-height: 1.6; }",
             ".craps-modal-content li { margin-bottom: 10px; }",
             ".craps-modal-content strong { color: #00ffcc; }",
-            ".craps-modal-close { width: 100%; background: #e53e3e; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }",
-            ".craps-modal-close:hover { background: #c53030; }"
+            ".craps-modal-close { width: 100%; background: #00ffcc; color: #000; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; font-family: 'Orbitron', sans-serif; text-transform: uppercase; }",
+            ".craps-modal-close:hover { background: #00e6b8; box-shadow: 0 0 15px rgba(0,255,204,0.4); }"
         ].join('\n');
         container.appendChild(style);
 
@@ -72,7 +74,7 @@ export default {
             '<div class="craps-header">',
             '<div class="craps-stat"><span>Guthaben</span><strong id="craps-balance">1000.00 €</strong></div>',
             '<button class="craps-btn-small" id="craps-btn-rules">Regeln</button>',
-            '<div class="craps-stat"><span>Tisch-Einsatz</span><strong id="craps-locked-bet" style="color: #facc15;">0.00 €</strong></div>',
+            '<div class="craps-stat"><span>Tisch-Einsatz</span><strong id="craps-locked-bet" style="color: #ff00ff; text-shadow: 0 0 10px rgba(255,0,255,0.4);">0.00 €</strong></div>',
             '</div>',
             '<div class="craps-table">',
             '<div class="craps-3d-arena" id="craps-arena"></div>',
@@ -86,7 +88,7 @@ export default {
             '<button class="craps-btn-small" id="btn-bet-min">MIN</button>',
             '<button class="craps-btn-small" id="btn-bet-m100">-100</button>',
             '<button class="craps-btn-small" id="btn-bet-m10">-10</button>',
-            '<div class="craps-stat" style="margin: 0 10px;"><span>Einsatz</span><strong id="craps-bet-display" style="color:#fff;">10 €</strong></div>',
+            '<div class="craps-stat" style="margin: 0 10px;"><span>Einsatz</span><strong id="craps-bet-display" style="color:#fff; text-shadow: none;">10 €</strong></div>',
             '<button class="craps-btn-small" id="btn-bet-p10">+10</button>',
             '<button class="craps-btn-small" id="btn-bet-p100">+100</button>',
             '<button class="craps-btn-small" id="btn-bet-max">MAX</button>',
@@ -138,7 +140,6 @@ export default {
 
             const betControlsDisabled = (phase === 'POINT' || isRolling);
 
-            // Alle Wett-Buttons deaktivieren, wenn gewürfelt wird oder der Point gesetzt ist
             const buttons = [btnMin, btnM100, btnM10, btnP10, btnP100, btnMax];
             for (let i = 0; i < buttons.length; i++) {
                 buttons[i].disabled = betControlsDisabled;
@@ -147,9 +148,12 @@ export default {
             uiBetDisplay.style.opacity = betControlsDisabled ? '0.3' : '1';
         };
 
-        const setStatus = (main, sub, color) => {
+        const setStatus = (main, sub, color, borderColor) => {
             uiStatusMain.innerText = main;
-            uiStatusMain.style.color = color || '#facc15';
+            uiStatusMain.style.color = color || '#00ffcc';
+            uiStatusMain.style.textShadow = '0 0 15px ' + (color || '#00ffcc');
+            uiStatusWrapper.style.borderColor = borderColor || '#00ffcc';
+
             uiStatusSub.innerText = sub;
             uiStatusWrapper.style.opacity = '1';
 
@@ -163,7 +167,7 @@ export default {
             lockedBet = 0;
             phase = 'COME_OUT';
             pointNumber = null;
-            setStatus(msg, '+' + winAmount.toFixed(2) + ' €', '#00ffcc');
+            setStatus(msg, '+' + winAmount.toFixed(2) + ' €', '#00ffcc', '#00ffcc');
             sfxWin.currentTime = 0;
             sfxWin.play().catch(e => {});
         };
@@ -172,7 +176,7 @@ export default {
             lockedBet = 0;
             phase = 'COME_OUT';
             pointNumber = null;
-            setStatus(msg, 'Einsatz verloren.', '#ff3366');
+            setStatus(msg, 'Einsatz verloren.', '#ff3366', '#ff3366');
             sfxLoss.currentTime = 0;
             sfxLoss.play().catch(e => {});
         };
@@ -188,7 +192,7 @@ export default {
                 } else {
                     phase = 'POINT';
                     pointNumber = sum;
-                    setStatus('POINT IS ' + pointNumber, 'Wirf eine ' + pointNumber + ' zum Gewinnen.');
+                    setStatus('POINT IS ' + pointNumber, 'Wirf eine ' + pointNumber + ' zum Gewinnen.', '#ff00ff', '#ff00ff');
                     sfxPoint.currentTime = 0;
                     sfxPoint.play().catch(e => {});
                 }
@@ -198,7 +202,7 @@ export default {
                 } else if (sum === 7) {
                     handleLoss('SEVEN OUT!');
                 } else {
-                    setStatus('POINT IS ' + pointNumber, 'Du hast eine ' + sum + ' geworfen. Weiter!');
+                    setStatus('POINT IS ' + pointNumber, 'Du hast eine ' + sum + ' geworfen. Weiter!', '#ff00ff', '#ff00ff');
                 }
             }
 
@@ -219,10 +223,8 @@ export default {
                 currentBet += amount;
             }
 
-            // Untergrenze einhalten
             if (currentBet < 10) currentBet = 10;
 
-            // Obergrenze einhalten (nicht mehr setzen als man hat)
             if (currentBet > balance && balance >= 10) {
                 currentBet = Math.floor(balance);
             }
@@ -265,11 +267,21 @@ export default {
                 renderer.shadowMap.enabled = true;
                 arenaContainer.appendChild(renderer.domElement);
 
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                // Schwaches Umgebungslicht
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
                 scene.add(ambientLight);
 
-                // Aktualisiertes Licht für perfekten Schatten
-                const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                // Neon Lichter für Spiegelungen auf den Würfeln
+                const neonCyan = new THREE.PointLight(0x00ffcc, 1.5, 50);
+                neonCyan.position.set(-8, 10, 0);
+                scene.add(neonCyan);
+
+                const neonPink = new THREE.PointLight(0xff00ff, 1.5, 50);
+                neonPink.position.set(8, 10, 5);
+                scene.add(neonPink);
+
+                // Hauptlicht für den Schatten
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
                 dirLight.position.set(2, 20, 5);
                 dirLight.castShadow = true;
                 dirLight.shadow.mapSize.width = 2048;
@@ -304,7 +316,7 @@ export default {
 
                 const floorMesh = new THREE.Mesh(
                     new THREE.PlaneGeometry(50, 50),
-                    new THREE.ShadowMaterial({ opacity: 0.3 })
+                    new THREE.ShadowMaterial({ opacity: 0.4 })
                 );
                 floorMesh.rotation.x = -Math.PI / 2;
                 floorMesh.receiveShadow = true;
@@ -323,25 +335,41 @@ export default {
                 addWall(-14, 0, 0, 0, Math.PI/2, 0);
                 addWall( 14, 0, 0, 0, -Math.PI/2, 0);
 
+// --- Neon Würfel Textur mit extremem Glow ---
                 const createDiceTexture = (num) => {
                     const tCanvas = document.createElement('canvas');
                     tCanvas.width = 256; tCanvas.height = 256;
                     const ctx = tCanvas.getContext('2d');
 
-                    const grd = ctx.createLinearGradient(0,0,256,256);
-                    grd.addColorStop(0, '#f56565');
-                    grd.addColorStop(1, '#c53030');
-                    ctx.fillStyle = grd;
+                    // Dunkler Würfel-Körper (Tiefschwarz, damit nur die Neon-Elemente leuchten)
+                    ctx.fillStyle = '#020408';
                     ctx.fillRect(0,0,256,256);
 
+                    // Extremes Neon-Leuchten für die Umrandung
+                    ctx.shadowColor = '#00ffcc';
+                    ctx.shadowBlur = 40;
+                    ctx.strokeStyle = '#00ffcc';
+                    ctx.lineWidth = 8;
+                    // Mehrfach zeichnen = extrem starker Glow auf dem Canvas
+                    ctx.strokeRect(4, 4, 248, 248);
+                    ctx.strokeRect(4, 4, 248, 248);
+
+                    // Weißer, harter Kern für den authentischen Neon-Röhren-Effekt
+                    ctx.shadowBlur = 0;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(4, 4, 248, 248);
+
+                    // Neon Leucht-Punkte
                     ctx.fillStyle = '#ffffff';
+                    ctx.shadowColor = '#00ffcc';
+                    ctx.shadowBlur = 50;
+
                     const drawDot = (x, y) => {
                         ctx.beginPath();
-                        ctx.arc(x, y, 26, 0, Math.PI * 2);
+                        ctx.arc(x, y, 22, 0, Math.PI * 2);
                         ctx.fill();
-                        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-                        ctx.lineWidth = 4;
-                        ctx.stroke();
+                        ctx.fill(); // Doppelter Fill für strahlenderen Kern
                     };
 
                     const c = 128, d1 = 60, d2 = 196;
@@ -353,13 +381,23 @@ export default {
                     return new THREE.CanvasTexture(tCanvas);
                 };
 
+                // Material mit Eigenleuchten (Emissive) für die 3D-Engine
+                const getMaterial = (num) => {
+                    const tex = createDiceTexture(num);
+                    return new THREE.MeshStandardMaterial({
+                        map: tex,
+                        emissiveMap: tex,
+                        emissive: 0x00ffcc, // Die Neon-Leuchtfarbe
+                        emissiveIntensity: 0.9, // Stärke des aktiven Leuchtens (0 bis 1)
+                        roughness: 0.1, // Sehr glatt
+                        metalness: 0.8  // Reflektiert die Umgebungslichter
+                    });
+                };
+
                 const materials = [
-                    new THREE.MeshStandardMaterial({ map: createDiceTexture(1), roughness: 0.3 }),
-                    new THREE.MeshStandardMaterial({ map: createDiceTexture(6), roughness: 0.3 }),
-                    new THREE.MeshStandardMaterial({ map: createDiceTexture(2), roughness: 0.3 }),
-                    new THREE.MeshStandardMaterial({ map: createDiceTexture(5), roughness: 0.3 }),
-                    new THREE.MeshStandardMaterial({ map: createDiceTexture(3), roughness: 0.3 }),
-                    new THREE.MeshStandardMaterial({ map: createDiceTexture(4), roughness: 0.3 })
+                    getMaterial(1), getMaterial(6),
+                    getMaterial(2), getMaterial(5),
+                    getMaterial(3), getMaterial(4)
                 ];
 
                 const diceGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
@@ -424,7 +462,7 @@ export default {
 
                 animate();
 
-                setStatus('COME OUT ROLL', 'Wirf eine 7 oder 11 um zu gewinnen.');
+                setStatus('COME OUT ROLL', 'Wirf eine 7 oder 11 um zu gewinnen.', '#00ffcc', '#00ffcc');
                 btnRoll.innerText = 'ROLL DICE';
                 btnRoll.disabled = false;
 

@@ -14,6 +14,9 @@ import neon_swarm from "../games/neon_swarm.js";
 import craps from "../games/Craps.js";
 import SurvivalRoyale from "../games/SurvivalRoyale.js";
 import CellArena from "../games/CellArena.js";
+import NeonSerpent from "../games/NeonSerpent.js";
+import NeonFlail from "../games/NeonFlail.js";
+
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
@@ -33,5 +36,7 @@ export const GameRegistry = [
     Plinko,
     SurvivalRoyale,
     CellArena,
-    craps
+    craps,
+    NeonSerpent,
+    NeonFlail,
 ];

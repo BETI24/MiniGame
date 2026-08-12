@@ -13,13 +13,13 @@ const CONFIG = {
     headRadius: 12.4,
 
     baseSpeed: 128,
-    boostSpeed: 205,
+    boostSpeed: 252,
     turnSpeed: 3.4,
     botTurnSpeed: 2.65,
 
-    boostDrainPerSecond: 5.5,
-    boostPelletInterval: 0.11,
-    boostPelletMass: 0.75,
+    boostDrainPerSecond: 2.15,
+    boostPelletInterval: 0.18,
+    boostPelletMass: 0.34,
 
     foodMass: 1.0,
     rareFoodMass: 4.5,
@@ -839,6 +839,48 @@ export default {
                 Math.floor((score-CONFIG.startScore)*0.48)
             );
 
+        const snakeWidthScale = snake => {
+            // Länge bleibt der Haupt-Progress, Breite wächst aber sichtbar mit.
+            // Soft cap verhindert absurd breite Schlangen.
+            const growth=
+                Math.log2(
+                    Math.max(
+                        1,
+                        snake.score/
+                        CONFIG.startScore
+                    )
+                );
+
+            return clamp(
+                1+
+                growth*.105,
+                1,
+                1.58
+            );
+        };
+
+        const snakeBodyRadius = snake =>
+            CONFIG.bodyRadius*
+            snakeWidthScale(snake);
+
+        const snakeHeadRadius = snake =>
+            CONFIG.headRadius*
+            (
+                .96+
+                snakeWidthScale(snake)*.08
+            );
+
+        const snakePickupRadius = snake => {
+            const width=
+                snakeWidthScale(snake);
+
+            return (
+                snakeHeadRadius(snake)+
+                8+
+                (width-1)*18
+            );
+        };
+
         const updateSnakeBodyLength = snake => {
             snake.length = snakeLengthFromScore(snake.score);
 
@@ -929,7 +971,7 @@ export default {
                     }
                 }
             }else{
-                snake.boostEnergy=Math.min(100,snake.boostEnergy+7.5*delta);
+                snake.boostEnergy=Math.min(100,snake.boostEnergy+10.5*delta);
                 snake.boostTick=0;
             }
 
@@ -938,13 +980,25 @@ export default {
                 snake.score>CONFIG.minScore &&
                 snake.boostEnergy>2;
 
-            snake.speed += (speed-snake.speed)*Math.min(1,delta*8);
+            snake.speed += (speed-snake.speed)*Math.min(1,delta*(snake.boosting?12:8));
 
             snake.x += Math.cos(snake.angle)*snake.speed*delta;
             snake.y += Math.sin(snake.angle)*snake.speed*delta;
 
-            snake.x=clamp(snake.x,CONFIG.headRadius,CONFIG.worldSize-CONFIG.headRadius);
-            snake.y=clamp(snake.y,CONFIG.headRadius,CONFIG.worldSize-CONFIG.headRadius);
+            const currentHeadRadius=
+                snakeHeadRadius(snake);
+
+            snake.x=clamp(
+                snake.x,
+                currentHeadRadius,
+                CONFIG.worldSize-currentHeadRadius
+            );
+
+            snake.y=clamp(
+                snake.y,
+                currentHeadRadius,
+                CONFIG.worldSize-currentHeadRadius
+            );
 
             updateSnakeBodyLength(snake);
 
@@ -958,7 +1012,12 @@ export default {
             snake.body[0].x=snake.x;
             snake.body[0].y=snake.y;
 
-            const followSpacing=CONFIG.segmentSpacing;
+            const followSpacing=
+                CONFIG.segmentSpacing*
+                (
+                    .96+
+                    (snakeWidthScale(snake)-1)*.16
+                );
 
             for(let i=1;i<snake.body.length;i++){
                 const prev=snake.body[i-1];
@@ -1017,9 +1076,18 @@ export default {
             for(const other of snakes){
                 if(!other.alive||other.id===snake.id) continue;
 
+                const threatRadius=
+                    snakeHeadRadius(snake)+
+                    snakeBodyRadius(other);
+
                 for(let i=3;i<other.body.length;i+=5){
                     const b=other.body[i];
-                    const d=Math.hypot(snake.x-b.x,snake.y-b.y);
+                    const d=
+                        Math.hypot(
+                            snake.x-b.x,
+                            snake.y-b.y
+                        )-
+                        threatRadius;
 
                     if(d<bestD){
                         bestD=d;
@@ -1170,7 +1238,7 @@ export default {
         };
 
         const eatFood = snake => {
-            const hitRadius=CONFIG.headRadius+7;
+            const hitRadius=snakePickupRadius(snake);
 
             for(let i=food.length-1;i>=0;i--){
                 const p=food[i];
@@ -1203,13 +1271,26 @@ export default {
         };
 
         const headHitsBody = (snake,other) => {
-            const start=other.id===snake.id?10:3;
+            // Eigener Körper ist absichtlich nicht tödlich.
+            if(other.id===snake.id){
+                return false;
+            }
 
-            for(let i=start;i<other.body.length;i+=CONFIG.collisionStep){
+            const headR=
+                snakeHeadRadius(snake);
+
+            const bodyR=
+                snakeBodyRadius(other);
+
+            for(let i=3;i<other.body.length;i+=CONFIG.collisionStep){
                 const b=other.body[i];
                 const d=Math.hypot(snake.x-b.x,snake.y-b.y);
 
-                if(d<CONFIG.headRadius+CONFIG.bodyRadius*.78){
+                if(
+                    d<
+                    headR+
+                    bodyR*.78
+                ){
                     return true;
                 }
             }
@@ -1223,29 +1304,81 @@ export default {
             snake.alive=false;
 
             const dropCount=Math.min(
-                240,
+                520,
                 Math.max(
-                    20,
-                    Math.floor(snake.body.length*CONFIG.deathFoodFactor)
+                    42,
+                    Math.floor(
+                        snake.body.length*
+                        1.18
+                    )
                 )
             );
 
             for(let i=0;i<dropCount;i++){
-                const index=Math.floor(i/dropCount*Math.max(1,snake.body.length-1));
-                const b=snake.body[index]??{x:snake.x,y:snake.y};
+                const t=
+                    i/
+                    Math.max(
+                        1,
+                        dropCount-1
+                    );
+
+                const index=
+                    Math.floor(
+                        t*
+                        Math.max(
+                            1,
+                            snake.body.length-1
+                        )
+                    );
+
+                const b=
+                    snake.body[index]??
+                    {x:snake.x,y:snake.y};
+
+                // Mehrere kleine Punkte um jedes Körperstück ergeben
+                // den dichten Slither-artigen "Masse-Teppich".
+                const spread=
+                    7+
+                    snakeBodyRadius(snake)*.72;
+
+                const angle=
+                    rand(
+                        0,
+                        Math.PI*2
+                    );
+
+                const distance=
+                    Math.abs(
+                        rand(-1,1)
+                    )*
+                    spread;
+
+                const rare=
+                    Math.random()<.045;
 
                 food.push(
                     createFood(
-                        b.x+rand(-12,12),
-                        b.y+rand(-12,12),
-                        rand(.85,1.45),
-                        snake.skin.colors[i%snake.skin.colors.length],
-                        Math.random()<.08
+                        b.x+
+                        Math.cos(angle)*
+                        distance+
+                        rand(-3,3),
+                        b.y+
+                        Math.sin(angle)*
+                        distance+
+                        rand(-3,3),
+                        rare
+                            ?rand(1.35,2.2)
+                            :rand(.38,.78),
+                        snake.skin.colors[
+                            i%
+                            snake.skin.colors.length
+                        ],
+                        rare
                     )
                 );
             }
 
-            for(let i=0;i<26;i++){
+            for(let i=0;i<42;i++){
                 particles.push({
                     x:snake.x,
                     y:snake.y,
@@ -1290,7 +1423,10 @@ export default {
                 if(!snake.alive) continue;
 
                 for(const other of snakes){
-                    if(!other.alive) continue;
+                    if(
+                        !other.alive||
+                        other.id===snake.id
+                    ) continue;
 
                     if(headHitsBody(snake,other)){
                         dieSnake(
@@ -1303,7 +1439,7 @@ export default {
 
                 if(!snake.alive) continue;
 
-                const margin=CONFIG.headRadius;
+                const margin=snakeHeadRadius(snake);
 
                 if(
                     snake.x<=margin ||
@@ -1684,55 +1820,163 @@ export default {
         };
 
         const drawFood = () => {
+            const visible=[];
+
             for(const p of food){
                 p.pulse+=.035;
 
-                const s=screen(p.x,p.y);
-                const r=p.radius*camera.zoom*(p.rare?1+Math.sin(p.pulse)*.10:1);
+                const s=
+                    screen(
+                        p.x,
+                        p.y
+                    );
+
+                const r=
+                    p.radius*
+                    camera.zoom*
+                    (
+                        p.rare
+                            ?1+
+                            Math.sin(p.pulse)*
+                            .10
+                            :1
+                    );
 
                 if(
-                    s.x<-15||s.y<-15||
-                    s.x>width+15||s.y>height+15
-                ) continue;
+                    s.x<-24||
+                    s.y<-24||
+                    s.x>width+24||
+                    s.y>height+24
+                ){
+                    continue;
+                }
+
+                visible.push({
+                    p,
+                    s,
+                    r
+                });
+            }
+
+            // 1) Additiver Glow-Pass. Überlappende Pellets addieren
+            // ihre Helligkeit und bilden bei Todesfeldern eine zusammen-
+            // hängende leuchtende Masse, ähnlich wie in Slither.io.
+            ctx.save();
+            ctx.globalCompositeOperation='lighter';
+
+            for(const item of visible){
+                const {p,s,r}=item;
+
+                const halo=
+                    ctx.createRadialGradient(
+                        s.x,
+                        s.y,
+                        0,
+                        s.x,
+                        s.y,
+                        r*
+                        (
+                            p.rare
+                                ?3.8
+                                :3.0
+                        )
+                    );
+
+                halo.addColorStop(
+                    0,
+                    p.rare
+                        ?'rgba(255,255,255,.58)'
+                        :p.color+'66'
+                );
+
+                halo.addColorStop(
+                    .22,
+                    p.color+
+                    (
+                        p.rare
+                            ?'aa'
+                            :'58'
+                    )
+                );
+
+                halo.addColorStop(
+                    .58,
+                    p.color+
+                    (
+                        p.rare
+                            ?'42'
+                            :'24'
+                    )
+                );
+
+                halo.addColorStop(
+                    1,
+                    'rgba(0,0,0,0)'
+                );
+
+                ctx.fillStyle=halo;
+
+                ctx.beginPath();
+                ctx.arc(
+                    s.x,
+                    s.y,
+                    r*
+                    (
+                        p.rare
+                            ?3.8
+                            :3.0
+                    ),
+                    0,
+                    Math.PI*2
+                );
+
+                ctx.fill();
+            }
+
+            ctx.restore();
+
+            // 2) Scharfe Pellet-Kerne darüber.
+            for(const item of visible){
+                const {p,s,r}=item;
 
                 ctx.save();
 
                 ctx.fillStyle=p.color;
+                ctx.shadowBlur=
+                    (
+                        p.rare
+                            ?25
+                            :11
+                    )*
+                    camera.zoom;
 
-                if(p.rare){
-                    ctx.shadowBlur=26*camera.zoom;
-                    ctx.shadowColor=p.color;
-                }else{
-                    ctx.shadowBlur=13*camera.zoom;
-                    ctx.shadowColor=p.color;
-                }
+                ctx.shadowColor=p.color;
 
-                ctx.globalAlpha=p.rare?.24:.15;
                 ctx.beginPath();
                 ctx.arc(
                     s.x,
                     s.y,
                     Math.max(
-                        3,
-                        r*(p.rare?2.5:2.0)
+                        1.7,
+                        r
                     ),
                     0,
                     Math.PI*2
                 );
                 ctx.fill();
 
-                ctx.globalAlpha=1;
-                ctx.beginPath();
-                ctx.arc(s.x,s.y,Math.max(1.6,r),0,Math.PI*2);
-                ctx.fill();
-
                 if(p.rare){
-                    ctx.fillStyle='rgba(255,255,255,.72)';
+                    ctx.fillStyle=
+                        'rgba(255,255,255,.76)';
+
                     ctx.beginPath();
                     ctx.arc(
                         s.x-r*.25,
                         s.y-r*.28,
-                        Math.max(1,r*.25),
+                        Math.max(
+                            1,
+                            r*.25
+                        ),
                         0,
                         Math.PI*2
                     );
@@ -1775,8 +2019,14 @@ export default {
                     ?.34
                     :.22;
 
+            const bodyRadius=
+                snakeBodyRadius(snake);
+
+            const headRadius=
+                snakeHeadRadius(snake);
+
             ctx.lineWidth=
-                CONFIG.bodyRadius*
+                bodyRadius*
                 camera.zoom*
                 (snake.boosting?3.15:2.75);
 
@@ -1810,7 +2060,7 @@ export default {
                     :'rgba(30,42,50,.30)';
 
             ctx.lineWidth=
-                CONFIG.bodyRadius*
+                bodyRadius*
                 camera.zoom*
                 2.15;
 
@@ -1834,7 +2084,7 @@ export default {
                 const b=snake.body[i];
                 const s=screen(b.x,b.y);
                 const r=
-                    CONFIG.bodyRadius*
+                    bodyRadius*
                     camera.zoom;
 
                 if(
@@ -1913,7 +2163,7 @@ export default {
 
             const h=screen(snake.x,snake.y);
             const hr=
-                CONFIG.headRadius*
+                headRadius*
                 camera.zoom;
 
             ctx.save();

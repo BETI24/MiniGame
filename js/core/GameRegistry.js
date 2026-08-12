@@ -16,6 +16,7 @@ import SurvivalRoyale from "../games/SurvivalRoyale.js";
 import CellArena from "../games/CellArena.js";
 import NeonSerpent from "../games/NeonSerpent.js";
 import NeonFlail from "../games/NeonFlail.js";
+import neonSnake from "../games/NeonSnake.js";
 
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
@@ -39,4 +40,5 @@ export const GameRegistry = [
     craps,
     NeonSerpent,
     NeonFlail,
+    neonSnake
 ];

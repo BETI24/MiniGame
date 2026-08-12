@@ -23,7 +23,6 @@ import ForestFrenzy from "../games/ForestFrenzy.js";
 export const GameRegistry = [
   NeonClicker,
   ShapeDodger,
-  ShapeDodgerV2,
   Blackjack,
   Crash,
   PrismaClix,

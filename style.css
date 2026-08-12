@@ -245,20 +245,17 @@ body {
 
 /* Search Bar */
 .search-container {
-    position: sticky; /* Hält das Element beim Scrollen fest */
-    top: 20px; /* Bestimmt den Abstand zum oberen Bildschirmrand */
-    z-index: 100; /* Legt die Stapelreihenfolge fest, damit die Leiste über den Spielen bleibt */
     width: 100%;
     max-width: 550px;
     transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .sticky-search {
-    position: sticky; /* Friert das Element beim Scrollen ein */
-    top: 20px; /* Hält 20 Pixel Abstand zum oberen Rand */
-    z-index: 100; /* Sorgt dafür, dass die Leiste über allen anderen Elementen schwebt */
-    margin: 0 auto 3rem auto; /* Zentriert die Leiste und schafft Abstand nach unten */
-    width: calc(100% - 4rem); /* Passt die Breite an und verhindert ein Anstoßen an den Rändern */
+    position: sticky;
+    top: 20px;
+    z-index: 100;
+    margin: 0 auto 3rem auto;
+    width: calc(100% - 4rem);
     max-width: 550px;
 }
 

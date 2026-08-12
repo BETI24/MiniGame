@@ -1,3 +1,22 @@
+import {
+  houseWalls,
+  houseContains,
+  houseEntrance
+} from './SurvivalRoyaleBuildings.js';
+import {
+  buildFixedWorld,
+  drawRiver,
+  drawRiverMini,
+  terrainSpeedMultiplier,
+  collisionRadiusForObject
+} from './SurvivalRoyaleMap.js';
+import {
+  createBotAIState,
+  findNearbyEnemy,
+  chooseRoamDestination,
+  moveWithSteering
+} from './SurvivalRoyaleAI.js';
+
 const DIFFICULTY={
   easy:{label:'Easy',aim:.20,reaction:.55,speed:.92},
   normal:{label:'Normal',aim:.11,reaction:.34,speed:1},
@@ -48,14 +67,14 @@ export default{
     name:'Survival Royale',
     description:'Top-down Battle Royale gegen KI: looten, schießen, Deckung nutzen und der Zone entkommen.',
     icon:'🎯',
-    tags:['Battle Royale','Shooter','AI',]
+    tags:['Battle Royale','Shooter','AI','Survival']
   },
   init:(container,services)=>{
     let dead=false,raf=0,last=performance.now(),running=false,ended=false;
     let presetKey='standard',diffKey='normal',preset=PRESETS[presetKey],diff=DIFFICULTY[diffKey];
     let W=1,H=1,dpr=1,worldSize=preset.size,time=0,kills=0,damageDone=0,placement=0;
     let cam={x:0,y:0,zoom:1.42,targetZoom:1.42},mouse={x:0,y:0,wx:0,wy:0,down:false},keys={w:false,a:false,s:false,d:false,shift:false};
-    let player=null,bots=[],bullets=[],loot=[],objects=[],houses=[],crates=[],fx=[],feed=[],zone=null,nextId=1;
+    let player=null,bots=[],bullets=[],loot=[],objects=[],houses=[],crates=[],fx=[],feed=[],zone=null,worldMap=null,nextId=1;
     let muted=false,audio=null;
 
     const style=document.createElement('style');
@@ -394,12 +413,7 @@ export default{
       using:false,
       useT:0,
       meleeCool:0,
-      ai:isP?null:{
-        think:rand(.1,.5),
-        target:null,
-        move:null,
-        strafe:Math.random()<.5?-1:1
-      }
+      ai:isP?null:createBotAIState(rand)
     });
     const weapon=e=>e.slot<0?null:e.guns[e.slot], fmt=t=>`${Math.floor(t/60)}:${String(Math.floor(t)%60).padStart(2,'0')}`;
     const ensureAudio=()=>{if(muted)return null;try{if(!audio)audio=new(window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();return audio}catch{return null}};
@@ -408,266 +422,55 @@ export default{
     function resize(){const r=root.getBoundingClientRect();W=r.width;H=r.height;dpr=Math.min(2,devicePixelRatio||1);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);canvas.style.width=W+'px';canvas.style.height=H+'px';}
     function rectHit(x,y,r,o){const nx=clamp(x,o.x,o.x+o.w),ny=clamp(y,o.y,o.y+o.h);return Math.hypot(x-nx,y-ny)<r}
     function blocked(e,x,y){
-      for(const o of objects)if(o.solid&&Math.hypot(x-o.x,y-o.y)<e.r+o.r)return true;
-      for(const c of crates)if(c.on&&Math.hypot(x-c.x,y-c.y)<e.r+c.r*c.scale)return true;
-      for(const h of houses)for(const w of houseWalls(h))if(rectHit(x,y,e.r,w))return true;
-      return false
-    }
-    function move(e,dx,dy){let nx=clamp(e.x+dx,e.r,worldSize-e.r);if(!blocked(e,nx,e.y))e.x=nx;let ny=clamp(e.y+dy,e.r,worldSize-e.r);if(!blocked(e,e.x,ny))e.y=ny}
-    function openPoint(){for(let n=0;n<120;n++){const p={x:rand(70,worldSize-70),y:rand(70,worldSize-70)};if(!objects.some(o=>o.solid&&dist(p,o)<o.r+35)&&!crates.some(c=>c.on&&dist(p,c)<c.r+28)&&!houses.some(h=>p.x>h.x-30&&p.x<h.x+h.w+30&&p.y>h.y-30&&p.y<h.y+h.h+30))return p}return{x:rand(70,worldSize-70),y:rand(70,worldSize-70)}}
-    function splitWallVertical(x,y,h,doorY,thickness=12,door=46){
-      const top=Math.max(0,doorY-door/2-y);
-      const bottomStart=doorY+door/2;
-      const result=[];
-
-      if(top>6){
-        result.push({x,y,w:thickness,h:top});
+      for(const o of objects){
+        const r=collisionRadiusForObject(o);
+        if(r>0&&Math.hypot(x-o.x,y-o.y)<e.r+r)return true;
       }
 
-      const bottom=(y+h)-bottomStart;
-
-      if(bottom>6){
-        result.push({x,y:bottomStart,w:thickness,h:bottom});
+      for(const c of crates){
+        if(c.on&&Math.hypot(x-c.x,y-c.y)<e.r+c.r*c.scale)return true;
       }
 
-      return result;
-    }
-
-    function splitWallHorizontal(x,y,w,doorX,thickness=12,door=46){
-      const left=Math.max(0,doorX-door/2-x);
-      const rightStart=doorX+door/2;
-      const result=[];
-
-      if(left>6){
-        result.push({x,y,w:left,h:thickness});
-      }
-
-      const right=(x+w)-rightStart;
-
-      if(right>6){
-        result.push({x:rightStart,y,w:right,h:thickness});
-      }
-
-      return result;
-    }
-
-    function makeHouse(x,y,w,h){
-      const t=14;
-      const door=82;
-      const side=rint(0,3);
-      const warehouse=Math.random()<.25;
-      const walls=[];
-
-      // Vier Außenwände, eine Seite besitzt eine breite Türöffnung.
-      if(side===0){
-        walls.push(
-          ...splitWallHorizontal(x,y,w,x+w*.5,t,door),
-          {x,y:y+h-t,w,h:t},
-          {x,y,w:t,h},
-          {x:x+w-t,y,w:t,h}
-        );
-      }else if(side===2){
-        walls.push(
-          {x,y,w,h:t},
-          ...splitWallHorizontal(x,y+h-t,w,x+w*.5,t,door),
-          {x,y,w:t,h},
-          {x:x+w-t,y,w:t,h}
-        );
-      }else if(side===1){
-        walls.push(
-          {x,y,w,h:t},
-          {x,y:y+h-t,w,h:t},
-          {x,y,w:t,h},
-          ...splitWallVertical(x+w-t,y,h,y+h*.5,t,door)
-        );
-      }else{
-        walls.push(
-          {x,y,w,h:t},
-          {x,y:y+h-t,w,h:t},
-          ...splitWallVertical(x,y,h,y+h*.5,t,door),
-          {x:x+w-t,y,w:t,h}
-        );
-      }
-
-      const innerWalls=[];
-      const furniture=[];
-
-      if(!warehouse){
-        // 2–4 echte Räume mit Türöffnungen.
-        if(w>250){
-          const px=x+w*rand(.43,.60);
-          innerWalls.push(
-            ...splitWallVertical(
-              px,
-              y+t,
-              h-t*2,
-              y+h*rand(.42,.65),
-              10,
-              44
-            )
-          );
-        }
-
-        if(h>215 && Math.random()<.92){
-          const py=y+h*rand(.43,.62);
-          innerWalls.push(
-            ...splitWallHorizontal(
-              x+t,
-              py,
-              w-t*2,
-              x+w*rand(.35,.70),
-              10,
-              44
-            )
-          );
-        }
-
-        if(w>390 && Math.random()<.70){
-          const px2=x+w*rand(.68,.79);
-
-          innerWalls.push(
-            ...splitWallVertical(
-              px2,
-              y+t,
-              h-t*2,
-              y+h*rand(.30,.72),
-              10,
-              46
-            )
-          );
-        }
-
-        const furnitureCount=rint(7,12);
-
-        for(let i=0;i<furnitureCount;i++){
-          const roll=Math.random();
-          const type=
-            roll<.30
-              ?'table'
-              :roll<.55
-                ?'bed'
-                :roll<.78
-                  ?'cabinet'
-                  :'rug';
-
-          const fw=
-            type==='bed'
-              ?rand(34,48)
-              :type==='rug'
-                ?rand(42,64)
-                :rand(25,40);
-
-          const fh=
-            type==='bed'
-              ?rand(22,30)
-              :type==='rug'
-                ?rand(30,46)
-                :rand(20,34);
-
-          furniture.push({
-            type,
-            x:rand(x+27,x+w-fw-27),
-            y:rand(y+27,y+h-fh-27),
-            w:fw,
-            h:fh,
-            rot:Math.random()<.5?0:Math.PI/2
-          });
-        }
-      }else{
-        // Warehouses wirken offener, bekommen dafür Regale/Kistenreihen.
-        const rows=rint(2,4);
-
-        for(let i=0;i<rows;i++){
-          furniture.push({
-            type:'shelf',
-            x:x+rand(28,w-72),
-            y:y+28+i*((h-56)/Math.max(1,rows-1)),
-            w:rand(50,78),
-            h:14,
-            rot:0
-          });
+      for(const h of houses){
+        for(const w of houseWalls(h)){
+          if(rectHit(x,y,e.r,w))return true;
         }
       }
 
-      return{
-        id:nextId++,
-        x,y,w,h,
-        walls,
-        innerWalls,
-        furniture,
-        warehouse,
-        roofColor:warehouse?'#283b49':'#6d3029',
-        roofAccent:warehouse?'#41596b':'#9b4935',
-        doorSide:side
-      };
+      return false;
     }
 
-    function houseWalls(h){
-      return h.innerWalls?.length
-        ?h.walls.concat(h.innerWalls)
-        :h.walls;
-    }
-
-    function houseEntrance(h){
-      const depth=34;
-      const half=44;
-
-      if(h.doorSide===0){
-        return{
-          x:h.x+h.w*.5,
-          y:h.y,
-          insideX:h.x+h.w*.5,
-          insideY:h.y+22,
-          outsideX:h.x+h.w*.5,
-          outsideY:h.y-depth*.5,
-          pad:{x:h.x+h.w*.5-half,y:h.y-depth,w:half*2,h:depth}
-        };
-      }
-
-      if(h.doorSide===2){
-        return{
-          x:h.x+h.w*.5,
-          y:h.y+h.h,
-          insideX:h.x+h.w*.5,
-          insideY:h.y+h.h-22,
-          outsideX:h.x+h.w*.5,
-          outsideY:h.y+h.h+depth*.5,
-          pad:{x:h.x+h.w*.5-half,y:h.y+h.h,w:half*2,h:depth}
-        };
-      }
-
-      if(h.doorSide===1){
-        return{
-          x:h.x+h.w,
-          y:h.y+h.h*.5,
-          insideX:h.x+h.w-22,
-          insideY:h.y+h.h*.5,
-          outsideX:h.x+h.w+depth*.5,
-          outsideY:h.y+h.h*.5,
-          pad:{x:h.x+h.w,y:h.y+h.h*.5-half,w:depth,h:half*2}
-        };
-      }
-
-      return{
-        x:h.x,
-        y:h.y+h.h*.5,
-        insideX:h.x+22,
-        insideY:h.y+h.h*.5,
-        outsideX:h.x-depth*.5,
-        outsideY:h.y+h.h*.5,
-        pad:{x:h.x-depth,y:h.y+h.h*.5-half,w:depth,h:half*2}
-      };
-    }
-
-    function houseContains(entity,h,padding=0){
-      if(!entity||!h)return false;
-
-      return(
-        entity.x>h.x+padding&&
-        entity.x<h.x+h.w-padding&&
-        entity.y>h.y+padding&&
-        entity.y<h.y+h.h-padding
+    function move(e,dx,dy){
+      const terrain=terrainSpeedMultiplier(
+        e.x,
+        e.y,
+        worldMap?.river
       );
+
+      dx*=terrain;
+      dy*=terrain;
+
+      let nx=clamp(e.x+dx,e.r,worldSize-e.r);
+      if(!blocked(e,nx,e.y))e.x=nx;
+
+      let ny=clamp(e.y+dy,e.r,worldSize-e.r);
+      if(!blocked(e,e.x,ny))e.y=ny;
+    }
+
+    function openPoint(){
+      const fixed=worldMap?.spawnPoints??[];
+
+      for(let n=0;n<fixed.length*2;n++){
+        const p=fixed[rint(0,fixed.length-1)];
+        if(p&&!blocked({r:CFG.playerR},p.x,p.y))return{x:p.x,y:p.y};
+      }
+
+      for(let n=0;n<120;n++){
+        const p={x:rand(70,worldSize-70),y:rand(70,worldSize-70)};
+        if(!blocked({r:CFG.playerR},p.x,p.y))return p;
+      }
+
+      return{x:worldSize*.2,y:worldSize*.2};
     }
 
     function currentPlayerHouse(){
@@ -836,101 +639,65 @@ export default{
       crates=[];
       loot=[];
 
-      const hc=presetKey==='quick'?8:14;
+      worldMap=buildFixedWorld({
+        worldSize,
+        presetKey,
+        allocId:()=>nextId++
+      });
 
-      for(let n=0;n<hc;n++){
-        for(let t=0;t<80;t++){
-          const w=rand(285,470),h=rand(230,390),
-                x=rand(110,worldSize-w-110),y=rand(110,worldSize-h-110);
+      houses=worldMap.houses;
+      objects=worldMap.objects;
 
-          if(!houses.some(q=>!(
-            x+w+120<q.x||
-            x>q.x+q.w+120||
-            y+h+120<q.y||
-            y>q.y+q.h+120
-          ))){
-            houses.push(makeHouse(x,y,w,h));
-            break;
-          }
-        }
-      }
-
-      const oc=presetKey==='quick'?110:175;
-
-      for(let n=0;n<oc;n++){
-        const type=Math.random()<.58?'tree':Math.random()<.72?'rock':'bush',
-              r=type==='tree'?rand(25,37):rand(18,30),
-              p=openPoint();
-
-        objects.push({
-          id:nextId++,
-          type,
-          x:p.x,
-          y:p.y,
-          r,
-          solid:type!=='bush'
-        });
-      }
-
-      // Freier Boden-Loot liegt bewusst fast nur in Gebäuden.
-      const floorLoot=Math.round(preset.loot*.42);
-
-      for(let n=0;n<floorLoot;n++){
-        if(!houses.length)break;
-
-        const h=houses[rint(0,houses.length-1)];
-        const p={
-          x:rand(h.x+27,h.x+h.w-27),
-          y:rand(h.y+27,h.y+h.h-27)
-        };
-
+      // Positions are authored and fixed. Only the item roll itself changes per match.
+      for(const p of worldMap.lootSpawns){
         spawnLootRoll(p.x,p.y,false);
       }
 
-      // Restliche Loot-Quelle: zerstörbare Kisten, drinnen und draußen.
-      const crateCount=presetKey==='quick'?50:82;
-
-      for(let n=0;n<crateCount;n++){
-        let placed=false;
-
-        if(houses.length && Math.random()<.43){
-          const h=houses[rint(0,houses.length-1)];
-
-          for(let tries=0;tries<24;tries++){
-            const p={
-              x:rand(h.x+32,h.x+h.w-32),
-              y:rand(h.y+32,h.y+h.h-32)
-            };
-
-            if(!crates.some(c=>dist(c,p)<62)){
-              addCrate(p.x,p.y);
-              placed=true;
-              break;
-            }
-          }
-        }
-
-        if(!placed){
-          const p=openPoint();
+      for(const p of worldMap.crateSpawns){
+        if(!blocked({r:23},p.x,p.y)){
           addCrate(p.x,p.y);
         }
       }
     }
 
+    function fixedSpawnPoint(avoid=null,used=[]){
+      const points=(worldMap?.spawnPoints??[])
+        .filter(p=>
+          !blocked({r:CFG.playerR},p.x,p.y)&&
+          !used.some(q=>Math.hypot(q.x-p.x,q.y-p.y)<180)
+        );
+
+      let best=null;
+      let bestScore=-Infinity;
+
+      for(const p of points){
+        const avoidDist=avoid?Math.hypot(p.x-avoid.x,p.y-avoid.y):9999;
+        const score=avoidDist+rand(0,150);
+
+        if(score>bestScore){
+          bestScore=score;
+          best=p;
+        }
+      }
+
+      return best?{x:best.x,y:best.y}:openPoint();
+    }
+
     function spawn(){
-      const p=openPoint();
+      const used=[];
+      const p=fixedSpawnPoint(null,used);
+      used.push(p);
+
       player=makeChar(p.x,p.y,true);
       player.slot=-1;
       bots=[];
 
       for(let i=0;i<preset.bots;i++){
-        let q=openPoint(),tries=0;
-        while(dist(p,q)<340&&tries++<30)q=openPoint();
+        const q=fixedSpawnPoint(p,used);
+        used.push(q);
 
         const b=makeChar(q.x,q.y,false);
 
-        // Bots bekommen mindestens eine Pistole, damit die Singleplayer-Runde
-        // direkt als Battle Royale funktioniert. Nur der Spieler startet mit Fäusten.
         b.guns[0]=makeGun('pistol');
         b.slot=0;
         b.ammo['9mm']=36;
@@ -1075,7 +842,9 @@ export default{
         const y=y1+(y2-y1)*t;
 
         for(const o of objects){
-          if(o.solid&&Math.hypot(x-o.x,y-o.y)<o.r){
+          const r=collisionRadiusForObject(o);
+
+          if(r>0&&Math.hypot(x-o.x,y-o.y)<r){
             return true;
           }
         }
@@ -1304,7 +1073,14 @@ export default{
     }
     function useMed(e){if(e.med>0&&e.hp<100&&!e.using){e.using=true;e.useT=CFG.medTime}}
     function updatePlayer(dt){if(!player?.alive)return;updateTimers(player,dt);let dx=(keys.d?1:0)-(keys.a?1:0),dy=(keys.s?1:0)-(keys.w?1:0),len=Math.hypot(dx,dy);if(len){if(player.using){player.using=false;player.useT=0}const sp=CFG.move*(keys.shift?1.22:1);move(player,dx/len*sp*dt,dy/len*sp*dt)}mouse.wx=cam.x+(mouse.x-W/2)/cam.zoom;mouse.wy=cam.y+(mouse.y-H/2)/cam.zoom;player.angle=Math.atan2(mouse.wy-player.y,mouse.wx-player.x);if(mouse.down)shoot(player);if(!inside(player))damage(player,zone.dmg*dt,null,'zone')}
-    function nearestEnemy(b,max=620){let best=null,bd=max;for(const e of alive())if(e.id!==b.id){const d=dist(b,e);if(d<bd&&!lineBlocked(b.x,b.y,e.x,e.y)){best=e;bd=d}}return best?{e:best,d:bd}:null}
+    function nearbyEnemy(b,max=650){
+      return findNearbyEnemy(
+        b,
+        alive(),
+        max,
+        lineBlocked
+      );
+    }
     function aiLoot(b){
       let best=null;
       let bs=-1e9;
@@ -1357,12 +1133,246 @@ export default{
       }
 
       return bs>5?best:null;
-    }    function moveToward(b,x,y,dt,m=1){const dx=x-b.x,dy=y-b.y,l=Math.max(1,Math.hypot(dx,dy)),sp=CFG.move*diff.speed*m;const ox=b.x,oy=b.y;move(b,dx/l*sp*dt,dy/l*sp*dt);if(Math.hypot(b.x-ox,b.y-oy)<.2)move(b,-dy/l*sp*dt*b.ai.strafe,dx/l*sp*dt*b.ai.strafe)}
-    function updateBot(b,dt){if(!b.alive)return;updateTimers(b,dt);if(!inside(b))damage(b,zone.dmg*dt,null,'zone');if(!b.alive)return;if(b.using)return;const zd=Math.hypot(b.x-zone.x,b.y-zone.y);if(zd>zone.r-30){moveToward(b,zone.x,zone.y,dt,1.08);b.angle=Math.atan2(zone.y-b.y,zone.x-b.x);return}
-      const en=nearestEnemy(b,620);if(en){const s=weapon(b),def=WEAPONS[s.id],ideal=s.id==='shotgun'?145:s.id==='smg'?220:s.id==='pistol'?290:s.id==='rifle'?400:500,dx=en.e.x-b.x,dy=en.e.y-b.y,l=Math.max(1,en.d),nx=dx/l,ny=dy/l;let mx=-ny*b.ai.strafe*.7,my=nx*b.ai.strafe*.7;if(en.d>ideal*1.1){mx+=nx;my+=ny}else if(en.d<ideal*.62){mx-=nx;my-=ny}const ml=Math.max(1,Math.hypot(mx,my)),sp=CFG.move*diff.speed*.9;move(b,mx/ml*sp*dt,my/ml*sp*dt);b.angle=Math.atan2(dy,dx)+rand(-diff.aim,diff.aim)*clamp(en.d/450,.6,1.2);if(en.d<def.range*.86)shoot(b,b.angle);if(s.mag<=0)reload(b);return}
-      b.ai.think-=dt;if(b.ai.think<=0){b.ai.think=diff.reaction+rand(.08,.28);b.ai.target=aiLoot(b);if(!b.ai.target){const a=Math.random()*Math.PI*2,r=rand(0,zone.r*.65);b.ai.move={x:clamp(zone.x+Math.cos(a)*r,50,worldSize-50),y:clamp(zone.y+Math.sin(a)*r,50,worldSize-50)}}}
-      if(b.hp<45&&b.med&&Math.random()<.005){useMed(b);return}
-      if(b.ai.target&&b.ai.target.on){if(dist(b,b.ai.target)<CFG.pickup)pick(b,b.ai.target);else moveToward(b,b.ai.target.x,b.ai.target.y,dt,.92)}else if(b.ai.move)moveToward(b,b.ai.move.x,b.ai.move.y,dt,.86)
+    }
+
+    function botMoveToward(b,x,y,dt,m=1){
+      const speed=CFG.move*diff.speed*m;
+
+      moveWithSteering({
+        entity:b,
+        targetX:x,
+        targetY:y,
+        dt,
+        speed,
+        move,
+        blocked,
+        strafe:b.ai.strafe
+      });
+    }
+
+    function combatApproachPoint(b,target){
+      const targetHouse=houses.find(h=>houseContains(target,h,5));
+      const botHouse=houses.find(h=>houseContains(b,h,5));
+
+      if(targetHouse&&targetHouse!==botHouse){
+        const e=houseEntrance(targetHouse);
+        const nearOutside=Math.hypot(b.x-e.outsideX,b.y-e.outsideY)<58;
+        return nearOutside
+          ?{x:e.insideX,y:e.insideY}
+          :{x:e.outsideX,y:e.outsideY};
+      }
+
+      if(botHouse&&targetHouse!==botHouse){
+        const e=houseEntrance(botHouse);
+        const nearInside=Math.hypot(b.x-e.insideX,b.y-e.insideY)<58;
+        return nearInside
+          ?{x:e.outsideX,y:e.outsideY}
+          :{x:e.insideX,y:e.insideY};
+      }
+
+      return{x:target.x,y:target.y};
+    }
+
+    function roamPointValid(b,p){
+      if(!p)return false;
+      if(Math.hypot(p.x-zone.x,p.y-zone.y)>Math.max(70,zone.r-55))return false;
+      return !blocked(b,p.x,p.y);
+    }
+
+    function chooseBotRoam(b){
+      b.ai.move=chooseRoamDestination({
+        bot:b,
+        zone,
+        worldSize,
+        navPoints:worldMap?.navPoints??[],
+        rand,
+        blockedPoint:(entity,x,y)=>blocked(entity,x,y)
+      });
+
+      b.ai.roamTimer=rand(3.2,7.0);
+      b.ai.state='roam';
+    }
+
+    function updateBot(b,dt){
+      if(!b.alive)return;
+
+      updateTimers(b,dt);
+
+      if(!inside(b)){
+        damage(b,zone.dmg*dt,null,'zone');
+      }
+
+      if(!b.alive||b.using)return;
+
+      const awareness=
+        diffKey==='easy'
+          ?560
+          :diffKey==='hard'
+            ?740
+            :650;
+
+      const zoneDistance=Math.hypot(b.x-zone.x,b.y-zone.y);
+
+      // Zone safety always overrides looting/roaming/combat when the edge is close.
+      if(zoneDistance>zone.r-34){
+        b.ai.target=null;
+        b.ai.lootTarget=null;
+        b.ai.state='zone';
+        botMoveToward(b,zone.x,zone.y,dt,1.10);
+        b.angle=Math.atan2(zone.y-b.y,zone.x-b.x);
+        return;
+      }
+
+      const sensed=nearbyEnemy(b,awareness);
+
+      if(sensed){
+        b.ai.target=sensed.e;
+        b.ai.combatForget=2.4;
+        b.ai.lastEnemyX=sensed.e.x;
+        b.ai.lastEnemyY=sensed.e.y;
+        b.ai.state='combat';
+
+        const s=weapon(b);
+        const def=WEAPONS[s.id];
+        const ideal=
+          s.id==='shotgun'
+            ?145
+            :s.id==='smg'
+              ?220
+              :s.id==='pistol'
+                ?290
+                :s.id==='rifle'
+                  ?400
+                  :500;
+
+        const dx=sensed.e.x-b.x;
+        const dy=sensed.e.y-b.y;
+        const l=Math.max(1,sensed.d);
+        const nx=dx/l,ny=dy/l;
+
+        if(sensed.visible){
+          let mx=-ny*b.ai.strafe*.72;
+          let my= nx*b.ai.strafe*.72;
+
+          if(sensed.d>ideal*1.10){
+            mx+=nx;
+            my+=ny;
+          }else if(sensed.d<ideal*.62){
+            mx-=nx;
+            my-=ny;
+          }
+
+          const ml=Math.max(1,Math.hypot(mx,my));
+          const sp=CFG.move*diff.speed*.91;
+          move(b,mx/ml*sp*dt,my/ml*sp*dt);
+
+          b.angle=
+            Math.atan2(dy,dx)+
+            rand(-diff.aim,diff.aim)*
+            clamp(sensed.d/450,.6,1.2);
+
+          if(sensed.d<def.range*.86){
+            shoot(b,b.angle);
+          }
+
+          if(s.mag<=0)reload(b);
+        }else{
+          // Awareness is proximity based, not LOS based. Bots actively investigate cover.
+          const approach=combatApproachPoint(b,sensed.e);
+          botMoveToward(b,approach.x,approach.y,dt,.98);
+          b.angle=Math.atan2(approach.y-b.y,approach.x-b.x);
+        }
+
+        return;
+      }
+
+      if(b.ai.combatForget>0&&b.ai.target?.alive){
+        b.ai.combatForget-=dt;
+
+        const tx=b.ai.lastEnemyX??b.ai.target.x;
+        const ty=b.ai.lastEnemyY??b.ai.target.y;
+
+        if(Math.hypot(tx-b.x,ty-b.y)>55){
+          b.ai.state='search';
+          botMoveToward(b,tx,ty,dt,.94);
+          b.angle=Math.atan2(ty-b.y,tx-b.x);
+          return;
+        }
+      }else{
+        b.ai.target=null;
+        b.ai.combatForget=0;
+      }
+
+      if(b.hp<45&&b.med&&Math.random()<.007){
+        useMed(b);
+        return;
+      }
+
+      b.ai.think-=dt;
+      b.ai.roamTimer-=dt;
+
+      if(b.ai.think<=0){
+        b.ai.think=diff.reaction+rand(.10,.32);
+
+        const candidate=aiLoot(b);
+
+        if(
+          candidate&&
+          candidate.on&&
+          Math.hypot(candidate.x-zone.x,candidate.y-zone.y)<zone.r-35
+        ){
+          b.ai.lootTarget=candidate;
+          b.ai.state='loot';
+        }else{
+          b.ai.lootTarget=null;
+        }
+
+        if(
+          !b.ai.lootTarget&&
+          (
+            b.ai.roamTimer<=0||
+            !roamPointValid(b,b.ai.move)||
+            Math.hypot(b.ai.move.x-b.x,b.ai.move.y-b.y)<65
+          )
+        ){
+          chooseBotRoam(b);
+        }
+      }
+
+      if(b.ai.lootTarget?.on){
+        if(dist(b,b.ai.lootTarget)<CFG.pickup){
+          pick(b,b.ai.lootTarget);
+          b.ai.lootTarget=null;
+          chooseBotRoam(b);
+        }else{
+          botMoveToward(
+            b,
+            b.ai.lootTarget.x,
+            b.ai.lootTarget.y,
+            dt,
+            .92
+          );
+
+          b.angle=Math.atan2(
+            b.ai.lootTarget.y-b.y,
+            b.ai.lootTarget.x-b.x
+          );
+        }
+
+        return;
+      }
+
+      if(
+        !roamPointValid(b,b.ai.move)||
+        Math.hypot(b.ai.move.x-b.x,b.ai.move.y-b.y)<60
+      ){
+        chooseBotRoam(b);
+      }
+
+      if(b.ai.move){
+        botMoveToward(b,b.ai.move.x,b.ai.move.y,dt,.84);
+        b.angle=Math.atan2(b.ai.move.y-b.y,b.ai.move.x-b.x);
+      }
     }
     function updateBullets(dt){
       const deadSet=new Set();
@@ -1427,13 +1437,15 @@ export default{
 
           if(!block){
             for(const o of objects){
+              const r=collisionRadiusForObject(o);
+
               if(
-                o.solid&&
+                r>0&&
                 Math.hypot(
                   bl.x-o.x,
                   bl.y-o.y
                 )<
-                o.r
+                r
               ){
                 block=true;
                 break;
@@ -1947,10 +1959,7 @@ export default{
       ctx.save();
 
       // Innenboden
-      ctx.fillStyle=
-        h.warehouse
-          ?'#485762'
-          :'#9c5633';
+      ctx.fillStyle=h.floorColor??'#9c5633';
 
       ctx.fillRect(
         h.x,
@@ -2271,6 +2280,9 @@ export default{
 
       ctx.stroke();
 
+      // Fixed river and its two bridges are part of the authored map.
+      drawRiver(ctx,worldMap?.river,worldSize,cam.zoom);
+
       // Zone
       if(zone){
         ctx.fillStyle='#c62f1b35';
@@ -2453,33 +2465,33 @@ export default{
         ctx.translate(o.x,o.y);
 
         if(o.type==='tree'){
-          ctx.fillStyle='#4d341f';
-          ctx.strokeStyle='#332214';
-          ctx.lineWidth=2;
-          ctx.beginPath();
-          ctx.arc(0,0,o.r*.55,0,Math.PI*2);
-          ctx.fill();
-          ctx.stroke();
+          const trunk=o.trunkR??Math.max(10,o.r*.34);
 
+          // Canopy is visual only: players and bullets can pass through it.
           ctx.fillStyle='#315827';
+          ctx.globalAlpha=.90;
 
           for(let i=0;i<9;i++){
             const a=i/9*Math.PI*2;
             ctx.beginPath();
             ctx.arc(
-              Math.cos(a)*o.r*.54,
-              Math.sin(a)*o.r*.54,
-              o.r*.43,
+              Math.cos(a)*o.r*.50,
+              Math.sin(a)*o.r*.50,
+              o.r*.46,
               0,
               Math.PI*2
             );
             ctx.fill();
           }
 
+          ctx.globalAlpha=1;
           ctx.fillStyle='#523720';
+          ctx.strokeStyle='#332214';
+          ctx.lineWidth=2;
           ctx.beginPath();
-          ctx.arc(0,0,o.r*.43,0,Math.PI*2);
+          ctx.arc(0,0,trunk,0,Math.PI*2);
           ctx.fill();
+          ctx.stroke();
         }else if(o.type==='rock'){
           ctx.fillStyle='#babdc0';
           ctx.strokeStyle='#44484b';
@@ -2872,6 +2884,8 @@ export default{
       if(!zone || !player) return;
 
       const sx=mw/worldSize,sy=mh/worldSize;
+
+      drawRiverMini(mctx,worldMap?.river,sx,sy);
 
       mctx.fillStyle='#7e5133';
       for(const h of houses){

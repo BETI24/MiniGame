@@ -12,6 +12,7 @@ import {
     getLineCandidates,
     allLinesHaveCandidate,
     buildRelationGraph,
+    findPartialRuleViolations,
     cellKey
 } from './QuickThinkerRules.js';
 
@@ -851,6 +852,180 @@ export const getNextLogicalStep = (
         step:null,
         trace:result.trace,
         result
+    };
+};
+
+
+// -----------------------------------------------------------------------------
+// Recovery hints
+// -----------------------------------------------------------------------------
+// A normal hint assumes the player's current entries are still compatible with
+// the puzzle. Recovery hints are used when one or more player entries make the
+// position impossible. They correct exactly ONE editable cell at a time.
+//
+// The generated puzzles keep their verified unique solution internally. We use
+// it only to identify which player-entered cells are inconsistent. The actual
+// explanation still tries to reconstruct a rule-based deduction first; if that
+// is not possible from the visible state, it falls back to a contradiction
+// proof (keeping the current value leaves zero legal completions).
+
+const givenKeySet = puzzle =>
+    new Set(
+        puzzle.givens.map(([row,col])=>cellKey(row,col))
+    );
+
+const findTargetDeduction = (
+    puzzle,
+    startBoard,
+    targetRow,
+    targetCol,
+    maxRank=4
+) => {
+    const work=cloneBoard(startBoard);
+    const limit=puzzle.size*puzzle.size+8;
+
+    for(let i=0;i<limit;i++){
+        const next=getNextLogicalStep(
+            puzzle,
+            work,
+            {maxRank}
+        );
+
+        if(next.status!=='step' || !next.step){
+            return null;
+        }
+
+        const before=cloneBoard(work);
+        const step=next.step;
+
+        if(
+            step.row===targetRow &&
+            step.col===targetCol
+        ){
+            return {
+                step,
+                before,
+                info:explainLogicalStep(
+                    step,
+                    before,
+                    puzzle
+                )
+            };
+        }
+
+        work[step.row][step.col]=step.value;
+    }
+
+    return null;
+};
+
+export const getRecoveryHint = (puzzle,startBoard) => {
+    if(!puzzle?.solution){
+        return null;
+    }
+
+    const givenKeys=givenKeySet(puzzle);
+    const violations=findPartialRuleViolations(
+        startBoard,
+        puzzle.relations
+    );
+
+    const wrong=[];
+    const trusted=boardFromGivens(
+        puzzle.size,
+        puzzle.givens
+    );
+
+    // Keep player entries that are still compatible with the unique solution.
+    // Wrong entries are deliberately left empty in `trusted`, so we can rebuild
+    // a clean logical path without changing the real board.
+    for(let row=0;row<puzzle.size;row++){
+        for(let col=0;col<puzzle.size;col++){
+            const key=cellKey(row,col);
+            if(givenKeys.has(key)){
+                continue;
+            }
+
+            const current=startBoard[row][col];
+            if(current===EMPTY){
+                continue;
+            }
+
+            if(current===puzzle.solution[row][col]){
+                trusted[row][col]=current;
+            }else{
+                wrong.push({
+                    row,
+                    col,
+                    current,
+                    target:puzzle.solution[row][col],
+                    inVisibleViolation:violations.has(key)
+                });
+            }
+        }
+    }
+
+    if(!wrong.length){
+        return null;
+    }
+
+    // Prefer a wrong cell already involved in a visible contradiction, because
+    // that is the most intuitive correction for the player.
+    wrong.sort((a,b)=>
+        Number(b.inVisibleViolation)-
+        Number(a.inVisibleViolation)
+    );
+
+    for(const candidate of wrong){
+        const deduction=findTargetDeduction(
+            puzzle,
+            trusted,
+            candidate.row,
+            candidate.col,
+            4
+        );
+
+        if(deduction){
+            return {
+                status:'correction',
+                ...candidate,
+                reason:'logical',
+                technique:deduction.info.technique,
+                explanation:deduction.info.explanation
+            };
+        }
+    }
+
+    // Fallback: prove one current value impossible. We test the wrong value on
+    // top of the givens plus all player entries that remain compatible. If it
+    // produces zero legal completions, its opposite is forced by contradiction.
+    for(const candidate of wrong){
+        const wrongTest=cloneBoard(trusted);
+        wrongTest[candidate.row][candidate.col]=candidate.current;
+
+        if(countSolutionsFromBoard(puzzle,wrongTest,1)===0){
+            const correctTest=cloneBoard(trusted);
+            correctTest[candidate.row][candidate.col]=candidate.target;
+
+            if(countSolutionsFromBoard(puzzle,correctTest,1)>0){
+                return {
+                    status:'correction',
+                    ...candidate,
+                    reason:'contradiction',
+                    technique:'Contradiction forcing',
+                    explanation:null
+                };
+            }
+        }
+    }
+
+    // Since the puzzle is unique, this is only a final safety fallback.
+    return {
+        status:'correction',
+        ...wrong[0],
+        reason:'unique',
+        technique:'Recovery',
+        explanation:null
     };
 };
 

@@ -21,6 +21,7 @@ import {
 import {
     getNextLogicalStep,
     explainLogicalStep,
+    getRecoveryHint,
     countSolutionsFromBoard
 } from './QuickThinkerSolver.js';
 
@@ -32,7 +33,7 @@ export default {
         name:'QuickThinker',
         description:'Logic puzzles with circles, squares, relation clues and guaranteed no-guess solutions.',
         icon:'🧠',
-        tags: ['Puzzle', 'Logic']
+        tags:['Puzzle','Logic','Singleplayer']
     },
 
     init:(container,services)=>{
@@ -41,6 +42,7 @@ export default {
         let board=[];
         let given=[];
         let relationElements=[];
+        let checkpointBoard=null;
         let won=false;
         let generating=false;
         let startedAt=0;
@@ -164,22 +166,57 @@ export default {
 
             .qt-cell.given{
                 cursor:default;
-                border-color:#7d8991;
+                border-color:#d9e2e8;
                 box-shadow:
-                    inset 0 0 0 2px rgba(255,255,255,.16),
-                    inset 18px 18px 28px rgba(255,255,255,.07);
+                    inset 0 0 0 3px rgba(17,25,32,.36),
+                    inset 0 0 0 5px rgba(255,255,255,.18),
+                    0 2px 8px rgba(0,0,0,.18);
+            }
+
+            /* Givens use a striped/darker fill, thick inner frame and a G badge.
+               They now remain obvious even on a dense 10×10 board. */
+            .qt-cell.given.circle{
+                background:
+                    repeating-linear-gradient(
+                        135deg,
+                        rgba(255,255,255,.10) 0 5px,
+                        rgba(15,25,34,.08) 5px 10px
+                    ),
+                    #5798c2;
+                border-color:#d8e5ec;
+            }
+
+            .qt-cell.given.square{
+                background:
+                    repeating-linear-gradient(
+                        135deg,
+                        rgba(255,255,255,.10) 0 5px,
+                        rgba(30,18,22,.08) 5px 10px
+                    ),
+                    #bd777e;
+                border-color:#ead9dc;
             }
 
             .qt-cell.given::after{
-                content:"";
+                content:"G";
                 position:absolute;
-                left:9%;
-                top:9%;
-                width:8%;
-                aspect-ratio:1;
-                min-width:4px;
-                border-radius:50%;
-                background:rgba(255,255,255,.80);
+                left:6%;
+                top:6%;
+                min-width:clamp(13px,calc(26px - var(--board-size) * 1px),20px);
+                height:clamp(13px,calc(26px - var(--board-size) * 1px),20px);
+                padding:0 3px;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                border:1px solid rgba(255,255,255,.55);
+                border-radius:5px;
+                background:rgba(15,22,28,.76);
+                color:#f7fafb;
+                font-size:clamp(.43rem,calc(.78rem - var(--board-size) * .025rem),.62rem);
+                font-weight:1000;
+                line-height:1;
+                letter-spacing:.02em;
+                pointer-events:none;
             }
 
             .qt-cell.circle{
@@ -325,6 +362,35 @@ export default {
 
             .qt-hint:hover{filter:brightness(1.07)}
             .qt-hint:active{transform:scale(.985)}
+
+            .qt-tools{
+                width:min(620px,92vw);
+                display:grid;
+                grid-template-columns:repeat(3,1fr);
+                gap:8px;
+                margin-top:9px;
+            }
+
+            .qt-tool-btn{
+                min-height:39px;
+                padding:7px 10px;
+                border:1px solid #3b4750;
+                border-radius:10px;
+                background:#222b32;
+                color:#cbd3d8;
+                font:inherit;
+                font-size:.62rem;
+                font-weight:900;
+                cursor:pointer;
+                transition:background .10s ease,opacity .10s ease,transform .07s ease;
+            }
+
+            .qt-tool-btn:hover:not(:disabled){background:#2b363e}
+            .qt-tool-btn:active:not(:disabled){transform:scale(.985)}
+            .qt-tool-btn:disabled{opacity:.34;cursor:not-allowed}
+            .qt-clear{border-color:#65454a;color:#e2b3b7}
+            .qt-save{border-color:#426278;color:#b8d7e9}
+            .qt-checkpoint{border-color:#4c654e;color:#bcd9bc}
 
             .qt-rules{
                 max-width:620px;
@@ -489,6 +555,8 @@ export default {
                 .qt-topbar{align-items:flex-start}
                 .qt-top-actions{flex-direction:column;align-items:flex-end}
                 .qt-diff-options{grid-template-columns:1fr 1fr}
+                .qt-tools{grid-template-columns:1fr 1fr 1fr}
+                .qt-tool-btn{padding-left:5px;padding-right:5px;font-size:.56rem}
                 .qt-rules{font-size:.61rem}
             }
         `;
@@ -516,6 +584,12 @@ export default {
                 <div class="qt-bottom">
                     <button class="qt-check" type="button">CHECK</button>
                     <button class="qt-hint" type="button">HINT</button>
+                </div>
+
+                <div class="qt-tools">
+                    <button class="qt-tool-btn qt-clear" type="button">CLEAR ALL</button>
+                    <button class="qt-tool-btn qt-save" type="button">SAVE</button>
+                    <button class="qt-tool-btn qt-checkpoint" type="button" disabled>CHECKPOINT</button>
                 </div>
 
                 <div class="qt-rules">
@@ -581,6 +655,9 @@ export default {
         const boardWrapEl=root.querySelector('.qt-board-wrap');
         const checkBtn=root.querySelector('.qt-check');
         const hintBtn=root.querySelector('.qt-hint');
+        const clearBtn=root.querySelector('.qt-clear');
+        const saveBtn=root.querySelector('.qt-save');
+        const checkpointBtn=root.querySelector('.qt-checkpoint');
         const newBtn=root.querySelector('.qt-new');
         const timerEl=root.querySelector('.qt-timer');
         const metaEl=root.querySelector('.qt-meta');
@@ -659,9 +736,11 @@ export default {
                         }
 
                         board[row][col]=
-                            board[row][col]===CIRCLE
-                                ?SQUARE
-                                :CIRCLE;
+                            board[row][col]===EMPTY
+                                ?CIRCLE
+                                :board[row][col]===CIRCLE
+                                    ?SQUARE
+                                    :EMPTY;
 
                         clearHintHighlight();
                         cell.classList.remove('error');
@@ -784,49 +863,12 @@ export default {
             expert:4
         })[puzzle?.difficulty]??4;
 
-        const findRecoverableMistake = () => {
-            if(!puzzle){
-                return null;
-            }
-
-            // First prefer a non-given player entry that is provably blocking
-            // every completion. Remove only that entry and see whether at least
-            // one valid completion becomes possible again.
-            for(let row=0;row<puzzle.size;row++){
-                for(let col=0;col<puzzle.size;col++){
-                    if(given[row][col] || board[row][col]===EMPTY){
-                        continue;
-                    }
-
-                    const test=cloneBoard(board);
-                    test[row][col]=EMPTY;
-
-                    if(countSolutionsFromBoard(puzzle,test,1)>0){
-                        return {row,col};
-                    }
-                }
-            }
-
-            // If several wrong assumptions interact, removing only one may not
-            // restore a solution. The generated puzzle keeps its verified unique
-            // solution for diagnostics, so point at one conflicting player cell
-            // without automatically changing it.
-            if(puzzle.solution){
-                for(let row=0;row<puzzle.size;row++){
-                    for(let col=0;col<puzzle.size;col++){
-                        if(
-                            !given[row][col] &&
-                            board[row][col]!==EMPTY &&
-                            board[row][col]!==puzzle.solution[row][col]
-                        ){
-                            return {row,col};
-                        }
-                    }
-                }
-            }
-
-            return null;
-        };
+        const valueLabel = value =>
+            value===CIRCLE
+                ?'circle'
+                :value===SQUARE
+                    ?'square'
+                    :'empty';
 
         const requestHint = () => {
             if(!puzzle || generating || won){
@@ -836,63 +878,80 @@ export default {
             clearErrors();
             clearHintHighlight();
 
-            if(isBoardFull(board)){
-                if(isBoardSolvedLegal(board,puzzle.relations)){
-                    showMessage(
-                        'hint',
-                        'The board is already solved',
-                        'Every rule is satisfied. Press Check to finish the puzzle.'
-                    );
-                }else{
-                    const violations=findRuleViolations(
-                        board,
-                        puzzle.relations
-                    );
-                    showViolations(violations);
-                    showMessage(
-                        'wrong',
-                        'Fix a contradiction first',
-                        'The current full board violates at least one visible rule. The involved cells have been marked.'
-                    );
-                }
+            if(
+                isBoardFull(board) &&
+                isBoardSolvedLegal(board,puzzle.relations)
+            ){
+                showMessage(
+                    'hint',
+                    'The board is already solved',
+                    'Every rule is satisfied. Press Check to finish the puzzle.'
+                );
                 return;
             }
 
+            // Recovery comes FIRST. This also works on a completely filled but
+            // incorrect board. One inconsistent editable cell is selected and
+            // the hint explains why its current value cannot remain.
+            const recovery=getRecoveryHint(
+                puzzle,
+                board
+            );
+
+            if(recovery?.status==='correction'){
+                highlightHintCell(
+                    recovery.row,
+                    recovery.col,
+                    recovery.target
+                );
+
+                const where=`Row ${recovery.row+1}, column ${recovery.col+1}`;
+                const current=valueLabel(recovery.current);
+                const target=valueLabel(recovery.target);
+
+                let explanation;
+
+                if(
+                    recovery.reason==='logical' &&
+                    recovery.explanation
+                ){
+                    explanation=
+                        `${where} is currently a ${current}, but that placement cannot stay. `+
+                        `${recovery.explanation} `+
+                        `Cycle the highlighted cell until it is a ${target}.`;
+                }else{
+                    explanation=
+                        `${where} is currently a ${current}. Keeping that value leaves no legal completion compatible with the givens, the 50/50 rule, the no-three rule and the = / × relations. `+
+                        `The opposite value still permits the puzzle's unique completion, so this cell is forced to be a ${target}. `+
+                        `Cycle the highlighted cell until it is a ${target}.`;
+                }
+
+                showMessage(
+                    'hint',
+                    `Correction hint · ${recovery.technique}`,
+                    explanation
+                );
+                return;
+            }
+
+            // No wrong player entries exist. From here the current position is
+            // compatible with the unique solution, so give a normal forward
+            // deduction from the exact visible board.
             const directViolations=findPartialRuleViolations(
                 board,
                 puzzle.relations
             );
 
             if(directViolations.size){
+                // Safety fallback. In a verified unique puzzle a visible
+                // contradiction should always contain at least one recovery
+                // candidate, but mark it if an unexpected case occurs.
                 showViolations(directViolations);
                 showMessage(
                     'wrong',
-                    'Fix a contradiction first',
-                    'Your current board already breaks a visible rule: too many of one symbol, three identical symbols in a row, or an invalid = / × relation. Fix the marked area before asking for a forward hint.'
+                    'Contradiction found',
+                    'The highlighted area violates a visible rule. The hint engine could not isolate a single editable correction in this unusual state.'
                 );
-                return;
-            }
-
-            // A board can still look locally legal while a previous choice has
-            // made the unique puzzle impossible. Detect that before presenting a
-            // deduction that would only be valid under a bad assumption.
-            if(countSolutionsFromBoard(puzzle,board,1)===0){
-                const mistake=findRecoverableMistake();
-
-                if(mistake){
-                    highlightHintCell(mistake.row,mistake.col);
-                    showMessage(
-                        'hint',
-                        'Reconsider this field',
-                        `Your current entries leave no valid completion. Row ${mistake.row+1}, column ${mistake.col+1} is one of the player-entered cells that conflicts with the unique solution. Change that choice, then ask for another hint.`
-                    );
-                }else{
-                    showMessage(
-                        'wrong',
-                        'Current path has no solution',
-                        'The visible rules are not immediately broken, but the current set of choices cannot reach the unique solution. Recheck one of your earlier placements.'
-                    );
-                }
                 return;
             }
 
@@ -902,10 +961,6 @@ export default {
                 {maxRank:maxHintRank()}
             );
 
-            // This should almost never be needed because every generated puzzle
-            // is verified for its target difficulty, but a user's correct extra
-            // placements can occasionally change the most natural deduction
-            // order. Fall back to the complete logical toolkit, never guessing.
             if(
                 hint.status==='stalled' &&
                 maxHintRank()<4
@@ -942,15 +997,74 @@ export default {
                 showMessage(
                     'hint',
                     'Nothing left to deduce',
-                    'The current board is already logically complete. Press Check to verify it.'
+                    'The current board is logically complete. Press Check to verify it.'
                 );
                 return;
             }
 
             showMessage(
                 'hint',
-                'No simple next step found',
-                'The current position is still valid, but the hint engine could not isolate a single forced move from this exact state. Try using the visible row, column and relation constraints together.'
+                'No isolated move found',
+                'The position is still compatible with the puzzle, but no single forward deduction could be isolated. Try combining the visible row, column and relation constraints.'
+            );
+        };
+
+        const clearToGivens = () => {
+            if(!puzzle || generating){
+                return;
+            }
+
+            board=boardFromGivens(
+                puzzle.size,
+                puzzle.givens
+            );
+
+            won=false;
+            clearErrors();
+            clearHintHighlight();
+            renderBoard();
+
+            showMessage(
+                'hint',
+                'Board cleared',
+                'All player-entered cells were removed. The original givens remain in place.'
+            );
+        };
+
+        const saveCheckpoint = () => {
+            if(!puzzle || generating){
+                return;
+            }
+
+            checkpointBoard=cloneBoard(board);
+            checkpointBtn.disabled=false;
+
+            showMessage(
+                'hint',
+                'Checkpoint saved',
+                'Your current board formation was saved. Press Checkpoint at any time to return to exactly this state.'
+            );
+        };
+
+        const restoreCheckpoint = () => {
+            if(
+                !puzzle ||
+                generating ||
+                !checkpointBoard
+            ){
+                return;
+            }
+
+            board=cloneBoard(checkpointBoard);
+            won=false;
+            clearErrors();
+            clearHintHighlight();
+            renderBoard();
+
+            showMessage(
+                'hint',
+                'Checkpoint restored',
+                'The board has been returned to your last saved formation.'
             );
         };
 
@@ -1013,6 +1127,8 @@ export default {
             puzzle=newPuzzle;
             board=boardFromGivens(puzzle.size,puzzle.givens);
             given=createGivenMask(puzzle);
+            checkpointBoard=null;
+            checkpointBtn.disabled=true;
             won=false;
             clearHintHighlight();
             clearErrors();
@@ -1081,6 +1197,9 @@ export default {
         startBtn.addEventListener('click',generateSelectedPuzzle);
         checkBtn.addEventListener('click',checkBoard);
         hintBtn.addEventListener('click',requestHint);
+        clearBtn.addEventListener('click',clearToGivens);
+        saveBtn.addEventListener('click',saveCheckpoint);
+        checkpointBtn.addEventListener('click',restoreCheckpoint);
         messageCloseBtn.addEventListener('click',hideMessage);
 
         newBtn.addEventListener('click',()=>{

@@ -159,6 +159,72 @@ export const WEAPONS = {
         id: 'flare', name: 'Flare Gun', ammo: '9mm', magSize: 1, reloadMs: 1900,
         fireInterval: 880, automatic: false, damage: 10, bulletSpeed: 900, spread: 0.015,
         pellets: 1, barrel: 36, width: 10, moveScale: 0.80, shotSlowMs: 220, appearance: 'pistol', color: '#b25b18', accent: '#5a2500', magColor: '#5a2500'
+    },
+    m93r: {
+        id: 'm93r', name: 'M93R', ammo: '9mm', magSize: 21, reloadMs: 1420,
+        fireInterval: 74, automatic: true, burstCount: 3, burstPauseMs: 330, damage: 15, bulletSpeed: 1220, spread: 0.052,
+        pellets: 1, barrel: 37, width: 10, moveScale: 0.84, shotSlowMs: 125, appearance: 'pistol', iconStyle: 'm93r',
+        color: '#3a3c3d', accent: '#111214', magColor: '#1b1c1d'
+    },
+    mp220: {
+        id: 'mp220', name: 'MP220', ammo: '12g', magSize: 2, reloadMs: 2050,
+        fireInterval: 610, automatic: false, damage: 20, bulletSpeed: 1120, spread: 0.155,
+        pellets: 8, barrel: 55, width: 14, moveScale: 0.43, shotSlowMs: 470, appearance: 'shotgun', iconStyle: 'doublebarrel',
+        color: '#6d4b28', accent: '#23170e', magColor: '#322318'
+    },
+    super90: {
+        id: 'super90', name: 'Super 90', ammo: '12g', magSize: 6, reloadMs: 1820,
+        fireInterval: 390, automatic: false, damage: 14, bulletSpeed: 1110, spread: 0.125,
+        pellets: 7, barrel: 57, width: 13, moveScale: 0.52, shotSlowMs: 310, appearance: 'shotgun', iconStyle: 'super90',
+        color: '#353b40', accent: '#111416', magColor: '#25292c'
+    },
+    deagle: {
+        id: 'deagle', name: 'DEagle .50', ammo: '7.62', magSize: 7, reloadMs: 1700,
+        fireInterval: 420, automatic: false, damage: 52, bulletSpeed: 1510, spread: 0.025,
+        pellets: 1, barrel: 42, width: 13, moveScale: 0.72, shotSlowMs: 260, appearance: 'pistol', iconStyle: 'deagle',
+        color: '#b99142', accent: '#3a2d16', magColor: '#574829'
+    },
+    an94: {
+        id: 'an94', name: 'AN-94', ammo: '5.56', magSize: 30, reloadMs: 1740,
+        fireInterval: 64, automatic: true, burstCount: 2, burstPauseMs: 255, damage: 25, bulletSpeed: 1510, spread: 0.028,
+        pellets: 1, barrel: 59, width: 13, moveScale: 0.67, shotSlowMs: 170, appearance: 'rifle', iconStyle: 'an94',
+        color: '#45494c', accent: '#17191a', magColor: '#26292a'
+    },
+    m39emr: {
+        id: 'm39emr', name: 'M39 EMR', ammo: '7.62', magSize: 20, reloadMs: 1900,
+        fireInterval: 255, automatic: false, damage: 43, bulletSpeed: 1700, spread: 0.016,
+        pellets: 1, barrel: 65, width: 11, moveScale: 0.72, shotSlowMs: 205, appearance: 'marksman', iconStyle: 'm39',
+        color: '#6b7658', accent: '#20251a', magColor: '#242725'
+    },
+    dp28: {
+        id: 'dp28', name: 'DP-28', ammo: '7.62', magSize: 47, reloadMs: 2650,
+        fireInterval: 132, automatic: true, damage: 29, bulletSpeed: 1450, spread: 0.058,
+        pellets: 1, barrel: 62, width: 13, moveScale: 0.55, shotSlowMs: 215, appearance: 'lmg', iconStyle: 'dp28',
+        color: '#4b4d43', accent: '#171817', magColor: '#1e2020'
+    },
+    m249: {
+        id: 'm249', name: 'M249', ammo: '5.56', magSize: 75, reloadMs: 3100,
+        fireInterval: 86, automatic: true, damage: 20, bulletSpeed: 1460, spread: 0.06,
+        pellets: 1, barrel: 61, width: 14, moveScale: 0.50, shotSlowMs: 205, appearance: 'lmg', iconStyle: 'm249',
+        color: '#60644c', accent: '#1c2017', magColor: '#393c2e'
+    },
+    qbb97: {
+        id: 'qbb97', name: 'QBB-97', ammo: '5.56', magSize: 50, reloadMs: 2450,
+        fireInterval: 104, automatic: true, damage: 23, bulletSpeed: 1480, spread: 0.045,
+        pellets: 1, barrel: 56, width: 14, moveScale: 0.58, shotSlowMs: 190, appearance: 'lmg', iconStyle: 'qbb97',
+        color: '#514b67', accent: '#181621', magColor: '#272432'
+    },
+    dualots38: {
+        id: 'dualots38', name: 'Dual OTs-38', ammo: '7.62', magSize: 10, reloadMs: 2180,
+        fireInterval: 310, automatic: false, damage: 36, bulletSpeed: 1390, spread: 0.032,
+        pellets: 2, ammoCost: 2, barrel: 36, width: 11, moveScale: 0.79, shotSlowMs: 190,
+        appearance: 'pistol', iconStyle: 'dualrevolver', dual: true, color: '#72716a', accent: '#222220', magColor: '#353530'
+    },
+    awms: {
+        id: 'awms', name: 'AWM-S', ammo: '7.62', magSize: 5, reloadMs: 2600,
+        fireInterval: 1380, automatic: false, damage: 98, bulletSpeed: 2050, spread: 0.004,
+        pellets: 1, barrel: 76, width: 11, moveScale: 0.43, shotSlowMs: 520, appearance: 'sniper', iconStyle: 'awms',
+        color: '#2f4430', accent: '#111b12', magColor: '#171a18'
     }
 };
 
@@ -198,6 +264,39 @@ export const ENERGY_RULES = {
 };
 
 
+export const BATTLE_ROYALE = {
+    botCount: 11,
+    startRadius: 2550,
+    minRadius: 260,
+    firstMoveDelayMs: 26000,
+    phaseDurationMs: 42000,
+    phasePauseMs: 13000,
+    damagePerSecond: [1.5, 2.5, 4, 6, 9, 13],
+    airdropFirstMinMs: 32000,
+    airdropFirstMaxMs: 52000,
+    airdropRepeatMinMs: 76000,
+    airdropRepeatMaxMs: 112000,
+    airdropSmokeMs: 9500
+};
+
+export const AIRDROP_LOOT = {
+    weapon: [
+        { weight: 4, spec: { kind: 'weapon', subtype: 'awms', loaded: 0 } },
+        { weight: 5, spec: { kind: 'weapon', subtype: 'm249', loaded: 0 } },
+        { weight: 5, spec: { kind: 'weapon', subtype: 'saiga12', loaded: 0 } },
+        { weight: 5, spec: { kind: 'weapon', subtype: 'm39emr', loaded: 0 } },
+        { weight: 6, spec: { kind: 'weapon', subtype: 'an94', loaded: 0 } },
+        { weight: 5, spec: { kind: 'weapon', subtype: 'sv98', loaded: 0 } }
+    ],
+    gear: [
+        { weight: 4, spec: { kind: 'equipment', subtype: 'helmet', level: 3 } },
+        { weight: 4, spec: { kind: 'equipment', subtype: 'vest', level: 3 } },
+        { weight: 3, spec: { kind: 'equipment', subtype: 'backpack', level: 3 } },
+        { weight: 5, spec: { kind: 'scope', subtype: 8 } },
+        { weight: 6, spec: { kind: 'heal', subtype: 'medkit', amount: 1 } },
+        { weight: 6, spec: { kind: 'heal', subtype: 'painkiller', amount: 1 } }
+    ]
+};
 
 export const BOT_AI = {
     radius: 30,
@@ -313,7 +412,13 @@ export const MAP = {
         { x: 3010, y: 4010, loot: 'm416' }, { x: 3740, y: 4100, loot: 'ak47' },
         { x: 5180, y: 4460, loot: 'armor2' }, { x: 350, y: 5240, loot: 'shotgun' },
         { x: 1520, y: 5200, loot: 'ammo9' }, { x: 2470, y: 5220, loot: 'mosin' },
-        { x: 3820, y: 5230, loot: 'ammo12' }, { x: 5220, y: 5200, loot: 'backpack2' }
+        { x: 3820, y: 5230, loot: 'ammo12' }, { x: 5220, y: 5200, loot: 'backpack2' },
+        { x: 940, y: 4700, loot: 'm93r' }, { x: 2100, y: 4700, loot: 'mp220' },
+        { x: 4580, y: 4200, loot: 'super90' }, { x: 5050, y: 3650, loot: 'deagle' },
+        { x: 980, y: 3520, loot: 'an94' }, { x: 4530, y: 3450, loot: 'm39emr' },
+        { x: 870, y: 1180, loot: 'dp28' }, { x: 4660, y: 1130, loot: 'm249' },
+        { x: 2770, y: 1520, loot: 'qbb97' }, { x: 4200, y: 5100, loot: 'dualots38' },
+        { x: 1020, y: 5200, loot: 'awms' }
     ],
     botSpawnPoints: [
         { x: 2800, y: 420 }, { x: 3650, y: 520 }, { x: 5280, y: 1550 },
@@ -321,7 +426,9 @@ export const MAP = {
         { x: 3900, y: 5220 }, { x: 2800, y: 5180 }, { x: 1750, y: 5220 },
         { x: 380, y: 5100 }, { x: 360, y: 3820 }, { x: 380, y: 2600 },
         { x: 420, y: 1550 }, { x: 1900, y: 1520 }, { x: 3460, y: 1510 },
-        { x: 1740, y: 3500 }, { x: 3830, y: 3530 }, { x: 3320, y: 3780 }
+        { x: 1740, y: 3500 }, { x: 3830, y: 3530 }, { x: 3320, y: 3780 },
+        { x: 840, y: 4580 }, { x: 4680, y: 4600 }, { x: 1060, y: 900 }, { x: 4480, y: 900 },
+        { x: 1300, y: 2750 }, { x: 4300, y: 2760 }
     ],
     lootSpawns: [
         { kind: 'weapon', subtype: 'mp5', x: 2490, y: 1050, loaded: 0 },
@@ -357,7 +464,21 @@ export const MAP = {
         { kind: 'weapon', subtype: 'bar1918', x: 3540, y: 3660, loaded: 0 },
         { kind: 'ammo', subtype: '7.62', amount: 30, x: 3620, y: 3690 },
         { kind: 'weapon', subtype: 'sv98', x: 3150, y: 5000, loaded: 0 },
-        { kind: 'ammo', subtype: '7.62', amount: 30, x: 3230, y: 5030 }
+        { kind: 'ammo', subtype: '7.62', amount: 30, x: 3230, y: 5030 },
+        { kind: 'weapon', subtype: 'm93r', x: 760, y: 4380, loaded: 0 },
+        { kind: 'ammo', subtype: '9mm', amount: 48, x: 830, y: 4410 },
+        { kind: 'weapon', subtype: 'mp220', x: 4850, y: 4520, loaded: 0 },
+        { kind: 'ammo', subtype: '12g', amount: 10, x: 4925, y: 4550 },
+        { kind: 'weapon', subtype: 'an94', x: 1160, y: 3250, loaded: 0 },
+        { kind: 'ammo', subtype: '5.56', amount: 30, x: 1235, y: 3280 },
+        { kind: 'weapon', subtype: 'm39emr', x: 4460, y: 3200, loaded: 0 },
+        { kind: 'ammo', subtype: '7.62', amount: 30, x: 4540, y: 3230 },
+        { kind: 'weapon', subtype: 'dp28', x: 910, y: 980, loaded: 0 },
+        { kind: 'ammo', subtype: '7.62', amount: 30, x: 990, y: 1010 },
+        { kind: 'weapon', subtype: 'm249', x: 4660, y: 980, loaded: 0 },
+        { kind: 'ammo', subtype: '5.56', amount: 30, x: 4740, y: 1010 },
+        { kind: 'weapon', subtype: 'dualots38', x: 3750, y: 4880, loaded: 0 },
+        { kind: 'ammo', subtype: '7.62', amount: 30, x: 3825, y: 4910 }
     ]
 };
 
@@ -384,7 +505,12 @@ export const RARE_CRATE_LOOT = {
         { weight: 3, spec: { kind: 'weapon', subtype: 'saiga12', loaded: 0 } },
         { weight: 3, spec: { kind: 'weapon', subtype: 'bar1918', loaded: 0 } },
         { weight: 2, spec: { kind: 'weapon', subtype: 'sv98', loaded: 0 } },
-        { weight: 4, spec: { kind: 'weapon', subtype: 'famas', loaded: 0 } }
+        { weight: 4, spec: { kind: 'weapon', subtype: 'famas', loaded: 0 } },
+        { weight: 4, spec: { kind: 'weapon', subtype: 'an94', loaded: 0 } },
+        { weight: 3, spec: { kind: 'weapon', subtype: 'm39emr', loaded: 0 } },
+        { weight: 2, spec: { kind: 'weapon', subtype: 'dp28', loaded: 0 } },
+        { weight: 2, spec: { kind: 'weapon', subtype: 'm249', loaded: 0 } },
+        { weight: 1, spec: { kind: 'weapon', subtype: 'awms', loaded: 0 } }
     ],
     utility: [
         { weight: 5, spec: { kind: 'scope', subtype: 4 } },
@@ -502,5 +628,16 @@ export const CRATE_LOOT = {
     houseLiving: [
         { kind: 'equipment', subtype: 'vest', level: 1 },
         { kind: 'heal', subtype: 'bandage', amount: 3 }
-    ]
+    ],
+    m93r: [{ kind: 'weapon', subtype: 'm93r', loaded: 0 }, { kind: 'ammo', subtype: '9mm', amount: 48 }, { kind: 'ammo', subtype: '9mm', amount: 48 }],
+    mp220: [{ kind: 'weapon', subtype: 'mp220', loaded: 0 }, { kind: 'ammo', subtype: '12g', amount: 10 }, { kind: 'ammo', subtype: '12g', amount: 10 }],
+    super90: [{ kind: 'weapon', subtype: 'super90', loaded: 0 }, { kind: 'ammo', subtype: '12g', amount: 10 }, { kind: 'ammo', subtype: '12g', amount: 10 }],
+    deagle: [{ kind: 'weapon', subtype: 'deagle', loaded: 0 }, { kind: 'ammo', subtype: '7.62', amount: 30 }, { kind: 'ammo', subtype: '7.62', amount: 30 }],
+    an94: [{ kind: 'weapon', subtype: 'an94', loaded: 0 }, { kind: 'ammo', subtype: '5.56', amount: 30 }, { kind: 'ammo', subtype: '5.56', amount: 30 }],
+    m39emr: [{ kind: 'weapon', subtype: 'm39emr', loaded: 0 }, { kind: 'ammo', subtype: '7.62', amount: 30 }, { kind: 'ammo', subtype: '7.62', amount: 30 }],
+    dp28: [{ kind: 'weapon', subtype: 'dp28', loaded: 0 }, { kind: 'ammo', subtype: '7.62', amount: 30 }, { kind: 'ammo', subtype: '7.62', amount: 30 }],
+    m249: [{ kind: 'weapon', subtype: 'm249', loaded: 0 }, { kind: 'ammo', subtype: '5.56', amount: 30 }, { kind: 'ammo', subtype: '5.56', amount: 30 }],
+    qbb97: [{ kind: 'weapon', subtype: 'qbb97', loaded: 0 }, { kind: 'ammo', subtype: '5.56', amount: 30 }, { kind: 'ammo', subtype: '5.56', amount: 30 }],
+    dualots38: [{ kind: 'weapon', subtype: 'dualots38', loaded: 0 }, { kind: 'ammo', subtype: '7.62', amount: 30 }, { kind: 'ammo', subtype: '7.62', amount: 30 }],
+    awms: [{ kind: 'weapon', subtype: 'awms', loaded: 0 }, { kind: 'ammo', subtype: '7.62', amount: 30 }, { kind: 'scope', subtype: 8 }]
 };

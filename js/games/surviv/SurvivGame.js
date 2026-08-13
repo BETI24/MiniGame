@@ -1,5 +1,7 @@
 import {
+    AIRDROP_LOOT,
     BACKPACK_CAPACITY,
+    BATTLE_ROYALE,
     BOT_AI,
     CRATE_LOOT,
     ENERGY_RULES,
@@ -26,6 +28,16 @@ export class SurvivGame {
         this.raf = null;
         this.lastFrame = 0;
         this.running = false;
+        this.mode = 'menu';
+        this.roundActive = false;
+        this.roundEnded = false;
+        this.modeOverlay = null;
+        this.modeResult = '';
+        this.zone = null;
+        this.airdrop = null;
+        this.notifications = [];
+        this.roundStartAt = 0;
+        this.roundEndAt = 0;
         this.nextLootId = 1;
 
         this.keys = new Set();
@@ -89,6 +101,7 @@ export class SurvivGame {
         this.insideHouseId = null;
         this.nearestDoor = null;
         this.botSpawnCursor = 0;
+        this.nextAirdropAt = Infinity;
 
         this.bound = {
             keydown: e => this.onKeyDown(e),
@@ -132,8 +145,274 @@ export class SurvivGame {
         };
     }
 
+    resetSessionWorld() {
+        this.nextLootId = 1;
+        this.nextBotId = 1;
+        this.player = this.createPlayer();
+        this.houses = (MAP.houses || []).map((h, i) => this.createHouse(h, i));
+        this.containers = MAP.containers
+            .filter(c => !this.rectOverlapsAnyHouse(c.x - c.w / 2, c.y - c.h / 2, c.w, c.h, 70))
+            .map((c, i) => ({ ...c, id: `container-${i}` }));
+        this.trees = MAP.trees
+            .filter(t => !this.circleOverlapsAnyHouse(t.x, t.y, t.r + 36))
+            .map((t, i) => ({ ...t, id: `tree-${i}`, hp: t.hp, maxHp: t.hp, scale: 1, dead: false }));
+        this.rocks = MAP.rocks
+            .filter(r => !this.circleOverlapsAnyHouse(r.x, r.y, r.r + 30))
+            .map((r, i) => ({ ...r, id: `rock-${i}`, hp: r.hp, maxHp: r.hp, scale: 1, dead: false }));
+        this.barrels = MAP.barrels
+            .filter(b => !this.circleOverlapsAnyHouse(b.x, b.y, b.r + 30))
+            .map((b, i) => ({ ...b, id: `barrel-${i}`, hp: b.hp, maxHp: b.hp, scale: 1, dead: false }));
+        this.rareCrates = MAP.rareCrates
+            .filter(c => !this.circleOverlapsAnyHouse(c.x, c.y, 80))
+            .map((c, i) => ({ ...c, id: `rare-crate-${i}`, hp: 230, maxHp: 230, scale: 1, rotation: (i % 2 ? 0.04 : -0.035), dead: false }));
+        this.crates = MAP.crates
+            .filter(c => !this.circleOverlapsAnyHouse(c.x, c.y, 74))
+            .map((c, i) => ({ ...c, id: `crate-${i}`, hp: 140, maxHp: 140, scale: 1, rotation: (i % 5 - 2) * 0.035, dead: false, houseId: null }));
+        for (const house of this.houses) {
+            house.fixedCrates.forEach((c, index) => {
+                this.crates.push({
+                    x: c.x, y: c.y, loot: c.loot,
+                    id: `${house.id}-crate-${index}`,
+                    hp: 140, maxHp: 140, scale: 1,
+                    rotation: (index - 1) * 0.025, dead: false,
+                    houseId: house.id
+                });
+            });
+        }
+        this.toilets = this.houses.flatMap(h => h.toilets);
+        this.loot = MAP.lootSpawns
+            .filter(item => !this.circleOverlapsAnyHouse(item.x, item.y, 48))
+            .map(item => this.makeLoot(item));
+        this.bots = [];
+        this.bullets = [];
+        this.throwables = [];
+        this.explosions = [];
+        this.particles = [];
+        this.nearestPickup = null;
+        this.visibleContainerId = null;
+        this.insideContainerId = null;
+        this.visibleHouseId = null;
+        this.insideHouseId = null;
+        this.nearestDoor = null;
+        this.botSpawnCursor = 0;
+        this.zone = null;
+        this.airdrop = null;
+        this.notifications = [];
+        this.nextAirdropAt = Infinity;
+        this.roundEnded = false;
+        this.camera.x = MAP.spawn.x;
+        this.camera.y = MAP.spawn.y;
+        this.camera.scale = SCOPES[1].cameraScale;
+        this.camera.targetScale = SCOPES[1].cameraScale;
+    }
 
-    spawnBot() {
+    startMode(mode) {
+        this.resetSessionWorld();
+        this.mode = mode;
+        this.roundActive = true;
+        this.roundStartAt = performance.now();
+        this.modeResult = '';
+        this.hideModeMenu();
+
+        if (mode === 'battleRoyale') {
+            const playerSpawn = this.pickRandomBattleSpawn();
+            this.player.x = playerSpawn.x;
+            this.player.y = playerSpawn.y;
+            this.camera.x = playerSpawn.x;
+            this.camera.y = playerSpawn.y;
+            for (let i = 0; i < BATTLE_ROYALE.botCount; i++) this.spawnBot({ unarmed: true, battleRoyale: true });
+            this.initializeZone(this.roundStartAt);
+            this.nextAirdropAt = this.roundStartAt + this.randomRange(BATTLE_ROYALE.airdropFirstMinMs, BATTLE_ROYALE.airdropFirstMaxMs);
+            this.pushNotification('Battle Royale gestartet – 12 Überlebende', 3600);
+        } else {
+            this.player.x = MAP.spawn.x;
+            this.player.y = MAP.spawn.y;
+            this.camera.x = MAP.spawn.x;
+            this.camera.y = MAP.spawn.y;
+            this.pushNotification('Spielwiese – B spawnt einen Bot', 3000);
+        }
+        requestAnimationFrame(() => this.canvas?.focus());
+    }
+
+    pickRandomBattleSpawn() {
+        const points = MAP.botSpawnPoints || [];
+        const shuffled = [...points].sort(() => Math.random() - 0.5);
+        for (const point of shuffled) if (this.isWorldSpawnPointSafe(point.x, point.y, 130, false)) return { x: point.x, y: point.y };
+        return { x: MAP.spawn.x, y: MAP.spawn.y };
+    }
+
+    endRound(result) {
+        if (!this.roundActive || this.roundEnded) return;
+        this.roundEnded = true;
+        this.roundActive = false;
+        this.modeResult = result;
+        this.mouse.down = false;
+        this.keys.clear();
+        this.showModeMenu(result);
+    }
+
+    showModeMenu(result = '') {
+        if (!this.modeOverlay) return;
+        const resultEl = this.modeOverlay.querySelector('.surviv-mode-result');
+        if (resultEl) resultEl.textContent = result || '';
+        this.modeOverlay.style.display = 'flex';
+    }
+
+    hideModeMenu() {
+        if (this.modeOverlay) this.modeOverlay.style.display = 'none';
+    }
+
+    randomRange(min, max) {
+        return min + Math.random() * (max - min);
+    }
+
+    pushNotification(text, duration = 4200) {
+        this.notifications.push({ text, until: performance.now() + duration });
+        if (this.notifications.length > 4) this.notifications.shift();
+    }
+
+    isWorldSpawnPointSafe(x, y, radius = 45, checkActors = true) {
+        if (!this.canActorOccupy(x, y, radius, null)) return false;
+        if (this.isInWater(x, y)) return false;
+        if (this.circleOverlapsAnyHouse(x, y, radius + 25, 35)) return false;
+        for (const c of this.containers) {
+            const left = c.x - c.w / 2 - radius;
+            const right = c.x + c.w / 2 + radius;
+            const top = c.y - c.h / 2 - radius;
+            const bottom = c.y + c.h / 2 + radius;
+            if (x >= left && x <= right && y >= top && y <= bottom) return false;
+        }
+        if (checkActors) {
+            if (!this.player.dead && Math.hypot(x - this.player.x, y - this.player.y) < 150) return false;
+            for (const bot of this.bots) if (!bot.dead && Math.hypot(x - bot.x, y - bot.y) < 125) return false;
+        }
+        return true;
+    }
+
+    initializeZone(now) {
+        this.zone = {
+            x: WORLD.width / 2,
+            y: WORLD.height / 2,
+            radius: BATTLE_ROYALE.startRadius,
+            startX: WORLD.width / 2,
+            startY: WORLD.height / 2,
+            startRadius: BATTLE_ROYALE.startRadius,
+            targetX: WORLD.width / 2,
+            targetY: WORLD.height / 2,
+            targetRadius: BATTLE_ROYALE.startRadius,
+            phase: 0,
+            state: 'waiting',
+            stateStartedAt: now,
+            nextStateAt: now + BATTLE_ROYALE.firstMoveDelayMs
+        };
+    }
+
+    beginNextZoneMove(now) {
+        if (!this.zone) return;
+        const z = this.zone;
+        z.phase += 1;
+        z.state = 'moving';
+        z.stateStartedAt = now;
+        z.nextStateAt = now + BATTLE_ROYALE.phaseDurationMs;
+        z.startX = z.x;
+        z.startY = z.y;
+        z.startRadius = z.radius;
+        z.targetRadius = Math.max(BATTLE_ROYALE.minRadius, z.radius * (z.phase <= 2 ? 0.72 : 0.66));
+        const maxShift = Math.max(0, z.radius - z.targetRadius) * 0.68;
+        const a = Math.random() * TAU;
+        z.targetX = Math.max(z.targetRadius, Math.min(WORLD.width - z.targetRadius, z.x + Math.cos(a) * maxShift));
+        z.targetY = Math.max(z.targetRadius, Math.min(WORLD.height - z.targetRadius, z.y + Math.sin(a) * maxShift));
+        this.pushNotification(`Zone schließt sich – Phase ${z.phase}`, 4000);
+    }
+
+    updateBattleRoyale(dt, now) {
+        if (this.mode !== 'battleRoyale' || !this.roundActive) return;
+        this.updateZone(dt, now);
+        this.updateAirdrop(now);
+
+        if (this.player.dead) {
+            this.endRound('Du wurdest eliminiert');
+            return;
+        }
+        const livingBots = this.bots.filter(b => !b.dead).length;
+        if (livingBots === 0) this.endRound('Sieg! Du bist der letzte Überlebende');
+    }
+
+    updateZone(dt, now) {
+        const z = this.zone;
+        if (!z) return;
+        if (z.state === 'waiting' && now >= z.nextStateAt && z.radius > BATTLE_ROYALE.minRadius + 5) {
+            this.beginNextZoneMove(now);
+        } else if (z.state === 'moving') {
+            const t = Math.max(0, Math.min(1, (now - z.stateStartedAt) / BATTLE_ROYALE.phaseDurationMs));
+            const ease = t * t * (3 - 2 * t);
+            z.x = z.startX + (z.targetX - z.startX) * ease;
+            z.y = z.startY + (z.targetY - z.startY) * ease;
+            z.radius = z.startRadius + (z.targetRadius - z.startRadius) * ease;
+            if (t >= 1) {
+                z.x = z.targetX;
+                z.y = z.targetY;
+                z.radius = z.targetRadius;
+                z.state = 'waiting';
+                z.stateStartedAt = now;
+                z.nextStateAt = now + BATTLE_ROYALE.phasePauseMs;
+            }
+        }
+        const damage = BATTLE_ROYALE.damagePerSecond[Math.min(z.phase, BATTLE_ROYALE.damagePerSecond.length - 1)] || 1.5;
+        if (!this.player.dead && Math.hypot(this.player.x - z.x, this.player.y - z.y) > z.radius) this.damagePlayer(damage * dt, 0, 'zone', 'zone');
+        for (const bot of this.bots) {
+            if (!bot.dead && Math.hypot(bot.x - z.x, bot.y - z.y) > z.radius) this.damageBot(bot, damage * dt, 0, 'zone', 'zone');
+        }
+    }
+
+    updateAirdrop(now) {
+        if (this.airdrop) {
+            if (this.airdrop.state === 'smoke' && now >= this.airdrop.landAt) this.landAirdrop();
+            return;
+        }
+        if (now >= this.nextAirdropAt) this.scheduleAirdrop(now);
+    }
+
+    scheduleAirdrop(now) {
+        let point = null;
+        for (let i = 0; i < 40; i++) {
+            const z = this.zone || { x: WORLD.width / 2, y: WORLD.height / 2, radius: Math.min(WORLD.width, WORLD.height) * 0.45 };
+            const a = Math.random() * TAU;
+            const r = Math.sqrt(Math.random()) * Math.max(300, z.radius * 0.72);
+            const x = Math.max(150, Math.min(WORLD.width - 150, z.x + Math.cos(a) * r));
+            const y = Math.max(150, Math.min(WORLD.height - 150, z.y + Math.sin(a) * r));
+            if (this.isWorldSpawnPointSafe(x, y, 80, false)) { point = { x, y }; break; }
+        }
+        if (!point) point = { x: WORLD.width / 2 + 260, y: WORLD.height / 2 - 260 };
+        this.airdrop = { x: point.x, y: point.y, state: 'smoke', createdAt: now, landAt: now + BATTLE_ROYALE.airdropSmokeMs, crateHp: 260, opened: false };
+        this.pushNotification('AirDrop im Anflug – roter Rauch markiert die Abwurfzone!', 6500);
+    }
+
+    landAirdrop() {
+        if (!this.airdrop) return;
+        this.airdrop.state = 'landed';
+        this.airdrop.landedAt = performance.now();
+        this.pushNotification('AirDrop ist gelandet!', 4500);
+    }
+
+    breakAirdrop() {
+        const a = this.airdrop;
+        if (!a || a.state !== 'landed' || a.opened) return;
+        a.opened = true;
+        const weaponSpec = this.rollWeighted(AIRDROP_LOOT.weapon);
+        const def = WEAPONS[weaponSpec.subtype];
+        const ammoAmount = def.ammo === '9mm' ? 96 : def.ammo === '12g' ? 20 : 60;
+        const specs = [weaponSpec, { kind: 'ammo', subtype: def.ammo, amount: ammoAmount }, this.rollWeighted(AIRDROP_LOOT.gear), this.rollWeighted(AIRDROP_LOOT.gear)];
+        specs.forEach((spec, i) => {
+            const ang = i * TAU / specs.length + 0.3;
+            this.loot.push(this.makeLoot({ ...spec, x: a.x + Math.cos(ang) * 72, y: a.y + Math.sin(ang) * 72, vx: Math.cos(ang) * 130, vy: Math.sin(ang) * 130 }));
+        });
+        this.nextAirdropAt = performance.now() + this.randomRange(BATTLE_ROYALE.airdropRepeatMinMs, BATTLE_ROYALE.airdropRepeatMaxMs);
+        this.airdrop = null;
+    }
+
+
+    spawnBot(options = {}) {
         const points = MAP.botSpawnPoints || [];
         if (!points.length) return null;
         const start = Math.floor(Math.random() * points.length);
@@ -145,47 +424,16 @@ export class SurvivGame {
             break;
         }
         if (!chosen) return null;
-        const bot = this.createBot(chosen.x, chosen.y);
+        const bot = this.createBot(chosen.x, chosen.y, { unarmed: options.unarmed !== false, battleRoyale: !!options.battleRoyale });
         this.bots.push(bot);
         return bot;
     }
 
     isBotSpawnPointSafe(x, y) {
-        if (!this.canActorOccupy(x, y, BOT_AI.radius + 4, null)) return false;
-        if (this.isInWater(x, y)) return false;
-        if (this.circleOverlapsAnyHouse(x, y, BOT_AI.radius + 30, 40)) return false;
-        for (const c of this.containers) {
-            const left = c.x - c.w / 2 - 60;
-            const right = c.x + c.w / 2 + 60;
-            const top = c.y - c.h / 2 - 60;
-            const bottom = c.y + c.h / 2 + 60;
-            if (x >= left && x <= right && y >= top && y <= bottom) return false;
-        }
-        if (Math.hypot(x - this.player.x, y - this.player.y) < 180) return false;
-        for (const bot of this.bots) if (!bot.dead && Math.hypot(x - bot.x, y - bot.y) < 130) return false;
-        return true;
+        return this.isWorldSpawnPointSafe(x, y, BOT_AI.radius + 4, true);
     }
 
-    createBot(x, y) {
-        const weaponPool = [
-            { id: 'g18', weight: 7 }, { id: 'dualberetta', weight: 7 },
-            { id: 'mp5', weight: 10 }, { id: 'mac10', weight: 8 },
-            { id: 'ump9', weight: 9 }, { id: 'vector', weight: 7 },
-            { id: 'm870', weight: 7 }, { id: 'saiga12', weight: 6 },
-            { id: 'ak47', weight: 9 }, { id: 'm416', weight: 9 },
-            { id: 'famas', weight: 8 }, { id: 'bar1918', weight: 5 },
-            { id: 'mk12', weight: 6 }, { id: 'm1garand', weight: 5 },
-            { id: 'ot38', weight: 4 }, { id: 'mosin', weight: 4 },
-            { id: 'sv98', weight: 3 }
-        ];
-        const weaponId = this.pickWeightedId(weaponPool);
-        const def = WEAPONS[weaponId];
-        const scopeRoll = Math.random();
-        const scope = scopeRoll > 0.93 ? 4 : scopeRoll > 0.62 ? 2 : 1;
-        const helmet = Math.random() < 0.18 ? 2 : Math.random() < 0.55 ? 1 : 0;
-        const vest = Math.random() < 0.16 ? 2 : Math.random() < 0.58 ? 1 : 0;
-        const backpack = Math.random() < 0.16 ? 2 : Math.random() < 0.62 ? 1 : 0;
-        const magReserve = def.ammo === '9mm' ? 96 : def.ammo === '12g' ? 24 : 60;
+    createBot(x, y, options = {}) {
         const now = performance.now();
         return {
             id: `bot-${this.nextBotId++}`,
@@ -196,21 +444,14 @@ export class SurvivGame {
             health: 100,
             maxHealth: 100,
             dead: false,
-            respawnAt: 0,
             energy: 0,
-            dead: false,
             deathHandled: false,
-            weapon: { id: weaponId, loaded: def.magSize },
-            ammo: { '9mm': 0, '12g': 0, '7.62': 0, '5.56': 0, [def.ammo]: magReserve },
-            heals: {
-                bandage: Math.random() < 0.72 ? 5 : 0,
-                medkit: Math.random() < 0.32 ? 1 : 0,
-                soda: Math.random() < 0.40 ? 1 : 0,
-                painkiller: Math.random() < 0.16 ? 1 : 0
-            },
-            equipment: { helmet, vest, backpack },
-            scope,
-            throwables: { frag: Math.random() < 0.36 ? 1 : 0 },
+            weapon: null,
+            ammo: { '9mm': 0, '12g': 0, '7.62': 0, '5.56': 0 },
+            heals: { bandage: 0, medkit: 0, soda: 0, painkiller: 0 },
+            equipment: { helmet: 0, vest: 0, backpack: 0 },
+            scope: 1,
+            throwables: { frag: 0 },
             state: 'wander',
             targetId: null,
             targetKind: null,
@@ -224,6 +465,7 @@ export class SurvivGame {
             strafeDir: Math.random() < 0.5 ? -1 : 1,
             nextStrafeFlipAt: now + 800 + Math.random() * 1400,
             lastShotAt: -Infinity,
+            lastPunchAt: -Infinity,
             lastThrowAt: -Infinity,
             shotSlowUntil: -Infinity,
             shotMoveScale: 1,
@@ -236,7 +478,10 @@ export class SurvivGame {
             skill: 0.48 + Math.random() * 0.34,
             reactionUntil: now + 300 + Math.random() * 350,
             burstEndsAt: -Infinity,
-            burstPauseUntil: -Infinity
+            burstPauseUntil: -Infinity,
+            lootTargetId: null,
+            crateTargetId: null,
+            battleRoyale: !!options.battleRoyale
         };
     }
 
@@ -269,7 +514,7 @@ export class SurvivGame {
                 bot.lastSeenY = target.y;
                 bot.lastSeenAt = now;
                 bot.safeSince = now;
-                bot.state = clearShot ? 'combat' : 'search';
+                bot.state = clearShot || !bot.weapon ? 'combat' : 'search';
             } else if (now - bot.lastSeenAt < BOT_AI.searchMs && bot.lastSeenX !== null) {
                 bot.state = 'search';
             } else {
@@ -289,6 +534,22 @@ export class SurvivGame {
                 continue;
             }
 
+            if (this.mode === 'battleRoyale' && this.zone) {
+                const zoneDist = Math.hypot(bot.x - this.zone.x, bot.y - this.zone.y);
+                if (zoneDist > this.zone.radius * 0.94 && (!sensed || zoneDist > this.zone.radius)) {
+                    const nav = this.resolveBotNavigationPoint(bot, this.zone.x, this.zone.y);
+                    this.moveBotToward(bot, nav.x - bot.x, nav.y - bot.y, dt, 1.02);
+                    this.updateBotStuckRecovery(bot, dt);
+                    continue;
+                }
+            }
+
+            const urgentMelee = sensed && !bot.weapon && target && Math.hypot(target.x - bot.x, target.y - bot.y) < 105;
+            if (!urgentMelee && this.updateBotLooting(bot, dt, now, sensed)) {
+                this.updateBotStuckRecovery(bot, dt);
+                continue;
+            }
+
             if (bot.state === 'combat' && target) {
                 this.updateBotCombat(bot, target, dt, now);
             } else if (bot.state === 'search') {
@@ -301,8 +562,135 @@ export class SurvivGame {
         }
     }
 
+    updateBotLooting(bot, dt, now, enemySensed) {
+        const needWeapon = !bot.weapon;
+        const needAmmo = !!bot.weapon && bot.weapon.loaded <= 0 && (bot.ammo[WEAPONS[bot.weapon.id].ammo] || 0) <= 0;
+        const useful = this.findUsefulLootForBot(bot, needWeapon ? 1450 : needAmmo ? 900 : 520);
+        if (useful) {
+            const dx = useful.x - bot.x;
+            const dy = useful.y - bot.y;
+            const dist = Math.hypot(dx, dy);
+            bot.aimAngle = this.lerpAngle(bot.aimAngle, Math.atan2(dy, dx), Math.min(1, dt * 3.8));
+            if (dist < 58) {
+                this.botPickupLoot(bot, useful);
+                return true;
+            }
+            if (!enemySensed || needWeapon || needAmmo) {
+                const nav = this.resolveBotNavigationPoint(bot, useful.x, useful.y);
+                this.moveBotToward(bot, nav.x - bot.x, nav.y - bot.y, dt, needWeapon ? 0.96 : 0.72);
+                return true;
+            }
+        }
+
+        if (needWeapon && !enemySensed) {
+            const crate = this.findNearestBreakableForBot(bot, 1350);
+            if (crate) {
+                const dx = crate.x - bot.x;
+                const dy = crate.y - bot.y;
+                const dist = Math.hypot(dx, dy);
+                bot.aimAngle = this.lerpAngle(bot.aimAngle, Math.atan2(dy, dx), Math.min(1, dt * 4));
+                if (dist < 82) {
+                    if (now - bot.lastPunchAt >= 370) {
+                        bot.lastPunchAt = now;
+                        if (crate.kind === 'rare') this.damageRareCrate(crate.ref, 28, bot.aimAngle);
+                        else if (crate.kind === 'airdrop') this.damageAirdrop(crate.ref, 32, bot.aimAngle);
+                        else this.damageCrate(crate.ref, 34, bot.aimAngle);
+                    }
+                    return true;
+                }
+                const nav = this.resolveBotNavigationPoint(bot, crate.x, crate.y);
+                this.moveBotToward(bot, nav.x - bot.x, nav.y - bot.y, dt, 0.90);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    findUsefulLootForBot(bot, maxDistance) {
+        let best = null;
+        let bestScore = Infinity;
+        for (const item of this.loot) {
+            if (item.removed || !this.isLootVisible(item)) continue;
+            const d = Math.hypot(item.x - bot.x, item.y - bot.y);
+            if (d > maxDistance) continue;
+            let priority = 99;
+            if (item.kind === 'weapon') priority = bot.weapon ? 3.6 : 0.15;
+            else if (item.kind === 'ammo' && bot.weapon && WEAPONS[bot.weapon.id].ammo === item.subtype) priority = (bot.ammo[item.subtype] || 0) < 20 ? 0.7 : 2.2;
+            else if (item.kind === 'equipment' && item.level > (bot.equipment[item.subtype] || 0)) priority = 1.1 - item.level * 0.12;
+            else if (item.kind === 'heal' && (bot.heals[item.subtype] || 0) < 3) priority = 1.8;
+            else if (item.kind === 'scope' && item.subtype > bot.scope) priority = 1.35;
+            else if (item.kind === 'throwable' && bot.throwables.frag < 2) priority = 2.0;
+            else continue;
+            const score = priority * 600 + d;
+            if (score < bestScore) { bestScore = score; best = item; }
+        }
+        return best;
+    }
+
+    botPickupLoot(bot, item) {
+        if (!item || item.removed) return false;
+        if (item.kind === 'weapon') {
+            if (bot.weapon) {
+                this.loot.push(this.makeLoot({ kind: 'weapon', subtype: bot.weapon.id, loaded: bot.weapon.loaded, x: bot.x - 24, y: bot.y + 20, vx: -35, vy: 25 }));
+            }
+            bot.weapon = { id: item.subtype, loaded: item.loaded ?? 0 };
+            item.removed = true;
+            const def = WEAPONS[bot.weapon.id];
+            if (bot.weapon.loaded <= 0 && (bot.ammo[def.ammo] || 0) > 0) this.tryBotReload(bot, performance.now());
+            return true;
+        }
+        if (item.kind === 'ammo') {
+            bot.ammo[item.subtype] = Math.min(330, (bot.ammo[item.subtype] || 0) + item.amount);
+            item.removed = true;
+            if (bot.weapon && WEAPONS[bot.weapon.id].ammo === item.subtype && bot.weapon.loaded <= 0) this.tryBotReload(bot, performance.now());
+            return true;
+        }
+        if (item.kind === 'equipment' && item.level > (bot.equipment[item.subtype] || 0)) {
+            bot.equipment[item.subtype] = item.level;
+            item.removed = true;
+            return true;
+        }
+        if (item.kind === 'heal') {
+            bot.heals[item.subtype] = Math.min(12, (bot.heals[item.subtype] || 0) + item.amount);
+            item.removed = true;
+            return true;
+        }
+        if (item.kind === 'scope' && item.subtype > bot.scope) {
+            bot.scope = item.subtype;
+            item.removed = true;
+            return true;
+        }
+        if (item.kind === 'throwable') {
+            bot.throwables.frag = Math.min(4, bot.throwables.frag + item.amount);
+            item.removed = true;
+            return true;
+        }
+        return false;
+    }
+
+    findNearestBreakableForBot(bot, maxDistance) {
+        let best = null;
+        let bestD = maxDistance;
+        if (this.airdrop && this.airdrop.state === 'landed' && !this.airdrop.opened) {
+            const d = Math.hypot(this.airdrop.x - bot.x, this.airdrop.y - bot.y);
+            if (d < bestD) { bestD = d; best = { kind: 'airdrop', ref: this.airdrop, x: this.airdrop.x, y: this.airdrop.y }; }
+        }
+        for (const crate of this.crates) {
+            if (crate.dead) continue;
+            const d = Math.hypot(crate.x - bot.x, crate.y - bot.y);
+            if (d < bestD) { bestD = d; best = { kind: 'normal', ref: crate, x: crate.x, y: crate.y }; }
+        }
+        for (const crate of this.rareCrates) {
+            if (crate.dead) continue;
+            const d = Math.hypot(crate.x - bot.x, crate.y - bot.y);
+            if (d < bestD) { bestD = d; best = { kind: 'rare', ref: crate, x: crate.x, y: crate.y }; }
+        }
+        return best;
+    }
+
     updateBotTimedActions(bot, now) {
         if (bot.reload && now >= bot.reload.endsAt) {
+            if (!bot.weapon) { bot.reload = null; return; }
             const def = WEAPONS[bot.weapon.id];
             const need = def.magSize - bot.weapon.loaded;
             const take = Math.min(need, bot.ammo[def.ammo] || 0);
@@ -336,7 +724,7 @@ export class SurvivGame {
     findBestBotTarget(bot) {
         let best = null;
         let bestScore = Infinity;
-        if (this.player.health > 0) {
+        if (!this.player.dead && this.player.health > 0) {
             const d = Math.hypot(this.player.x - bot.x, this.player.y - bot.y);
             if (d < bestScore) {
                 bestScore = d;
@@ -355,7 +743,7 @@ export class SurvivGame {
     }
 
     botCanSense(bot, target) {
-        const factor = bot.scope === 4 ? 1.18 : bot.scope === 2 ? 1.08 : 1;
+        const factor = bot.scope === 8 ? 1.34 : bot.scope === 4 ? 1.18 : bot.scope === 2 ? 1.08 : 1;
         return Math.hypot(target.x - bot.x, target.y - bot.y) <= BOT_AI.senseRadius * factor;
     }
 
@@ -373,12 +761,23 @@ export class SurvivGame {
     }
 
     updateBotCombat(bot, target, dt, now) {
-        const def = WEAPONS[bot.weapon.id];
         const dist = Math.hypot(target.x - bot.x, target.y - bot.y);
-        const desiredRange = BOT_AI.preferredRanges[def.appearance] || 360;
         const toX = (target.x - bot.x) / Math.max(1, dist);
         const toY = (target.y - bot.y) / Math.max(1, dist);
 
+        if (!bot.weapon) {
+            bot.aimAngle = this.lerpAngle(bot.aimAngle, Math.atan2(target.y - bot.y, target.x - bot.x), Math.min(1, dt * 7));
+            if (dist <= 78 && this.hasClearFireLine(bot.x, bot.y, target.x, target.y) && now - bot.lastPunchAt >= 360) {
+                bot.lastPunchAt = now;
+                if (target.kind === 'player') this.damagePlayer(22, bot.aimAngle, 'bot', bot.id);
+                else this.damageBot(target.ref, 22, bot.aimAngle, 'bot', bot.id);
+            }
+            this.moveBotToward(bot, toX, toY, dt, 1.08);
+            return;
+        }
+
+        const def = WEAPONS[bot.weapon.id];
+        const desiredRange = BOT_AI.preferredRanges[def.appearance] || (def.appearance === 'lmg' ? 430 : 360);
         if (now >= bot.nextStrafeFlipAt) {
             bot.strafeDir *= -1;
             bot.nextStrafeFlipAt = now + 700 + Math.random() * 1500;
@@ -386,13 +785,8 @@ export class SurvivGame {
 
         let moveX = 0;
         let moveY = 0;
-        if (dist > desiredRange * 1.15) {
-            moveX += toX;
-            moveY += toY;
-        } else if (dist < desiredRange * 0.62) {
-            moveX -= toX * 1.15;
-            moveY -= toY * 1.15;
-        }
+        if (dist > desiredRange * 1.15) { moveX += toX; moveY += toY; }
+        else if (dist < desiredRange * 0.62) { moveX -= toX * 1.15; moveY -= toY * 1.15; }
         moveX += -toY * bot.strafeDir * BOT_AI.strafeStrength;
         moveY += toX * bot.strafeDir * BOT_AI.strafeStrength;
 
@@ -400,10 +794,7 @@ export class SurvivGame {
         const aimAngle = Math.atan2(targetLead.y - bot.y, targetLead.x - bot.x);
         bot.aimAngle = this.lerpAngle(bot.aimAngle, aimAngle, Math.min(1, dt * (5.4 + bot.skill * 3.2)));
 
-        if (bot.throwables.frag > 0 && dist > 255 && dist < 520 && now - bot.lastThrowAt > 6500 && Math.random() < 0.011 + bot.skill * 0.007) {
-            this.botThrowFrag(bot, target, now);
-        }
-
+        if (bot.throwables.frag > 0 && dist > 255 && dist < 520 && now - bot.lastThrowAt > 6500 && Math.random() < 0.011 + bot.skill * 0.007) this.botThrowFrag(bot, target, now);
         if (this.hasClearFireLine(bot.x, bot.y, target.x, target.y)) this.tryBotFire(bot, target, now);
         this.moveBotToward(bot, moveX, moveY, dt, 1);
     }
@@ -518,7 +909,7 @@ export class SurvivGame {
     }
 
     tryBotFire(bot, target, now) {
-        if (bot.useItem || bot.reload || now < bot.reactionUntil) return;
+        if (!bot.weapon || bot.useItem || bot.reload || now < bot.reactionUntil) return;
         const def = WEAPONS[bot.weapon.id];
         if (def.automatic && !def.burstCount) {
             if (now < bot.burstPauseUntil) return;
@@ -536,7 +927,7 @@ export class SurvivGame {
             return;
         }
         const dist = Math.hypot(target.x - bot.x, target.y - bot.y);
-        if (dist > BOT_AI.fireLOSRadius * (bot.scope === 4 ? 1.15 : bot.scope === 2 ? 1.06 : 1)) return;
+        if (dist > BOT_AI.fireLOSRadius * (bot.scope === 8 ? 1.30 : bot.scope === 4 ? 1.15 : bot.scope === 2 ? 1.06 : 1)) return;
 
         bot.weapon.loaded -= ammoCost;
         bot.lastShotAt = now;
@@ -573,7 +964,7 @@ export class SurvivGame {
     }
 
     tryBotReload(bot, now) {
-        if (bot.reload || bot.useItem) return false;
+        if (!bot.weapon || bot.reload || bot.useItem) return false;
         const def = WEAPONS[bot.weapon.id];
         if (bot.weapon.loaded >= def.magSize || (bot.ammo[def.ammo] || 0) <= 0) return false;
         bot.reload = { startedAt: now, endsAt: now + def.reloadMs, duration: def.reloadMs };
@@ -682,6 +1073,7 @@ export class SurvivGame {
             const half = 38 * c.scale;
             if (this.circleAabbOverlap(x, y, radius, c.x - half, c.y - half, half * 2, half * 2)) return false;
         }
+        if (this.airdrop && this.airdrop.state === 'landed' && !this.airdrop.opened && Math.hypot(x - this.airdrop.x, y - this.airdrop.y) < radius + 46) return false;
         for (const c of this.rareCrates) {
             if (c.dead) continue;
             const half = 44 * c.scale;
@@ -1006,12 +1398,46 @@ export class SurvivGame {
                     100% { opacity: 0; visibility: hidden; }
                 }
                 .surviv-clone-root:focus-within .surviv-clone-help { opacity: .18; }
+                .surviv-mode-overlay {
+                    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+                    background:rgba(18,29,13,.55); z-index:20; cursor:default;
+                }
+                .surviv-mode-card {
+                    width:min(520px, calc(100% - 48px)); padding:26px; border:4px solid rgba(24,35,17,.95);
+                    background:rgba(76,112,48,.97); border-radius:8px; color:#fff; box-shadow:0 14px 40px rgba(0,0,0,.32);
+                    text-align:center;
+                }
+                .surviv-mode-card h2 { margin:0 0 8px; font-size:30px; }
+                .surviv-mode-card p { margin:0 0 20px; opacity:.9; line-height:1.35; }
+                .surviv-mode-result { min-height:24px; margin-bottom:12px; font-weight:800; color:#ffe7a2; font-size:18px; }
+                .surviv-mode-buttons { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+                .surviv-mode-buttons button {
+                    border:3px solid rgba(31,47,21,.95); border-radius:6px; padding:18px 12px; cursor:pointer;
+                    background:#86b956; color:#fff; font:800 19px/1 Arial,sans-serif; box-shadow:inset 0 -4px rgba(0,0,0,.12);
+                }
+                .surviv-mode-buttons button:hover { background:#96c964; transform:translateY(-1px); }
+                .surviv-mode-buttons small { display:block; margin-top:7px; font-size:12px; font-weight:600; opacity:.82; }
             </style>
             <canvas aria-label="Surviv clone game canvas"></canvas>
-            <div class="surviv-clone-help">WASD · Linksklick · F aufnehmen · R nachladen · B Bot spawnen · 1/2 Waffen · 3 Fäuste · 4 Frag · 7/8/9/0 Heals</div>
+            <div class="surviv-clone-help">WASD · Linksklick · F aufnehmen · R nachladen · B Bot spawnen (Spielwiese) · 1/2 Waffen · 3 Fäuste · 4 Frag · 7/8/9/0 Heals</div>
+            <div class="surviv-mode-overlay">
+                <div class="surviv-mode-card">
+                    <h2>Surviv Clone</h2>
+                    <div class="surviv-mode-result"></div>
+                    <p>Wähle einen Modus. Battle Royale startet mit dir und 11 Bots – alle nur mit Fäusten.</p>
+                    <div class="surviv-mode-buttons">
+                        <button type="button" data-mode="sandbox">Spielwiese<small>Freies Testen · B spawnt Bots</small></button>
+                        <button type="button" data-mode="battleRoyale">Battle Royale<small>12 Spieler · Zone · AirDrops</small></button>
+                    </div>
+                </div>
+            </div>
         `;
         this.canvas = this.root.querySelector('canvas');
         this.canvas.tabIndex = 0;
+        this.modeOverlay = this.root.querySelector('.surviv-mode-overlay');
+        this.modeOverlay?.querySelectorAll('[data-mode]').forEach(button => {
+            button.addEventListener('click', () => this.startMode(button.dataset.mode));
+        });
         this.renderer = new Renderer(this, this.canvas);
         this.container.appendChild(this.root);
         requestAnimationFrame(() => this.canvas.focus());
@@ -1029,6 +1455,7 @@ export class SurvivGame {
     }
 
     onKeyDown(e) {
+        if (!this.roundActive) return;
         const blockKeys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyR', 'KeyX', 'KeyB', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit7', 'Digit8', 'Digit9', 'Digit0'];
         if (blockKeys.includes(e.code)) e.preventDefault();
         this.keys.add(e.code);
@@ -1041,7 +1468,7 @@ export class SurvivGame {
         if (e.code === 'KeyF') this.pickupNearest();
         if (e.code === 'KeyR') this.tryReload(performance.now());
         if (e.code === 'KeyX') this.cancelAction();
-        if (e.code === 'KeyB') this.spawnBot();
+        if (e.code === 'KeyB' && this.mode === 'sandbox') this.spawnBot({ unarmed: true });
         if (e.code === 'Digit7') this.startUseHeal('bandage', performance.now());
         if (e.code === 'Digit8') this.startUseHeal('medkit', performance.now());
         if (e.code === 'Digit9') this.startUseHeal('soda', performance.now());
@@ -1083,6 +1510,7 @@ export class SurvivGame {
     }
 
     handleUiClick(x, y) {
+        if (!this.roundActive) return true;
         const scopeButtons = this.getScopeButtons();
         for (const btn of scopeButtons) {
             const dx = x - btn.x;
@@ -1160,9 +1588,10 @@ export class SurvivGame {
     }
 
     update(dt, now) {
+        if (!this.roundActive) return;
         this.updateAim();
         this.updateTimedActions(now);
-        this.updatePlayerRespawn(now);
+        if (this.mode === 'sandbox') this.updatePlayerRespawn(now);
         this.updateEnergy(dt);
         this.updatePlayer(dt);
         this.updateBots(dt, now);
@@ -1175,6 +1604,8 @@ export class SurvivGame {
         this.updatePickupCandidate();
         this.updateVisibleContainer();
         this.updateCamera(dt);
+        this.notifications = this.notifications.filter(n => n.until > now);
+        this.updateBattleRoyale(dt, now);
     }
 
     updateAim() {
@@ -1212,7 +1643,7 @@ export class SurvivGame {
 
 
     updatePlayerRespawn(now) {
-        if (!this.player.dead || now < this.player.respawnAt) return;
+        if (this.mode !== 'sandbox' || !this.player.dead || now < this.player.respawnAt) return;
         this.player.dead = false;
         this.player.health = this.player.maxHealth;
         this.player.energy = 0;
@@ -1402,6 +1833,7 @@ export class SurvivGame {
         for (const rock of this.rocks) if (!rock.dead) targets.push({ type: 'rock', obj: rock, reach: rock.r * rock.scale + 22 });
         for (const toilet of this.toilets) if (!toilet.dead) targets.push({ type: 'toilet', obj: toilet, reach: toilet.r * toilet.scale + 22 });
         for (const bot of this.bots) if (!bot.dead) targets.push({ type: 'bot', obj: bot, reach: bot.radius + 36 });
+        if (this.airdrop && this.airdrop.state === 'landed' && !this.airdrop.opened) targets.push({ type: 'airdrop', obj: this.airdrop, reach: 88 });
 
         for (const entry of targets) {
             const ox = entry.obj.x;
@@ -1421,6 +1853,7 @@ export class SurvivGame {
         if (best.type === 'rock') this.damageRock(best.obj, 28, this.player.aimAngle);
         if (best.type === 'toilet') this.damageToilet(best.obj, 32, this.player.aimAngle);
         if (best.type === 'bot') this.damageBot(best.obj, 24, this.player.aimAngle, 'player', 'player');
+        if (best.type === 'airdrop') this.damageAirdrop(best.obj, 34, this.player.aimAngle);
     }
 
     throwFrag(now) {
@@ -1556,6 +1989,7 @@ export class SurvivGame {
                     if (collision.type === 'barrel') this.damageBarrel(collision.obj, bullet.damage, angle);
                     if (collision.type === 'tree') this.damageTree(collision.obj, bullet.damage, angle);
                     if (collision.type === 'rock') this.damageRock(collision.obj, bullet.damage, angle);
+                    if (collision.type === 'airdrop') this.damageAirdrop(collision.obj, bullet.damage, angle);
                     if (collision.type === 'window') this.damageWindow(collision.obj, bullet.damage, angle);
                     if (collision.type === 'toilet') this.damageToilet(collision.obj, bullet.damage, angle);
                     break;
@@ -1627,6 +2061,10 @@ export class SurvivGame {
     }
 
     damageCircle(x, y, radius, maxDamage, ownerType = null, ownerId = null) {
+        if (this.airdrop && this.airdrop.state === 'landed' && !this.airdrop.opened) {
+            const d = Math.hypot(this.airdrop.x - x, this.airdrop.y - y);
+            if (d <= radius + 46) this.damageAirdrop(this.airdrop, Math.max(10, maxDamage * (1 - d / (radius + 46))), Math.atan2(this.airdrop.y - y, this.airdrop.x - x));
+        }
         for (const crate of this.crates) {
             if (crate.dead) continue;
             const d = Math.hypot(crate.x - x, crate.y - y);
@@ -1682,6 +2120,7 @@ export class SurvivGame {
     }
 
     findStaticBulletCollision(x, y) {
+        if (this.airdrop && this.airdrop.state === 'landed' && !this.airdrop.opened && (x - this.airdrop.x) ** 2 + (y - this.airdrop.y) ** 2 <= 46 ** 2) return { type: 'airdrop', obj: this.airdrop };
         for (const t of this.trees) if (!t.dead && (x - t.x) ** 2 + (y - t.y) ** 2 <= (t.trunk * t.scale + 7) ** 2) return { type: 'tree', obj: t };
         for (const r of this.rocks) if (!r.dead && (x - r.x) ** 2 + (y - r.y) ** 2 <= (r.r * r.scale + 4) ** 2) return { type: 'rock', obj: r };
         for (const b of this.barrels) if (!b.dead && (x - b.x) ** 2 + (y - b.y) ** 2 <= (b.r * b.scale + 4) ** 2) return { type: 'barrel', obj: b };
@@ -1725,10 +2164,10 @@ export class SurvivGame {
         const reduction = [1, 0.90, 0.80, 0.70][this.player.equipment.vest] ?? 1;
         const dealt = Math.max(1, damage * reduction);
         this.player.health = Math.max(0, this.player.health - dealt);
-        this.spawnBlood(this.player.x, this.player.y, hitAngle, dealt);
+        if (ownerType !== 'zone') this.spawnBlood(this.player.x, this.player.y, hitAngle, dealt);
         if (this.player.health <= 0) {
             this.player.dead = true;
-            this.player.respawnAt = performance.now() + 1400;
+            this.player.respawnAt = this.mode === 'sandbox' ? performance.now() + 1400 : Infinity;
             this.player.reload = null;
             this.player.useItem = null;
         }
@@ -1741,7 +2180,7 @@ export class SurvivGame {
         bot.health = Math.max(0, bot.health - dealt);
         bot.useItem = null;
         bot.safeSince = performance.now();
-        this.spawnBlood(bot.x, bot.y, hitAngle, dealt);
+        if (ownerType !== 'zone') this.spawnBlood(bot.x, bot.y, hitAngle, dealt);
         if (bot.health <= 0) this.handleBotDeath(bot);
     }
 
@@ -1751,9 +2190,11 @@ export class SurvivGame {
         bot.dead = true;
         const angleBase = Math.random() * TAU;
         const drops = [];
-        if (bot.weapon) drops.push({ kind: 'weapon', subtype: bot.weapon.id, loaded: bot.weapon.loaded });
-        const ammoType = WEAPONS[bot.weapon.id].ammo;
-        if ((bot.ammo[ammoType] || 0) > 0) drops.push({ kind: 'ammo', subtype: ammoType, amount: Math.min(bot.ammo[ammoType], ammoType === '9mm' ? 48 : ammoType === '12g' ? 10 : 30) });
+        if (bot.weapon) {
+            drops.push({ kind: 'weapon', subtype: bot.weapon.id, loaded: bot.weapon.loaded });
+            const ammoType = WEAPONS[bot.weapon.id].ammo;
+            if ((bot.ammo[ammoType] || 0) > 0) drops.push({ kind: 'ammo', subtype: ammoType, amount: Math.min(bot.ammo[ammoType], ammoType === '9mm' ? 48 : ammoType === '12g' ? 10 : 30) });
+        }
         for (const type of ['helmet', 'vest', 'backpack']) {
             if (bot.equipment[type] > 0) drops.push({ kind: 'equipment', subtype: type, level: bot.equipment[type] });
         }
@@ -1809,6 +2250,13 @@ export class SurvivGame {
         }
     }
 
+
+    damageAirdrop(airdrop, damage, hitAngle = 0) {
+        if (!airdrop || airdrop.state !== 'landed' || airdrop.opened) return;
+        airdrop.crateHp = Math.max(0, airdrop.crateHp - damage);
+        this.spawnWoodHit(airdrop.x - Math.cos(hitAngle) * 20, airdrop.y - Math.sin(hitAngle) * 20);
+        if (airdrop.crateHp <= 0) this.breakAirdrop();
+    }
 
     damageCrate(crate, damage, hitAngle = 0) {
         crate.hp = Math.max(0, crate.hp - damage);
@@ -2077,6 +2525,7 @@ export class SurvivGame {
         this.nearestPickup = best;
         this.nearestDoor = null;
         this.botSpawnCursor = 0;
+        this.nextAirdropAt = Infinity;
         let bestDoorD2 = 86 * 86;
         for (const house of this.houses) {
             for (const door of house.doors) {

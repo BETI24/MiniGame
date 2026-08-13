@@ -37,8 +37,10 @@ export class Renderer {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.width, this.height);
         this.drawWorld(now);
-        this.drawHud(now);
-        this.drawCrosshair();
+        if (this.game.roundActive) {
+            this.drawHud(now);
+            this.drawCrosshair();
+        }
     }
 
     worldToScreen(x, y) {
@@ -70,10 +72,12 @@ export class Renderer {
 
         this.drawGrid(ctx);
         this.drawMapBoundary(ctx);
+        this.drawZoneWorld(ctx);
         this.drawLakes(ctx);
         this.drawHouses(ctx);
         this.drawContainerFloors(ctx);
         this.drawLoot(ctx);
+        this.drawAirdrop(ctx, now);
         this.drawCrates(ctx);
         this.drawRareCrates(ctx);
         this.drawBarrels(ctx);
@@ -119,6 +123,72 @@ export class Renderer {
         ctx.strokeStyle = 'rgba(29, 54, 19, 0.4)';
         ctx.lineWidth = 10;
         ctx.strokeRect(4, 4, WORLD.width - 8, WORLD.height - 8);
+    }
+
+    drawZoneWorld(ctx) {
+        const z = this.game.zone;
+        if (!z || this.game.mode !== 'battleRoyale') return;
+        ctx.save();
+        ctx.fillStyle = 'rgba(52, 88, 137, 0.16)';
+        ctx.beginPath();
+        ctx.rect(0, 0, WORLD.width, WORLD.height);
+        ctx.arc(z.x, z.y, z.radius, 0, TAU, true);
+        try { ctx.fill('evenodd'); } catch { ctx.fill(); }
+        ctx.strokeStyle = 'rgba(174, 213, 255, 0.92)';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.arc(z.x, z.y, z.radius, 0, TAU);
+        ctx.stroke();
+        if (z.state === 'moving') {
+            ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+            ctx.lineWidth = 5;
+            ctx.setLineDash([24, 18]);
+            ctx.beginPath();
+            ctx.arc(z.targetX, z.targetY, z.targetRadius, 0, TAU);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        ctx.restore();
+    }
+
+    drawAirdrop(ctx, now) {
+        const a = this.game.airdrop;
+        if (!a) return;
+        ctx.save();
+        ctx.translate(a.x, a.y);
+        if (a.state === 'smoke') {
+            const pulse = 1 + Math.sin(now / 180) * 0.08;
+            for (let i = 0; i < 7; i++) {
+                const phase = (now / 900 + i * 0.63) % 1;
+                const ox = Math.sin(i * 2.4 + now / 700) * 24 * phase;
+                const oy = -30 - phase * 105;
+                ctx.globalAlpha = 0.46 * (1 - phase);
+                ctx.fillStyle = '#b92e2e';
+                ctx.beginPath();
+                ctx.arc(ox, oy, (22 + phase * 24) * pulse, 0, TAU);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = '#c92e2e';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.arc(0, 0, 48 + Math.sin(now / 220) * 6, 0, TAU);
+            ctx.stroke();
+        } else if (a.state === 'landed' && !a.opened) {
+            ctx.fillStyle = 'rgba(0,0,0,0.20)';
+            ctx.beginPath(); ctx.ellipse(8, 18, 56, 26, 0, 0, TAU); ctx.fill();
+            ctx.fillStyle = '#4f7f3a';
+            ctx.strokeStyle = '#202c1b';
+            ctx.lineWidth = 6;
+            this.roundRect(ctx, -46, -42, 92, 84, 6); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#303d29';
+            ctx.fillRect(-36, -7, 72, 14);
+            ctx.fillRect(-7, -33, 14, 66);
+            ctx.strokeStyle = '#d6b54a';
+            ctx.lineWidth = 5;
+            this.roundRect(ctx, -35, -31, 70, 62, 4); ctx.stroke();
+        }
+        ctx.restore();
     }
 
     drawLakes(ctx) {
@@ -998,6 +1068,56 @@ export class Renderer {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
+        if (weaponId === 'g18') {
+            ctx.fillStyle='#24272a'; ctx.strokeStyle='#0d0f10'; ctx.lineWidth=3;
+            this.roundRect(ctx,1,-5,32,10,4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#161819'; ctx.beginPath(); ctx.moveTo(9,4); ctx.lineTo(18,5); ctx.lineTo(15,19); ctx.lineTo(7,18); ctx.closePath(); ctx.fill();
+            ctx.fillStyle='#555b60'; ctx.fillRect(5,-8,20,3); ctx.fillRect(31,-2,8,4); ctx.restore(); return;
+        }
+        if (weaponId === 'mp5') {
+            ctx.fillStyle='#202326'; ctx.strokeStyle='#0b0c0d'; ctx.lineWidth=3;
+            this.roundRect(ctx,-4,-7,42,14,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#111315'; ctx.fillRect(16,6,8,18); ctx.fillRect(36,-3,15,6);
+            ctx.strokeStyle='#111315'; ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(-13,0); ctx.lineTo(-3,-7); ctx.stroke();
+            ctx.fillStyle='#73777a'; ctx.fillRect(5,-11,16,4); ctx.restore(); return;
+        }
+        if (weaponId === 'm870') {
+            ctx.fillStyle='#6e4a2c'; ctx.strokeStyle='#24170f'; ctx.lineWidth=3;
+            this.roundRect(ctx,-14,-6,48,12,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#1c1d1d'; ctx.fillRect(31,-2.5,31,5); ctx.fillStyle='#8c6038'; ctx.fillRect(10,-8,18,16);
+            ctx.fillStyle='#51351f'; ctx.beginPath(); ctx.moveTo(-22,-9); ctx.lineTo(-9,-5); ctx.lineTo(-9,5); ctx.lineTo(-22,9); ctx.closePath(); ctx.fill(); ctx.restore(); return;
+        }
+        if (weaponId === 'ak47') {
+            ctx.fillStyle='#78451f'; ctx.strokeStyle='#26150d'; ctx.lineWidth=3;
+            this.roundRect(ctx,-11,-6,50,12,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#1d1d1d'; ctx.fillRect(36,-3,28,6); ctx.beginPath(); ctx.moveTo(16,5); ctx.lineTo(28,7); ctx.lineTo(24,26); ctx.lineTo(14,22); ctx.closePath(); ctx.fill();
+            ctx.fillStyle='#5c3218'; ctx.beginPath(); ctx.moveTo(-22,-9); ctx.lineTo(-8,-5); ctx.lineTo(-8,5); ctx.lineTo(-22,9); ctx.closePath(); ctx.fill(); ctx.restore(); return;
+        }
+        if (weaponId === 'm416') {
+            ctx.fillStyle='#777354'; ctx.strokeStyle='#24241c'; ctx.lineWidth=3;
+            this.roundRect(ctx,-7,-7,49,14,4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#202321'; ctx.fillRect(39,-3,27,6); ctx.fillRect(16,6,9,19); ctx.fillRect(-17,-5,11,10);
+            ctx.fillStyle='#9c976d'; ctx.fillRect(5,-11,24,4); ctx.restore(); return;
+        }
+        if (weaponId === 'mosin') {
+            ctx.fillStyle='#774d28'; ctx.strokeStyle='#25170e'; ctx.lineWidth=3;
+            this.roundRect(ctx,-18,-5,69,10,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#181818'; ctx.fillRect(47,-2.5,33,5); ctx.fillRect(16,-10,24,4);
+            ctx.fillStyle='#603b20'; ctx.beginPath(); ctx.moveTo(-27,-9); ctx.lineTo(-14,-5); ctx.lineTo(-14,5); ctx.lineTo(-27,9); ctx.closePath(); ctx.fill(); ctx.restore(); return;
+        }
+        if (weaponId === 'mk12') {
+            ctx.fillStyle='#596c52'; ctx.strokeStyle='#1a221a'; ctx.lineWidth=3;
+            this.roundRect(ctx,-11,-5,61,10,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#171b18'; ctx.fillRect(47,-2.5,29,5); ctx.fillRect(14,-12,27,5); ctx.fillRect(22,-7,6,4); ctx.fillRect(23,5,9,16);
+            ctx.fillStyle='#39463a'; ctx.beginPath(); ctx.moveTo(-20,-8); ctx.lineTo(-8,-5); ctx.lineTo(-8,5); ctx.lineTo(-20,8); ctx.closePath(); ctx.fill(); ctx.restore(); return;
+        }
+        if (weaponId === 'flare') {
+            ctx.fillStyle='#c45d18'; ctx.strokeStyle='#5a2408'; ctx.lineWidth=3;
+            this.roundRect(ctx,1,-6,34,12,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#663014'; ctx.beginPath(); ctx.moveTo(9,5); ctx.lineTo(19,6); ctx.lineTo(15,22); ctx.lineTo(6,19); ctx.closePath(); ctx.fill();
+            ctx.fillStyle='#202020'; ctx.fillRect(33,-2,9,4); ctx.restore(); return;
+        }
+
         if (weaponId === 'dualberetta') {
             if (singleDual) {
                 this.drawBerettaShape(ctx, def);
@@ -1075,6 +1195,81 @@ export class Renderer {
             ctx.fillStyle = '#1b1d1a'; ctx.fillRect(50,-2.5,28,5); ctx.fillRect(18,-13,25,5); ctx.fillRect(26,-9,6,4); ctx.fillRect(25,5,9,15);
             ctx.fillStyle = '#596344'; ctx.beginPath(); ctx.moveTo(-19,-9); ctx.lineTo(-7,-5); ctx.lineTo(-7,5); ctx.lineTo(-19,9); ctx.closePath(); ctx.fill();
             ctx.restore(); return;
+        }
+
+        if (weaponId === 'm93r') {
+            ctx.fillStyle='#35383a'; ctx.strokeStyle='#101112'; ctx.lineWidth=3;
+            this.roundRect(ctx,0,-5,39,10,4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#181a1b'; ctx.beginPath(); ctx.moveTo(9,4); ctx.lineTo(19,5); ctx.lineTo(15,23); ctx.lineTo(7,20); ctx.closePath(); ctx.fill();
+            ctx.fillStyle='#707477'; ctx.fillRect(7,-9,18,4); ctx.fillRect(37,-2,9,4);
+            ctx.restore(); return;
+        }
+        if (weaponId === 'mp220') {
+            ctx.strokeStyle='#24170e'; ctx.lineWidth=3; ctx.fillStyle='#6e4a28';
+            this.roundRect(ctx,-13,-7,32,14,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#202020'; ctx.fillRect(15,-7,45,5); ctx.fillRect(15,2,45,5);
+            ctx.fillStyle='#51351d'; ctx.beginPath(); ctx.moveTo(-20,-9); ctx.lineTo(-8,-6); ctx.lineTo(-8,6); ctx.lineTo(-20,9); ctx.closePath(); ctx.fill();
+            ctx.restore(); return;
+        }
+        if (weaponId === 'super90') {
+            ctx.fillStyle='#343a3e'; ctx.strokeStyle='#101214'; ctx.lineWidth=3;
+            this.roundRect(ctx,-9,-6,54,12,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#111415'; ctx.fillRect(41,-2,24,4); ctx.fillRect(17,5,10,14);
+            ctx.fillStyle='#687076'; ctx.fillRect(4,-9,22,5); ctx.fillStyle='#292d30'; ctx.fillRect(-17,-7,10,14);
+            ctx.restore(); return;
+        }
+        if (weaponId === 'deagle') {
+            ctx.fillStyle='#b89446'; ctx.strokeStyle='#342816'; ctx.lineWidth=3;
+            ctx.beginPath(); ctx.moveTo(0,-7); ctx.lineTo(36,-7); ctx.lineTo(45,-3); ctx.lineTo(43,5); ctx.lineTo(8,5); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#59472b'; ctx.beginPath(); ctx.moveTo(10,4); ctx.lineTo(21,5); ctx.lineTo(16,23); ctx.lineTo(7,20); ctx.closePath(); ctx.fill();
+            ctx.fillStyle='#2b251b'; ctx.fillRect(42,-2,10,4); ctx.restore(); return;
+        }
+        if (weaponId === 'an94') {
+            ctx.fillStyle='#464a4d'; ctx.strokeStyle='#141617'; ctx.lineWidth=3;
+            ctx.beginPath(); ctx.moveTo(-9,-7); ctx.lineTo(43,-7); ctx.lineTo(56,-3); ctx.lineTo(50,8); ctx.lineTo(6,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#232628'; ctx.fillRect(23,7,9,20); ctx.fillRect(51,-2,16,5); ctx.fillRect(-18,-5,10,10);
+            ctx.fillStyle='#72787b'; ctx.fillRect(5,-12,25,4); ctx.restore(); return;
+        }
+        if (weaponId === 'm39emr') {
+            ctx.fillStyle='#6a7657'; ctx.strokeStyle='#1c2317'; ctx.lineWidth=3;
+            this.roundRect(ctx,-13,-5,66,10,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#171a17'; ctx.fillRect(49,-2.5,27,5); ctx.fillRect(13,-13,29,5); ctx.fillRect(21,-8,7,4); ctx.fillRect(25,5,9,17);
+            ctx.fillStyle='#4b523e'; ctx.beginPath(); ctx.moveTo(-21,-9); ctx.lineTo(-8,-5); ctx.lineTo(-8,5); ctx.lineTo(-21,9); ctx.closePath(); ctx.fill();
+            ctx.restore(); return;
+        }
+        if (weaponId === 'dp28') {
+            ctx.fillStyle='#4a4c44'; ctx.strokeStyle='#151615'; ctx.lineWidth=3;
+            this.roundRect(ctx,-10,-5,58,10,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#1c1e1d'; ctx.fillRect(44,-2.5,28,5); ctx.fillRect(15,5,9,18);
+            ctx.beginPath(); ctx.arc(22,-10,15,0,TAU); ctx.fill();
+            ctx.strokeStyle='#676a61'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(22,-10,10,0,TAU); ctx.stroke();
+            ctx.fillStyle='#604323'; ctx.beginPath(); ctx.moveTo(-20,-8); ctx.lineTo(-7,-5); ctx.lineTo(-7,5); ctx.lineTo(-20,8); ctx.closePath(); ctx.fill();
+            ctx.restore(); return;
+        }
+        if (weaponId === 'm249') {
+            ctx.fillStyle='#5d634b'; ctx.strokeStyle='#181c14'; ctx.lineWidth=3;
+            this.roundRect(ctx,-5,-7,53,14,4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#1b1e19'; ctx.fillRect(44,-3,27,6); ctx.fillRect(20,-11,21,4); ctx.fillRect(-15,-6,12,12);
+            ctx.fillStyle='#3b3e31'; this.roundRect(ctx,13,6,22,22,3); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#858a6b'; ctx.fillRect(16,9,16,5); ctx.restore(); return;
+        }
+        if (weaponId === 'qbb97') {
+            ctx.fillStyle='#534d68'; ctx.strokeStyle='#171520'; ctx.lineWidth=3;
+            ctx.beginPath(); ctx.moveTo(-15,-8); ctx.lineTo(38,-8); ctx.lineTo(54,-3); ctx.lineTo(49,8); ctx.lineTo(-5,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#22202c'; ctx.beginPath(); ctx.arc(-3,8,12,0,TAU); ctx.fill(); ctx.fillRect(45,-2,18,5);
+            ctx.fillStyle='#7b7395'; ctx.fillRect(4,-12,25,4); ctx.restore(); return;
+        }
+        if (weaponId === 'dualots38') {
+            const drawRev=()=>{ ctx.fillStyle='#777872'; ctx.strokeStyle='#222320'; ctx.lineWidth=3; this.roundRect(ctx,2,-5,31,10,4); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(9,0,8,0,TAU); ctx.fill(); ctx.stroke(); ctx.fillStyle='#3b3a36'; ctx.beginPath(); ctx.moveTo(6,5); ctx.lineTo(15,7); ctx.lineTo(12,21); ctx.lineTo(4,19); ctx.closePath(); ctx.fill(); ctx.fillRect(31,-2,11,4); };
+            if (singleDual) drawRev(); else { ctx.save(); ctx.translate(0,-8); drawRev(); ctx.restore(); ctx.save(); ctx.translate(0,8); drawRev(); ctx.restore(); }
+            ctx.restore(); return;
+        }
+        if (weaponId === 'awms') {
+            ctx.fillStyle='#304431'; ctx.strokeStyle='#101810'; ctx.lineWidth=3;
+            this.roundRect(ctx,-18,-5,72,10,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle='#111713'; ctx.fillRect(50,-2.5,34,5); ctx.fillRect(13,-15,31,6); ctx.fillRect(22,-9,7,4); ctx.fillRect(24,5,10,18);
+            ctx.fillStyle='#263728'; ctx.beginPath(); ctx.moveTo(-28,-10); ctx.lineTo(-13,-5); ctx.lineTo(-13,5); ctx.lineTo(-28,10); ctx.closePath(); ctx.fill();
+            ctx.fillStyle='#647565'; ctx.fillRect(55,-7,8,14); ctx.restore(); return;
         }
 
         ctx.strokeStyle = '#111';
@@ -1160,17 +1355,49 @@ export class Renderer {
         this.drawHealthHud();
         this.drawMiniMap();
         this.drawPickupPrompt();
-        this.drawTopStatus();
+        this.drawTopStatus(now);
+        this.drawBattleStatus(now);
+        this.drawNotifications(now);
         this.drawActionPrompt(now);
     }
 
-    drawTopStatus() {
+    drawTopStatus(now) {
         const ctx = this.ctx;
         ctx.save();
         ctx.fillStyle = 'rgba(255,255,255,0.90)';
         ctx.font = '700 18px Arial';
         ctx.textAlign = 'right';
         ctx.fillText('Waiting for new leader  ·  0', this.width - 120, 28);
+        ctx.restore();
+    }
+
+    drawBattleStatus(now) {
+        if (this.game.mode !== 'battleRoyale' || !this.game.zone) return;
+        const ctx = this.ctx;
+        const z = this.game.zone;
+        const remaining = Math.max(0, z.nextStateAt - now);
+        const sec = Math.ceil(remaining / 1000);
+        ctx.save();
+        ctx.fillStyle='rgba(43,67,33,0.90)';
+        this.roundRect(ctx, 18, 18, 190, 64, 6); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.textBaseline='middle';
+        ctx.font='bold 18px Arial'; ctx.fillText(z.state === 'moving' ? 'ZONE SCHLIESST' : 'NÄCHSTE ZONE', 32, 39);
+        ctx.font='bold 24px Arial'; ctx.fillText(`${sec}s`, 32, 65);
+        ctx.restore();
+    }
+
+    drawNotifications(now) {
+        const active = this.game.notifications.filter(n => n.until > now);
+        if (!active.length) return;
+        const ctx=this.ctx;
+        ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+        active.slice(-3).forEach((n,i)=>{
+            const y=104+i*38;
+            ctx.font='bold 17px Arial';
+            const w=Math.min(this.width-80, ctx.measureText(n.text).width+34);
+            ctx.fillStyle='rgba(48,72,34,0.90)'; this.roundRect(ctx,this.width/2-w/2,y-15,w,30,5); ctx.fill();
+            ctx.fillStyle='#fff'; ctx.fillText(n.text,this.width/2,y+1);
+        });
         ctx.restore();
     }
 
@@ -1462,6 +1689,15 @@ export class Renderer {
         for (const c of this.game.rareCrates) {
             if (c.dead) continue;
             ctx.fillRect(x + c.x * sx - 2.5, y + c.y * sy - 2.5, 5, 5);
+        }
+        if (this.game.zone && this.game.mode === 'battleRoyale') {
+            ctx.strokeStyle='rgba(210,235,255,.95)'; ctx.lineWidth=2.5;
+            ctx.beginPath(); ctx.arc(x + this.game.zone.x*sx, y + this.game.zone.y*sy, this.game.zone.radius*sx, 0, TAU); ctx.stroke();
+        }
+        if (this.game.airdrop) {
+            ctx.fillStyle=this.game.airdrop.state==='smoke' ? '#d22f2f' : '#d7b53f';
+            ctx.beginPath(); ctx.arc(x + this.game.airdrop.x*sx, y + this.game.airdrop.y*sy, 6, 0, TAU); ctx.fill();
+            ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
         }
 
         const p = this.game.player;

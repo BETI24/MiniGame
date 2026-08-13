@@ -7,6 +7,8 @@ import {
     isBoardFull,
     isBoardSolvedLegal,
     findRuleViolations,
+    findPartialRuleViolations,
+    cloneBoard,
     cellKey
 } from './QuickThinkerRules.js';
 
@@ -15,6 +17,12 @@ import {
     DIFFICULTIES,
     SUPPORTED_SIZES
 } from './QuickThinkerGenerator.js';
+
+import {
+    getNextLogicalStep,
+    explainLogicalStep,
+    countSolutionsFromBoard
+} from './QuickThinkerSolver.js';
 
 const GAME_ID='quick-thinker';
 
@@ -213,6 +221,46 @@ export default {
                     0 0 12px rgba(255,60,60,.22);
             }
 
+
+            .qt-cell.hint{
+                z-index:3;
+                border-color:#f0c75d !important;
+                box-shadow:
+                    inset 0 0 0 2px rgba(255,226,116,.35),
+                    0 0 0 3px rgba(240,199,93,.20),
+                    0 0 20px rgba(240,199,93,.52);
+                animation:qtHintPulse .95s ease-in-out infinite alternate;
+            }
+
+            .qt-cell.hint::before{
+                content:"?";
+                position:absolute;
+                right:7%;
+                top:5%;
+                z-index:4;
+                color:#ffe793;
+                font-size:clamp(.65rem,1.7vw,.9rem);
+                font-weight:1000;
+                text-shadow:0 1px 3px rgba(0,0,0,.55);
+            }
+
+
+            .qt-cell.hint.hint-circle .qt-symbol{
+                width:43%;
+                aspect-ratio:1;
+                border:3px dashed #ffe793;
+                border-radius:50%;
+                background:rgba(255,231,147,.14);
+            }
+
+            .qt-cell.hint.hint-square .qt-symbol{
+                width:43%;
+                aspect-ratio:1;
+                border:3px dashed #ffe793;
+                border-radius:10px;
+                background:rgba(255,231,147,.10);
+            }
+
             .qt-relation{
                 position:absolute;
                 z-index:5;
@@ -258,6 +306,25 @@ export default {
 
             .qt-check:hover{filter:brightness(1.07)}
             .qt-check:active{transform:scale(.985)}
+
+
+            .qt-hint{
+                min-width:142px;
+                height:52px;
+                padding:0 18px;
+                border:1px solid #8f743a;
+                border-radius:13px;
+                background:#d7b45d;
+                color:#2b2417;
+                font:inherit;
+                font-size:.82rem;
+                font-weight:1000;
+                cursor:pointer;
+                transition:transform .07s ease,filter .10s ease;
+            }
+
+            .qt-hint:hover{filter:brightness(1.07)}
+            .qt-hint:active{transform:scale(.985)}
 
             .qt-rules{
                 max-width:620px;
@@ -392,6 +459,7 @@ export default {
 
             .qt-message-card.wrong{border-color:#b45b60}
             .qt-message-card.win{border-color:#58b17a}
+            .qt-message-card.hint{border-color:#c9a64e}
 
             .qt-generating-spinner{
                 width:34px;
@@ -406,6 +474,10 @@ export default {
             .qt-board.shake{animation:qtShake .27s ease}
 
             @keyframes qtSpin{to{transform:rotate(360deg)}}
+            @keyframes qtHintPulse{
+                from{transform:scale(1)}
+                to{transform:scale(1.035)}
+            }
             @keyframes qtShake{
                 0%,100%{transform:translateX(0)}
                 25%{transform:translateX(-7px)}
@@ -443,6 +515,7 @@ export default {
 
                 <div class="qt-bottom">
                     <button class="qt-check" type="button">CHECK</button>
+                    <button class="qt-hint" type="button">HINT</button>
                 </div>
 
                 <div class="qt-rules">
@@ -507,6 +580,7 @@ export default {
         const boardEl=root.querySelector('.qt-board');
         const boardWrapEl=root.querySelector('.qt-board-wrap');
         const checkBtn=root.querySelector('.qt-check');
+        const hintBtn=root.querySelector('.qt-hint');
         const newBtn=root.querySelector('.qt-new');
         const timerEl=root.querySelector('.qt-timer');
         const metaEl=root.querySelector('.qt-meta');
@@ -589,6 +663,7 @@ export default {
                                 ?SQUARE
                                 :CIRCLE;
 
+                        clearHintHighlight();
                         cell.classList.remove('error');
                         renderCell(cell,row,col);
                     });
@@ -659,6 +734,39 @@ export default {
             }
         };
 
+
+        const clearHintHighlight = () => {
+            for(const cell of boardEl.querySelectorAll('.qt-cell.hint')){
+                cell.classList.remove(
+                    'hint',
+                    'hint-circle',
+                    'hint-square'
+                );
+            }
+        };
+
+        const highlightHintCell = (row,col,value=EMPTY) => {
+            clearHintHighlight();
+
+            const cell=boardEl.querySelector(
+                `[data-row="${row}"][data-col="${col}"]`
+            );
+
+            cell?.classList.add('hint');
+
+            if(value===CIRCLE){
+                cell?.classList.add('hint-circle');
+            }else if(value===SQUARE){
+                cell?.classList.add('hint-square');
+            }
+
+            cell?.scrollIntoView?.({
+                block:'nearest',
+                inline:'nearest',
+                behavior:'smooth'
+            });
+        };
+
         const showViolations = violations => {
             clearErrors();
 
@@ -667,6 +775,183 @@ export default {
                 const cell=boardEl.querySelector(`[data-row="${row}"][data-col="${col}"]`);
                 cell?.classList.add('error');
             }
+        };
+
+        const maxHintRank = () => ({
+            easy:1,
+            normal:2,
+            hard:3,
+            expert:4
+        })[puzzle?.difficulty]??4;
+
+        const findRecoverableMistake = () => {
+            if(!puzzle){
+                return null;
+            }
+
+            // First prefer a non-given player entry that is provably blocking
+            // every completion. Remove only that entry and see whether at least
+            // one valid completion becomes possible again.
+            for(let row=0;row<puzzle.size;row++){
+                for(let col=0;col<puzzle.size;col++){
+                    if(given[row][col] || board[row][col]===EMPTY){
+                        continue;
+                    }
+
+                    const test=cloneBoard(board);
+                    test[row][col]=EMPTY;
+
+                    if(countSolutionsFromBoard(puzzle,test,1)>0){
+                        return {row,col};
+                    }
+                }
+            }
+
+            // If several wrong assumptions interact, removing only one may not
+            // restore a solution. The generated puzzle keeps its verified unique
+            // solution for diagnostics, so point at one conflicting player cell
+            // without automatically changing it.
+            if(puzzle.solution){
+                for(let row=0;row<puzzle.size;row++){
+                    for(let col=0;col<puzzle.size;col++){
+                        if(
+                            !given[row][col] &&
+                            board[row][col]!==EMPTY &&
+                            board[row][col]!==puzzle.solution[row][col]
+                        ){
+                            return {row,col};
+                        }
+                    }
+                }
+            }
+
+            return null;
+        };
+
+        const requestHint = () => {
+            if(!puzzle || generating || won){
+                return;
+            }
+
+            clearErrors();
+            clearHintHighlight();
+
+            if(isBoardFull(board)){
+                if(isBoardSolvedLegal(board,puzzle.relations)){
+                    showMessage(
+                        'hint',
+                        'The board is already solved',
+                        'Every rule is satisfied. Press Check to finish the puzzle.'
+                    );
+                }else{
+                    const violations=findRuleViolations(
+                        board,
+                        puzzle.relations
+                    );
+                    showViolations(violations);
+                    showMessage(
+                        'wrong',
+                        'Fix a contradiction first',
+                        'The current full board violates at least one visible rule. The involved cells have been marked.'
+                    );
+                }
+                return;
+            }
+
+            const directViolations=findPartialRuleViolations(
+                board,
+                puzzle.relations
+            );
+
+            if(directViolations.size){
+                showViolations(directViolations);
+                showMessage(
+                    'wrong',
+                    'Fix a contradiction first',
+                    'Your current board already breaks a visible rule: too many of one symbol, three identical symbols in a row, or an invalid = / × relation. Fix the marked area before asking for a forward hint.'
+                );
+                return;
+            }
+
+            // A board can still look locally legal while a previous choice has
+            // made the unique puzzle impossible. Detect that before presenting a
+            // deduction that would only be valid under a bad assumption.
+            if(countSolutionsFromBoard(puzzle,board,1)===0){
+                const mistake=findRecoverableMistake();
+
+                if(mistake){
+                    highlightHintCell(mistake.row,mistake.col);
+                    showMessage(
+                        'hint',
+                        'Reconsider this field',
+                        `Your current entries leave no valid completion. Row ${mistake.row+1}, column ${mistake.col+1} is one of the player-entered cells that conflicts with the unique solution. Change that choice, then ask for another hint.`
+                    );
+                }else{
+                    showMessage(
+                        'wrong',
+                        'Current path has no solution',
+                        'The visible rules are not immediately broken, but the current set of choices cannot reach the unique solution. Recheck one of your earlier placements.'
+                    );
+                }
+                return;
+            }
+
+            let hint=getNextLogicalStep(
+                puzzle,
+                board,
+                {maxRank:maxHintRank()}
+            );
+
+            // This should almost never be needed because every generated puzzle
+            // is verified for its target difficulty, but a user's correct extra
+            // placements can occasionally change the most natural deduction
+            // order. Fall back to the complete logical toolkit, never guessing.
+            if(
+                hint.status==='stalled' &&
+                maxHintRank()<4
+            ){
+                hint=getNextLogicalStep(
+                    puzzle,
+                    board,
+                    {maxRank:4}
+                );
+            }
+
+            if(hint.status==='step' && hint.step){
+                const info=explainLogicalStep(
+                    hint.step,
+                    board,
+                    puzzle
+                );
+
+                highlightHintCell(
+                    hint.step.row,
+                    hint.step.col,
+                    hint.step.value
+                );
+
+                showMessage(
+                    'hint',
+                    `Hint · ${info.technique}`,
+                    `${info.target}. ${info.explanation}`
+                );
+                return;
+            }
+
+            if(hint.status==='solved'){
+                showMessage(
+                    'hint',
+                    'Nothing left to deduce',
+                    'The current board is already logically complete. Press Check to verify it.'
+                );
+                return;
+            }
+
+            showMessage(
+                'hint',
+                'No simple next step found',
+                'The current position is still valid, but the hint engine could not isolate a single forced move from this exact state. Try using the visible row, column and relation constraints together.'
+            );
         };
 
         const saveScore = elapsedSeconds => {
@@ -729,6 +1014,8 @@ export default {
             board=boardFromGivens(puzzle.size,puzzle.givens);
             given=createGivenMask(puzzle);
             won=false;
+            clearHintHighlight();
+            clearErrors();
             startedAt=performance.now();
 
             metaEl.textContent=
@@ -793,6 +1080,7 @@ export default {
 
         startBtn.addEventListener('click',generateSelectedPuzzle);
         checkBtn.addEventListener('click',checkBoard);
+        hintBtn.addEventListener('click',requestHint);
         messageCloseBtn.addEventListener('click',hideMessage);
 
         newBtn.addEventListener('click',()=>{

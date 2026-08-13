@@ -585,6 +585,275 @@ export const solveLogically = (
     return runLogical(board,puzzle,maxRank,recordTrace,true);
 };
 
+
+export const solveBoardLogically = (
+    puzzle,
+    startBoard,
+    {
+        maxRank=4,
+        recordTrace=true
+    }={}
+) => runLogical(
+    cloneBoard(startBoard),
+    puzzle,
+    maxRank,
+    recordTrace,
+    true
+);
+
+const valueName = value =>
+    value===CIRCLE
+        ?'circle'
+        :'square';
+
+const cellName = (row,col) =>
+    `row ${row+1}, column ${col+1}`;
+
+const findRelationReason = (step,board,puzzle) => {
+    for(const relation of puzzle.relations){
+        let other=null;
+
+        if(
+            relation.a[0]===step.row &&
+            relation.a[1]===step.col
+        ){
+            other=relation.b;
+        }else if(
+            relation.b[0]===step.row &&
+            relation.b[1]===step.col
+        ){
+            other=relation.a;
+        }
+
+        if(!other){
+            continue;
+        }
+
+        const otherValue=board[other[0]][other[1]];
+        if(otherValue===EMPTY){
+            continue;
+        }
+
+        const mark=relation.type==='same' ? '=' : '×';
+        const relationMeaning=
+            relation.type==='same'
+                ?'must contain the same symbol'
+                :'must contain different symbols';
+
+        return `${cellName(step.row,step.col)} is connected by ${mark} to ${cellName(other[0],other[1])}, which already contains a ${valueName(otherValue)}. The ${mark} rule says those two cells ${relationMeaning}, so this cell is forced to be a ${valueName(step.value)}.`;
+    }
+
+    return `A visible = / × relation forces ${cellName(step.row,step.col)} to be a ${valueName(step.value)}.`;
+};
+
+const findTripleReason = (step,board) => {
+    const size=board.length;
+
+    for(const isRow of [true,false]){
+        const fixed=isRow ? step.row : step.col;
+        const pos=isRow ? step.col : step.row;
+        const values=isRow
+            ?board[fixed]
+            :board.map(row=>row[fixed]);
+
+        for(let start=Math.max(0,pos-2);start<=Math.min(pos,size-3);start++){
+            const window=[start,start+1,start+2];
+            if(!window.includes(pos)) continue;
+
+            const others=window.filter(i=>i!==pos);
+            const a=values[others[0]];
+            const b=values[others[1]];
+
+            if(
+                a!==EMPTY &&
+                a===b &&
+                step.value===opposite(a)
+            ){
+                const lineName=isRow
+                    ?`row ${fixed+1}`
+                    :`column ${fixed+1}`;
+
+                return `In ${lineName}, the other two cells in this group of three are both ${valueName(a)}s. Three identical symbols may never appear consecutively, so ${cellName(step.row,step.col)} must be a ${valueName(step.value)}.`;
+            }
+        }
+    }
+
+    return `Placing the opposite symbol at ${cellName(step.row,step.col)} would create three identical consecutive symbols, so it must be a ${valueName(step.value)}.`;
+};
+
+const findBalanceReason = (step,board) => {
+    const size=board.length;
+    const half=size/2;
+
+    for(const isRow of [true,false]){
+        const index=isRow ? step.row : step.col;
+        const values=isRow
+            ?board[index]
+            :board.map(row=>row[index]);
+
+        const circles=values.filter(v=>v===CIRCLE).length;
+        const squares=values.filter(v=>v===SQUARE).length;
+        const lineName=isRow
+            ?`Row ${index+1}`
+            :`Column ${index+1}`;
+
+        if(circles===half && step.value===SQUARE){
+            return `${lineName} already contains all ${half} circles allowed on a ${size}×${size} board. Every remaining empty cell in that line must therefore be a square, including ${cellName(step.row,step.col)}.`;
+        }
+
+        if(squares===half && step.value===CIRCLE){
+            return `${lineName} already contains all ${half} squares allowed on a ${size}×${size} board. Every remaining empty cell in that line must therefore be a circle, including ${cellName(step.row,step.col)}.`;
+        }
+    }
+
+    return `The 50/50 balance rule forces ${cellName(step.row,step.col)} to be a ${valueName(step.value)}.`;
+};
+
+const findLineReason = (step,board,puzzle) => {
+    const patterns=getValidLinePatterns(puzzle.size);
+
+    for(const isRow of [true,false]){
+        const index=isRow ? step.row : step.col;
+        const pos=isRow ? step.col : step.row;
+        const candidates=getLineCandidates(
+            board,
+            puzzle.relations,
+            isRow,
+            index,
+            patterns
+        );
+
+        if(!candidates.length){
+            continue;
+        }
+
+        if(candidates.every(pattern=>pattern[pos]===step.value)){
+            const lineName=isRow
+                ?`row ${index+1}`
+                :`column ${index+1}`;
+
+            return `After applying the half-and-half rule, the no-three rule and the visible relation marks, ${lineName} has only ${candidates.length} valid pattern${candidates.length===1?'':'s'} left. Every one of those patterns places a ${valueName(step.value)} at ${cellName(step.row,step.col)}, so that move is forced.`;
+        }
+    }
+
+    return `All valid remaining patterns for this row or column agree that ${cellName(step.row,step.col)} must be a ${valueName(step.value)}.`;
+};
+
+const relationComponentSizeForCell = (puzzle,row,col) => {
+    const graph=buildRelationGraph(puzzle.size,puzzle.relations);
+    const start=row*puzzle.size+col;
+
+    if(!graph[start]?.length){
+        return 0;
+    }
+
+    const seen=new Set([start]);
+    const queue=[start];
+
+    while(queue.length){
+        const current=queue.shift();
+        for(const edge of graph[current]){
+            if(!seen.has(edge.to)){
+                seen.add(edge.to);
+                queue.push(edge.to);
+            }
+        }
+    }
+
+    return seen.size;
+};
+
+export const explainLogicalStep = (step,startBoard,puzzle) => {
+    const target=`${cellName(step.row,step.col)} → ${valueName(step.value)}`;
+    let explanation='';
+
+    if(step.technique==='relation'){
+        explanation=findRelationReason(step,startBoard,puzzle);
+    }else if(step.technique==='triple'){
+        explanation=findTripleReason(step,startBoard);
+    }else if(step.technique==='balance'){
+        explanation=findBalanceReason(step,startBoard);
+    }else if(step.technique==='line'){
+        explanation=findLineReason(step,startBoard,puzzle);
+    }else if(step.technique==='relationChain'){
+        const count=relationComponentSizeForCell(
+            puzzle,
+            step.row,
+            step.col
+        );
+
+        explanation=`${cellName(step.row,step.col)} belongs to a connected chain of ${count||'several'} cells linked by = / × marks. There are only two possible orientations for that whole chain. One orientation is incompatible with the current row and column possibilities, so the remaining orientation forces this cell to be a ${valueName(step.value)}.`;
+    }else if(step.technique==='lookahead'){
+        explanation=`If ${cellName(step.row,step.col)} were a ${valueName(opposite(step.value))}, the simpler visible rules would eventually produce a contradiction. That possibility can therefore be eliminated, which forces a ${valueName(step.value)} here.`;
+    }else{
+        explanation=step.detail || `${cellName(step.row,step.col)} is forced to be a ${valueName(step.value)} by the current board state.`;
+    }
+
+    return {
+        target,
+        explanation,
+        technique:TECHNIQUE_LABEL[step.technique]??step.technique,
+        valueName:valueName(step.value),
+        cellName:cellName(step.row,step.col)
+    };
+};
+
+export const getNextLogicalStep = (
+    puzzle,
+    startBoard,
+    {
+        maxRank=4
+    }={}
+) => {
+    const board=cloneBoard(startBoard);
+    const patterns=getValidLinePatterns(puzzle.size);
+
+    if(
+        !isBoardPartialValid(board,puzzle.relations) ||
+        !allLinesHaveCandidate(board,puzzle.relations,patterns)
+    ){
+        return {
+            status:'contradiction',
+            step:null,
+            trace:[]
+        };
+    }
+
+    if(isBoardFull(board)){
+        return {
+            status:isBoardSolvedLegal(board,puzzle.relations)
+                ?'solved'
+                :'contradiction',
+            step:null,
+            trace:[]
+        };
+    }
+
+    const result=runLogical(
+        board,
+        puzzle,
+        maxRank,
+        true,
+        true
+    );
+
+    if(result.trace.length){
+        return {
+            status:'step',
+            step:result.trace[0],
+            trace:result.trace,
+            result
+        };
+    }
+
+    return {
+        status:result.status,
+        step:null,
+        trace:result.trace,
+        result
+    };
+};
+
 const valueAllowedAt = (board,puzzle,row,col,value,patterns) => {
     const test=cloneBoard(board);
     test[row][col]=value;
@@ -604,8 +873,8 @@ const valueAllowedAt = (board,puzzle,row,col,value,patterns) => {
     return true;
 };
 
-export const countSolutions = (puzzle,limit=2) => {
-    const board=boardFromGivens(puzzle.size,puzzle.givens);
+export const countSolutionsFromBoard = (puzzle,startBoard,limit=2) => {
+    const board=cloneBoard(startBoard);
     const patterns=getValidLinePatterns(puzzle.size);
     let count=0;
 
@@ -670,6 +939,13 @@ export const countSolutions = (puzzle,limit=2) => {
     search();
     return count;
 };
+
+export const countSolutions = (puzzle,limit=2) =>
+    countSolutionsFromBoard(
+        puzzle,
+        boardFromGivens(puzzle.size,puzzle.givens),
+        limit
+    );
 
 export const analyzePuzzle = puzzle => {
     const full=solveLogically(puzzle,{maxRank:4,recordTrace:true});

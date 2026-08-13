@@ -287,6 +287,79 @@ export const buildRelationGraph = (size,relations=[]) => {
     return graph;
 };
 
+export const findPartialRuleViolations = (board,relations=[]) => {
+    const size=board.length;
+    const half=size/2;
+    const bad=new Set();
+    const add=(row,col)=>bad.add(cellKey(row,col));
+
+    const scanLine=(values,isRow,index)=>{
+        const circles=values.filter(v=>v===CIRCLE).length;
+        const squares=values.filter(v=>v===SQUARE).length;
+
+        if(circles>half){
+            for(let i=0;i<size;i++){
+                if(values[i]===CIRCLE){
+                    add(isRow?index:i,isRow?i:index);
+                }
+            }
+        }
+
+        if(squares>half){
+            for(let i=0;i<size;i++){
+                if(values[i]===SQUARE){
+                    add(isRow?index:i,isRow?i:index);
+                }
+            }
+        }
+
+        for(let i=0;i<=size-3;i++){
+            const value=values[i];
+            if(
+                value!==EMPTY &&
+                value===values[i+1] &&
+                value===values[i+2]
+            ){
+                for(let k=0;k<3;k++){
+                    const pos=i+k;
+                    add(isRow?index:pos,isRow?pos:index);
+                }
+            }
+        }
+    };
+
+    for(let row=0;row<size;row++){
+        scanLine(board[row],true,row);
+    }
+
+    for(let col=0;col<size;col++){
+        scanLine(board.map(row=>row[col]),false,col);
+    }
+
+    for(const relation of relations){
+        const [ar,ac]=relation.a;
+        const [br,bc]=relation.b;
+        const a=board[ar][ac];
+        const b=board[br][bc];
+
+        if(a===EMPTY || b===EMPTY){
+            continue;
+        }
+
+        const invalid=
+            relation.type==='same'
+                ?a!==b
+                :a===b;
+
+        if(invalid){
+            add(ar,ac);
+            add(br,bc);
+        }
+    }
+
+    return bad;
+};
+
 export const findRuleViolations = (board,relations=[]) => {
     const size=board.length;
     const bad=new Set();

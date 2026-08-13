@@ -20,6 +20,7 @@ import neonSnake from "../games/NeonSnake.js";
 import ForestFrenzy from "../games/ForestFrenzy.js";
 import QuickThinker from "../games/QuickThinker.js";
 import SlotMachine from "../games/SlotMachine.js";
+import SurvivClone from "../games/SurvivClone.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
@@ -45,5 +46,6 @@ export const GameRegistry = [
     ForestFrenzy,
     QuickThinker,
     neonSnake,
-    SlotMachine
+    SlotMachine,
+    SurvivClone
 ];

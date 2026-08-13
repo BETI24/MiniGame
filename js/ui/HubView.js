@@ -222,7 +222,7 @@ export class HubView {
         const sortSelect = document.createElement('select');
         sortSelect.className = 'sort-select';
         sortSelect.innerHTML = `
-            <option value="standard">Standard (Bilder zuerst)</option>
+            <option value="standard">Standard</option>
             <option value="alphabetical">Alphabetisch (A-Z)</option>
             <option value="highscore">Nach Highscore</option>
         `;
@@ -234,11 +234,17 @@ export class HubView {
         
         const tagBar = document.createElement('div');
         tagBar.className = 'tag-bar';
+        tagBar.style.transition = 'height 0.35s cubic-bezier(0.4, 0, 0.2, 1)';
+        tagBar.style.overflow = 'hidden';
         
         const renderTags = () => {
+            const oldHeight = tagBar.offsetHeight;
+            if (oldHeight > 0) {
+                tagBar.style.height = oldHeight + 'px';
+            }
+
             tagBar.innerHTML = '';
             const allTags = this.getAllTags();
-            // Show up to 3 tags plus the "ALLE" button = 4 pills initially.
             const displayTags = this.tagsExpanded ? allTags : allTags.slice(0, 3);
             
             const createTagBtn = (tagName, isSpecial = false, onClick = null) => {
@@ -277,6 +283,35 @@ export class HubView {
                     this.tagsExpanded = false;
                     renderTags();
                 }));
+            }
+
+            if (oldHeight > 0) {
+                // Determine new height
+                tagBar.style.height = 'auto';
+                const newHeight = tagBar.offsetHeight;
+                
+                // Revert to old height and force reflow
+                tagBar.style.height = oldHeight + 'px';
+                tagBar.offsetHeight; 
+                
+                // Animate to new height
+                tagBar.style.height = newHeight + 'px';
+
+                // Fade in pills smoothly
+                Array.from(tagBar.children).forEach((child, index) => {
+                    child.style.opacity = '0';
+                    child.style.transform = 'scale(0.95) translateY(-5px)';
+                    child.style.transition = `all 0.3s cubic-bezier(0.4, 0, 0.2, 1) ${index * 0.02}s`;
+                    requestAnimationFrame(() => {
+                        child.style.opacity = '1';
+                        child.style.transform = 'scale(1) translateY(0)';
+                    });
+                });
+
+                // Cleanup explicit height after animation completes
+                setTimeout(() => {
+                    tagBar.style.height = 'auto';
+                }, 350);
             }
         };
         renderTags();

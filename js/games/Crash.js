@@ -5,7 +5,7 @@ export default {
         description: 'High Stakes Krypto-Crash. Lass den Multiplikator steigen, aber rette deinen Einsatz vor dem Absturz!',
         icon: '🚀',
         imageUrl: 'js/assets/images/Crash.png',
-        tags: ['Casino', 'Canvas', 'Risk']
+        tags: ['Casino']
     },
     init: (container, services) => {
         // --- State Management ---

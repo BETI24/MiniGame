@@ -63,7 +63,7 @@ export default {
         description: 'Erobere Inseln, verstärke deine Front und schlage die KI in Echtzeit.',
         icon: '🏝️',
         imageUrl: 'js/assets/images/IslandConquest.png',
-        tags: ['Strategy', 'Realtime', 'Conquest', 'AI']
+        tags: ['Strategy']
     },
 
     init: (container, services) => {

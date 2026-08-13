@@ -5,7 +5,7 @@ export default {
         description: 'Ein spannender Twist des Snake-Klassikers im Neon-Look.',
         icon: '🐍',
         imageUrl: 'js/assets/images/Snake.png', // Passe den Pfad an, falls nötig
-        tags: ['Action', 'Arcade', 'Classic']
+        tags: ['Arcade', 'Action']
     },
     init: (container, services) => {
 

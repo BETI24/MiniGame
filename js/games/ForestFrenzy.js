@@ -267,7 +267,7 @@ export default {
         name: 'Forest Frenzy',
         description: 'Cartoon shooting-gallery hunt: finish animal quotas, find hidden gimmicks and chase a high score.',
         icon: '🎯',
-        tags: ['Shooter', 'Arcade', 'Hunting', 'Highscore']
+        tags: ['Shooter', 'Arcade']
     },
 
     init: (container, services) => {

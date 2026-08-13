@@ -68,7 +68,7 @@ export default {
         description: 'Lass Kugeln durch das Peg-Feld fallen, wähle Risiko und Reihenanzahl und jage hohe Multiplikatoren.',
         icon: '🔻',
         imageUrl: 'js/assets/images/Plinko.png',
-        tags: ['Arcade', 'Chance', 'Physics']
+        tags: ['Casino', 'Arcade']
     },
 
     init: (container, services) => {

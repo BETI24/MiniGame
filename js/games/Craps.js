@@ -5,7 +5,7 @@ export default {
         description: 'Der laute Casino-Klassiker mit echter 3D-Physik. Setze auf die Pass Line und werde zum Shooter!',
         icon: '🎲',
         imageUrl: 'js/assets/images/Craps.png',
-        tags: ['Casino', 'Dice', '3D', 'Physics']
+        tags: ['Casino']
     },
     init: (container, services) => {
         // --- State Management ---

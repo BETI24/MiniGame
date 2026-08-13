@@ -5,7 +5,7 @@ export default {
         description: 'Ein extrem süchtig machender Neon-Zombieshooter mit dezentem Sidebar-Design, ausbalancierten Bossen, Low-HP-Alarmeffekten, Web-Audio-Sounds, Granaten und Waffen-Drops.',
         icon: '⚡',
         imageUrl: 'js/assets/images/zombie.png',
-        tags: ['Action', 'Shooter', 'Neon', 'Arcade']
+        tags: ['Shooter', 'Action']
     },
     init: (container, services) => {
         const style = document.createElement('style');

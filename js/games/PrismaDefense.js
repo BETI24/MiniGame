@@ -5,7 +5,7 @@ export default {
         description: 'Verteidige deinen Quanten-Kern gegen ankommende Neon-Viren. Baue Türme und überlebe so lange wie möglich.',
         icon: '🛡️',
         imageUrl: 'js/assets/images/PrismaDefense.png',
-        tags: ['Tower Defense', 'Action', 'Neon']
+        tags: ['Strategy', 'Action']
     },
     init: (container, services) => {
         // --- Web Audio API (Töne) ---

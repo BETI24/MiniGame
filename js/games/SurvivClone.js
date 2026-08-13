@@ -4,7 +4,7 @@ export const manifest = {
     id: 'surviv-clone',
     name: 'Zurviv Zone',
     description: 'Top-down survival sandbox inspired by classic browser battle royale gameplay.',
-    tags: ['action', 'survival', 'shooter'],
+    tags: ['Shooter', 'Action'],
     imageUrl: "js/assets/images/ZurvivalZone.png",
     
 };

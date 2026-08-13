@@ -5,7 +5,7 @@ export default {
         description: 'Der Casino-Klassiker.',
         icon: '🃏',
         imageUrl: 'js/assets/images/blackjack.png',
-        tags: ['Karten', 'Casino', 'Logik']
+        tags: ['Casino', 'Logic']
     },
     init: (container, services) => {
         // --- State Management ---

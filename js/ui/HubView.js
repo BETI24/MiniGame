@@ -8,9 +8,20 @@ export class HubView {
         this.router = router;
         this.gridContainer = null;
         this.hideCasino = false;
+        this.selectedTag = null;
+        this.sortMode = 'standard';
+        this.tagsExpanded = false;
         this.heroStats = { moduleCount: null, recordValue: null };
         this.injectStyles();
         this.render();
+    }
+
+    getAllTags() {
+        const tagSet = new Set();
+        GameRegistry.forEach(gameModule => {
+            gameModule.manifest.tags.forEach(tag => tagSet.add(tag));
+        });
+        return Array.from(tagSet).sort((a, b) => a.localeCompare(b));
     }
 
     injectStyles() {
@@ -71,6 +82,77 @@ export class HubView {
                 transform: translateY(-4px);
                 box-shadow: 0 10px 30px rgba(0, 255, 255, 0.15);
             }
+            .tag-bar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                justify-content: center;
+                margin: 0;
+            }
+            .controls-row {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                max-width: 800px;
+                margin: 0 auto 24px auto;
+                padding: 0 16px;
+            }
+            .search-and-sort {
+                display: flex;
+                gap: 12px;
+                width: 100%;
+            }
+            .search-container {
+                flex: 1;
+                margin: 0 !important;
+            }
+            .sort-select {
+                background: rgba(20, 20, 30, 0.6);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #a0a0b0;
+                padding: 0 16px;
+                border-radius: 12px;
+                font-family: inherit;
+                font-size: 0.95rem;
+                cursor: pointer;
+                outline: none;
+                backdrop-filter: blur(8px);
+                transition: all 0.25s ease;
+            }
+            .sort-select:hover, .sort-select:focus {
+                color: #fff;
+                border-color: rgba(0, 255, 255, 0.4);
+                box-shadow: 0 0 12px rgba(0, 255, 255, 0.15);
+            }
+            .sort-select option {
+                background: #1a1a24;
+                color: #fff;
+            }
+            .tag-pill {
+                background: rgba(20, 20, 30, 0.6);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #a0a0b0;
+                padding: 8px 18px;
+                border-radius: 20px;
+                font-size: 0.85rem;
+                font-weight: 600;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                cursor: pointer;
+                backdrop-filter: blur(8px);
+                transition: all 0.25s ease;
+            }
+            .tag-pill:hover {
+                color: #fff;
+                border-color: rgba(0, 255, 255, 0.4);
+                box-shadow: 0 0 12px rgba(0, 255, 255, 0.15);
+            }
+            .tag-pill.active {
+                background: rgba(0, 255, 255, 0.15);
+                color: #00ffff;
+                border-color: #00ffff;
+                box-shadow: 0 0 16px rgba(0, 255, 255, 0.4), inset 0 0 8px rgba(0, 255, 255, 0.2);
+            }
         `;
         document.head.appendChild(styleEl);
     }
@@ -124,6 +206,12 @@ export class HubView {
             </div>
         `;
 
+        const controlsRow = document.createElement('div');
+        controlsRow.className = 'controls-row';
+
+        const searchAndSort = document.createElement('div');
+        searchAndSort.className = 'search-and-sort';
+
         const searchWrapper = document.createElement('div');
         searchWrapper.className = 'search-container sticky-search';
         searchWrapper.innerHTML = `
@@ -131,9 +219,77 @@ export class HubView {
             <input type="text" class="search-input" placeholder="Spiele oder Tags suchen..." aria-label="Spiele suchen">
         `;
 
+        const sortSelect = document.createElement('select');
+        sortSelect.className = 'sort-select';
+        sortSelect.innerHTML = `
+            <option value="standard">Standard (Bilder zuerst)</option>
+            <option value="alphabetical">Alphabetisch (A-Z)</option>
+            <option value="highscore">Nach Highscore</option>
+        `;
+
+        searchAndSort.appendChild(searchWrapper);
+        searchAndSort.appendChild(sortSelect);
+
         const searchInput = searchWrapper.querySelector('.search-input');
+        
+        const tagBar = document.createElement('div');
+        tagBar.className = 'tag-bar';
+        
+        const renderTags = () => {
+            tagBar.innerHTML = '';
+            const allTags = this.getAllTags();
+            // Show up to 3 tags plus the "ALLE" button = 4 pills initially.
+            const displayTags = this.tagsExpanded ? allTags : allTags.slice(0, 3);
+            
+            const createTagBtn = (tagName, isSpecial = false, onClick = null) => {
+                const btn = document.createElement('button');
+                btn.className = 'tag-pill';
+                
+                if (!isSpecial && this.selectedTag === tagName) btn.classList.add('active');
+                if (isSpecial && tagName === 'ALLE' && !this.selectedTag) btn.classList.add('active');
+                
+                btn.textContent = tagName;
+                btn.addEventListener('click', onClick);
+                return btn;
+            };
+
+            tagBar.appendChild(createTagBtn('ALLE', true, () => {
+                this.selectedTag = null;
+                renderTags();
+                this.renderGrid(searchInput.value);
+            }));
+
+            displayTags.forEach(tag => {
+                tagBar.appendChild(createTagBtn(tag, false, () => {
+                    this.selectedTag = this.selectedTag === tag ? null : tag;
+                    renderTags();
+                    this.renderGrid(searchInput.value);
+                }));
+            });
+
+            if (!this.tagsExpanded && allTags.length > 3) {
+                tagBar.appendChild(createTagBtn('+ Mehr', true, () => {
+                    this.tagsExpanded = true;
+                    renderTags();
+                }));
+            } else if (this.tagsExpanded && allTags.length > 3) {
+                tagBar.appendChild(createTagBtn('- Weniger', true, () => {
+                    this.tagsExpanded = false;
+                    renderTags();
+                }));
+            }
+        };
+        renderTags();
+
+        controlsRow.appendChild(searchAndSort);
+        controlsRow.appendChild(tagBar);
+
         searchInput.addEventListener('input', (e) => {
             this.renderGrid(e.target.value);
+        });
+        sortSelect.addEventListener('change', (e) => {
+            this.sortMode = e.target.value;
+            this.renderGrid(searchInput.value);
         });
 
         this.gridContainer = document.createElement('div');
@@ -185,7 +341,7 @@ export class HubView {
         }
 
         container.appendChild(hero);
-        container.appendChild(searchWrapper);
+        container.appendChild(controlsRow);
         container.appendChild(this.gridContainer);
         this.root.appendChild(container);
 
@@ -215,11 +371,29 @@ export class HubView {
             if (this.hideCasino && manifest.tags.some(tag => tag.toLowerCase() === 'casino')) {
                 return false;
             }
+            if (this.selectedTag && !manifest.tags.includes(this.selectedTag)) {
+                return false;
+            }
             const inName = manifest.name.toLowerCase().includes(query);
             const inDesc = manifest.description.toLowerCase().includes(query);
             const inTags = manifest.tags.some(tag => tag.toLowerCase().includes(query));
 
             return inName || inDesc || inTags;
+        }).sort((a, b) => {
+            if (this.sortMode === 'alphabetical') {
+                return a.manifest.name.localeCompare(b.manifest.name);
+            }
+            if (this.sortMode === 'highscore') {
+                const scoreA = services.highscores.getHighscore(a.manifest.id) || 0;
+                const scoreB = services.highscores.getHighscore(b.manifest.id) || 0;
+                return scoreB - scoreA;
+            }
+            // default: 'standard'
+            const hasImgA = !!a.manifest.imageUrl;
+            const hasImgB = !!b.manifest.imageUrl;
+            if (hasImgA && !hasImgB) return -1;
+            if (!hasImgA && hasImgB) return 1;
+            return a.manifest.name.localeCompare(b.manifest.name);
         });
 
         this.updateHeroStats(filteredGames);

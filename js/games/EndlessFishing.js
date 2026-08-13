@@ -241,7 +241,7 @@ export default {
         name: 'Endless Fishing',
         description: 'Fange kleine Fische, verwende sie als Köder für größere Beute und meistere harte Fischkämpfe.',
         icon: '🎣',
-        tags: ['Fishing', 'Arcade', 'Progression', 'Highscore']
+        tags: ['Arcade', 'Action']
     },
 
     init: (container, services) => {

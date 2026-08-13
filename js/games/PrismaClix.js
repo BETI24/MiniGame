@@ -5,7 +5,7 @@ export default {
         description: 'Ein rasantes Idle-Klicker-Spiel. Sammle Prisma, kaufe Upgrades und maximiere deine Produktion.',
         icon: '💎',
         imageUrl: 'js/assets/images/PrismaClix.png',
-        tags: ['Clicker', 'Idle', 'Action']
+        tags: ['Action', 'Arcade']
     },
     init: (container, services) => {
         // --- Spielzustand (State) ---

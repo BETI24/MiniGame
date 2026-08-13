@@ -5,7 +5,7 @@ export default {
         description: 'Klicke auf die erscheinenden Leucht-Orbs, bevor die Zeit abläuft. Teste deine Reaktionszeit.',
         icon: '🎯',
         imageUrl: 'js/assets/images/neonClicker.png',
-        tags: ['Reflex', 'DOM', 'Speed']
+        tags: ['Arcade', 'Action']
     },
     init: (container, services) => {
         // --- Interner State ---

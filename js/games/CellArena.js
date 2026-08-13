@@ -45,7 +45,7 @@ export default {
     name: 'Cell Arena',
     description: 'Wachse, teile dich, verschlinge Gegner und kämpfe dich an die Spitze der Arena.',
     icon: '🟢',
-    tags: ['Arcade','Arena','Survival']
+    tags: ['Action', 'Arcade']
   },
 
   init: (container, services) => {

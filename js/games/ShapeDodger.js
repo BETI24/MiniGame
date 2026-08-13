@@ -6,7 +6,7 @@ export default {
       "Überlebe einen immer härter werdenden Meteor- und Bullet-Hell-Sturm.",
     icon: "🚀",
     imageUrl: "js/assets/images/ShapeDodger.png",
-    tags: ["Survival", "Arcade", "Bullet Hell"],
+    tags: ['Action', 'Arcade'],
   },
 
   init: (container, services) => {

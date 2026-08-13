@@ -87,12 +87,7 @@ export default {
             'Decke Edelsteine auf, meide die Minen und sichere deinen Gewinn rechtzeitig.',
         icon: '💎',
         imageUrl: 'js/assets/images/Mines.png',
-        tags: [
-            'Casino',
-            'Risk',
-            'Strategy',
-            'Tokens'
-        ]
+        tags: ['Casino', 'Logic']
     },
 
 

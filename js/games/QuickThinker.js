@@ -24,7 +24,7 @@ export default {
         name:'QuickThinker',
         description:'Logic puzzles with circles, squares, relation clues and guaranteed no-guess solutions.',
         icon:'🧠',
-        tags:['Puzzle','Logic','Singleplayer']
+        tags: ['Puzzle', 'Logic']
     },
 
     init:(container,services)=>{

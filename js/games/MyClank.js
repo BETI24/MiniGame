@@ -59,7 +59,7 @@ export default {
     description:
       "Fill the grid with circles and squares while obeying every logic rule.",
     icon: "🧠",
-    tags: ["Puzzle", "Logic", "Singleplayer"],
+    tags: ['Puzzle', 'Logic'],
   },
 
   init: (container) => {

@@ -70,7 +70,7 @@ export default {
         name: 'Neon Flail',
         description: 'Schwinge eine tödliche Energiekugel, sammle Masse und dominiere eine neonbeleuchtete Physics-Arena.',
         icon: '☄️',
-        tags: ['Arcade','Arena','Physics','AI','Highscore']
+        tags: ['Action', 'Arcade']
     },
 
     init: (container, services) => {

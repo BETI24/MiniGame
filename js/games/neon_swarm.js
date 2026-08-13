@@ -4,8 +4,8 @@ export default {
         name: 'Neon Swarm',
         description: 'Überlebe den endlosen Neon-Schwarm! Weiche aus, sammle Energie und wähle mächtige Upgrades, um zu überleben.',
         icon: '✨',
-        imageUrl: 'js/assets/images/NeonSwarm.png',
-        tags: ['Action', 'Survivor', 'Neon', 'Arcade']
+        //imageUrl: 'js/assets/images/NeonSwarm.png',
+        tags: ['Shooter', 'Action']
     },
     init: (container, services) => {
         let audioCtx = null;

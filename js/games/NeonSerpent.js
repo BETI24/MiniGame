@@ -66,7 +66,7 @@ export default {
         name: 'Neon Serpent',
         description: 'Wachse, booste, umkreise Gegner und werde zur längsten Schlange der Arena.',
         icon: '🐍',
-        tags: ['Arcade','Arena','Snake','Survival','Highscore']
+        tags: ['Arcade', 'Action']
     },
 
     init: (container, services) => {

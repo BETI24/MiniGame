@@ -9,6 +9,7 @@ export default {
         name: 'Nexus Slots',
         description: 'Klassischer 5-Walzen Slot mit epischen Gewinnen.',
         icon: '🎰',
+        imageUrl: 'js/assets/images/Slots.png',
         tags: ['Casino', 'Glück', 'Slots']
     },
 

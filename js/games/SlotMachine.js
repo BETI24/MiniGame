@@ -431,7 +431,7 @@ export default {
         // ─────────────────────────────────────────────────────────────────────
         const REEL_COUNT = 5;
         const ROW_COUNT  = 3;
-        const SYM_H      = 100; // px pro Symbol (CSS)
+        let   SYM_H      = 100; // measured from DOM after first render
 
         let balance     = services.highscores.getHighscore('slot_machine') || 1000;
         let bet         = 10;
@@ -461,14 +461,15 @@ export default {
     width: 100%;
     height: 100%;
     min-height: 580px;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    grid-template-rows: 1fr;
     align-items: center;
     justify-content: center;
-    background: #0a0a0f;
-    background-image:
-        radial-gradient(ellipse at 20% 10%, rgba(180,120,0,0.12) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 90%, rgba(180,120,0,0.08) 0%, transparent 50%);
+    gap: 24px;
+    padding: 24px;
+    box-sizing: border-box;
+    background: #06050a;
     font-family: 'Georgia', serif;
     color: #f5e6c0;
     position: relative;
@@ -476,19 +477,227 @@ export default {
     user-select: none;
 }
 
+/* Ambient glow orbs – behind everything */
+.sm-root::before,
+.sm-root::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+    filter: blur(80px);
+}
+.sm-root::before {
+    width: 55vw; height: 55vw;
+    top: -20%; left: -10%;
+    background: radial-gradient(ellipse, rgba(180,120,0,0.14) 0%, transparent 70%);
+    animation: orbPulse1 9s ease-in-out infinite;
+}
+.sm-root::after {
+    width: 45vw; height: 45vw;
+    bottom: -15%; right: -8%;
+    background: radial-gradient(ellipse, rgba(120,80,180,0.10) 0%, transparent 70%);
+    animation: orbPulse2 11s ease-in-out infinite;
+}
+@keyframes orbPulse1 {
+    0%,100% { transform: scale(1)   translate(0,0);      opacity: 0.7; }
+    50%      { transform: scale(1.18) translate(4%, 6%);  opacity: 1; }
+}
+@keyframes orbPulse2 {
+    0%,100% { transform: scale(1)   translate(0,0);      opacity: 0.6; }
+    50%      { transform: scale(1.22) translate(-5%,-4%); opacity: 0.9; }
+}
+/* Win burst: full-screen soft glow */
+.sm-dust::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(255,200,0,0.22) 0%, rgba(255,120,0,0.08) 50%, transparent 100%);
+    opacity: 0;
+    transition: opacity 1.2s ease-out;
+    pointer-events: none;
+    z-index: -1;
+}
+.sm-root.win-burst .sm-dust::after {
+    opacity: 1;
+    transition: opacity 0.1s ease-out;
+}
+
+/* Floating gold dust particles (CSS-only, random via nth-child) */
+.sm-dust {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+.sm-dust-p {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255,215,0,0.55);
+    animation: dustFloat linear infinite;
+}
+@keyframes dustFloat {
+    0%   { transform: translateY(110%) rotate(0deg);   opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 0.6; }
+    100% { transform: translateY(-10%) rotate(540deg); opacity: 0; }
+}
+
+/* ── Side Panels ───────────────────────────────────────────── */
+.sm-side-panel {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+    max-width: 220px;
+    width: 100%;
+    align-self: stretch;
+    justify-content: flex-start;
+    padding-top: 8px;
+}
+
+/* Jackpot panel */
+.sm-jackpot-panel {
+    background: linear-gradient(180deg, #140e00 0%, #0a0800 100%);
+    border: 1px solid rgba(255,200,50,0.22);
+    border-radius: 16px;
+    padding: 18px 14px 16px;
+    text-align: center;
+    box-shadow: 0 0 30px rgba(180,130,0,0.15), inset 0 1px 0 rgba(255,230,100,0.08);
+    position: relative;
+    overflow: hidden;
+}
+.sm-jackpot-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 15%; right: 15%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,200,50,0.5), transparent);
+}
+.sm-jackpot-eye {
+    font-size: 1.6rem;
+    margin-bottom: 4px;
+    animation: jackEye 3s ease-in-out infinite;
+}
+@keyframes jackEye {
+    0%,100% { transform: scale(1); filter: drop-shadow(0 0 4px rgba(255,215,0,0.4)); }
+    50%      { transform: scale(1.15); filter: drop-shadow(0 0 14px rgba(255,215,0,0.9)); }
+}
+.sm-jackpot-label {
+    font-size: 0.55rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: #7a6020;
+    margin-bottom: 8px;
+}
+.sm-jackpot-title {
+    font-size: 0.75rem;
+    font-weight: bold;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #c89820;
+    margin-bottom: 10px;
+}
+.sm-jackpot-amount {
+    font-size: clamp(1.05rem, 1.6vw, 1.4rem);
+    font-weight: 900;
+    color: #ffd700;
+    letter-spacing: 0.03em;
+    text-shadow: 0 0 16px rgba(255,215,0,0.7), 0 0 32px rgba(255,165,0,0.4);
+    animation: jackAmtPulse 2.2s ease-in-out infinite alternate;
+}
+@keyframes jackAmtPulse {
+    from { text-shadow: 0 0 10px rgba(255,215,0,0.5); }
+    to   { text-shadow: 0 0 24px rgba(255,215,0,0.9), 0 0 50px rgba(255,130,0,0.5); }
+}
+.sm-jackpot-sub {
+    font-size: 0.56rem;
+    letter-spacing: 0.16em;
+    color: #4a3810;
+    text-transform: uppercase;
+    margin-top: 8px;
+}
+
+/* Last wins panel */
+.sm-wins-panel {
+    background: linear-gradient(180deg, #0e0c00 0%, #080600 100%);
+    border: 1px solid rgba(255,200,50,0.18);
+    border-radius: 16px;
+    padding: 14px 12px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,230,100,0.06);
+}
+.sm-wins-panel-title {
+    font-size: 0.55rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: #5a4820;
+    margin-bottom: 10px;
+    text-align: center;
+    padding-bottom: 7px;
+    border-bottom: 1px solid rgba(255,200,50,0.08);
+}
+.sm-wins-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.sm-win-entry {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    background: rgba(255,200,50,0.04);
+    border: 1px solid rgba(255,200,50,0.07);
+    animation: winEntryPop 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards;
+}
+@keyframes winEntryPop {
+    from { transform: translateX(16px); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+.sm-win-entry-sym  { font-size: 1rem; flex-shrink: 0; }
+.sm-win-entry-info { flex: 1; min-width: 0; }
+.sm-win-entry-desc { font-size: 0.65rem; color: #8a7040; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sm-win-entry-amt  { font-size: 0.78rem; font-weight: bold; color: #ffd700; text-align: right; flex-shrink: 0; white-space: nowrap; }
+.sm-wins-empty {
+    font-size: 0.62rem;
+    color: #2a2010;
+    text-align: center;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 8px 0;
+}
+
+/* ── Responsive: hide panels on tablet/mobile ─────────────────── */
+@media (max-width: 1024px) {
+    .sm-root {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        padding: 12px;
+        gap: 0;
+        align-items: center;
+        justify-items: center;
+    }
+    .sm-side-panel { display: none; }
+}
+
 /* ── Cabinet / Frame ──────────────────────────────────────────── */
 .sm-cabinet {
     background: linear-gradient(180deg, #1a1408 0%, #0f0c05 100%);
     border: 2px solid #8a6800;
     border-radius: 24px;
-    padding: 24px 28px 20px;
+    padding: clamp(18px, 3vw, 28px) clamp(18px, 3vw, 32px) clamp(14px, 2vw, 22px);
     box-shadow:
         0 0 0 1px rgba(255,200,50,0.15),
         0 0 40px rgba(180,140,0,0.25),
         inset 0 1px 0 rgba(255,230,100,0.1),
         0 20px 80px rgba(0,0,0,0.8);
-    width: min(95vw, 700px);
+    width: min(90vw, 1100px);
     position: relative;
+    z-index: 2;
 }
 
 /* ── Cabinet top shine ─────────────────────────────────────────── */
@@ -548,7 +757,7 @@ export default {
 /* ── Single Reel ──────────────────────────────────────────────── */
 .sm-reel {
     flex: 1;
-    height: 300px;
+    height: calc(var(--sym-h, 100px) * 3);
     overflow: hidden;
     border-radius: 6px;
     position: relative;
@@ -578,11 +787,11 @@ export default {
 /* ── Individual Symbol Cell ───────────────────────────────────── */
 .sm-symbol {
     width: 100%;
-    height: 100px;
+    height: var(--sym-h, 100px);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: clamp(2rem, 4vw, 2.8rem);
+    font-size: clamp(2rem, 4.5vw, 3.4rem);
     border-bottom: 1px solid rgba(255,255,255,0.04);
     position: relative;
     transition: filter 0.2s;
@@ -597,8 +806,8 @@ export default {
     pointer-events: none;
     z-index: 6;
 }
-.sm-sep-top    { top: 100px; }
-.sm-sep-bottom { top: 200px; }
+.sm-sep-top    { top: var(--sym-h, 100px); }
+.sm-sep-bottom { top: calc(var(--sym-h, 100px) * 2); }
 
 /* ── Win Highlight on symbol cells ───────────────────────────── */
 .sm-symbol.win-glow {
@@ -613,8 +822,8 @@ export default {
 .sm-payline-bar {
     position: absolute;
     left: 4px; right: 4px;
-    top: 104px;
-    height: 96px;
+    top: calc(var(--sym-h, 100px) + 4px);
+    height: calc(var(--sym-h, 100px) - 8px);
     pointer-events: none;
     z-index: 3;
     border-radius: 4px;
@@ -754,18 +963,132 @@ export default {
 }
 
 /* ── Win Message ──────────────────────────────────────────────── */
+/* ── Status message (neutral, non-win) ───────────────────────────── */
 .sm-win-msg {
-    min-height: 28px;
+    min-height: 22px;
     text-align: center;
-    font-size: 0.85rem;
-    letter-spacing: 0.08em;
-    margin-top: 8px;
-    color: #8a7040;
-    transition: all 0.3s;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    margin-top: 6px;
+    color: #4a3820;
+    transition: color 0.4s, opacity 0.4s;
+    text-transform: uppercase;
 }
 .sm-win-msg.active {
+    color: #8a6820;
+}
+
+/* ── Win Banner Overlay ──────────────────────────────────── */
+.sm-win-banner {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 26;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    border-radius: 18px;
+    padding: 0;
+    width: max-content;
+    max-width: min(88%, 480px);
+    /* start state for pop-in */
+    transform: translate(-50%, -50%) scale(0.3);
+}
+.sm-win-banner.wb-show {
+    pointer-events: all;
+    animation: wbPopIn 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.sm-win-banner.wb-hide {
+    pointer-events: none;
+    animation: wbFadeOut 0.38s ease forwards;
+}
+@keyframes wbPopIn {
+    from { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+    to   { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
+}
+@keyframes wbFadeOut {
+    from { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+    to   { transform: translate(-50%, -50%) scale(0.82); opacity: 0; }
+}
+
+/* ── Mini tier ────────────────────────────────────────────────── */
+.sm-win-banner.wb-mini {
+    background: rgba(8,7,0,0.88);
+    border: 1px solid rgba(255,215,0,0.28);
+    padding: 10px 24px 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,230,100,0.07);
+}
+.sm-win-banner.wb-mini .wb-label {
+    font-size: 0.58rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: #7a6020;
+    margin-bottom: 2px;
+}
+.sm-win-banner.wb-mini .wb-amount {
+    font-size: clamp(1.4rem, 4vw, 1.9rem);
+    font-weight: 900;
     color: #ffd700;
-    text-shadow: 0 0 12px rgba(255,215,0,0.5);
+    letter-spacing: 0.04em;
+    text-shadow: 0 0 12px rgba(255,215,0,0.55), 0 2px 4px rgba(0,0,0,0.7);
+}
+
+/* ── Nice tier ────────────────────────────────────────────────── */
+.sm-win-banner.wb-nice {
+    background: rgba(5,4,0,0.92);
+    border: 1px solid rgba(255,215,0,0.4);
+    padding: 14px 32px 16px;
+    box-shadow:
+        0 0 0 1px rgba(255,180,0,0.08),
+        0 8px 40px rgba(0,0,0,0.75),
+        0 0 60px rgba(255,180,0,0.12),
+        inset 0 1px 0 rgba(255,230,100,0.10);
+    backdrop-filter: blur(6px);
+}
+.sm-win-banner.wb-nice .wb-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: #a07830;
+    margin-bottom: 3px;
+}
+.sm-win-banner.wb-nice .wb-amount {
+    font-size: clamp(1.9rem, 5.5vw, 2.8rem);
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    background: linear-gradient(180deg, #fff5c0 0%, #ffd700 45%, #c87800 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 10px rgba(255,215,0,0.7));
+    animation: niceGlowPulse 1s ease-in-out infinite alternate;
+}
+@keyframes niceGlowPulse {
+    from { filter: drop-shadow(0 0 8px rgba(255,215,0,0.5)); }
+    to   { filter: drop-shadow(0 0 22px rgba(255,180,0,0.95)) drop-shadow(0 0 40px rgba(255,120,0,0.5)); }
+}
+.sm-win-banner.wb-nice .wb-sub {
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255,215,0,0.45);
+    margin-top: 4px;
+}
+
+/* ── Bigwin overlay: progress bar auto-dismiss strip ─────────────── */
+.sm-bigwin-progress {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: rgba(255,215,0,0.15);
+    border-radius: 0 0 24px 24px;
+    overflow: hidden;
+}
+.sm-bigwin-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #b87000, #ffd700, #ffe680);
+    transform-origin: left;
+    box-shadow: 0 0 8px rgba(255,215,0,0.6);
 }
 
 /* ── Particles Layer ──────────────────────────────────────────── */
@@ -1112,10 +1435,63 @@ export default {
         particlesLayer.className = 'sm-particles';
         root.appendChild(particlesLayer);
 
+        // Gold dust layer (ambient floating particles)
+        const dustLayer = document.createElement('div');
+        dustLayer.className = 'sm-dust';
+        root.appendChild(dustLayer);
+        (() => {
+            const dustCount = 28;
+            for (let i = 0; i < dustCount; i++) {
+                const p = document.createElement('div');
+                p.className = 'sm-dust-p';
+                const sz = 1.5 + Math.random() * 2.5;
+                const dur = 14 + Math.random() * 22;
+                const delay = -(Math.random() * dur); // stagger
+                const leftPct = Math.random() * 100;
+                p.style.cssText = `
+                    width:${sz}px; height:${sz}px;
+                    left:${leftPct}%;
+                    bottom:0;
+                    opacity:${0.2 + Math.random() * 0.5};
+                    animation-duration:${dur}s;
+                    animation-delay:${delay}s;
+                    filter: blur(${Math.random() > 0.5 ? 0.5 : 0}px);
+                `;
+                dustLayer.appendChild(p);
+            }
+        })();
+
+        // Left side panel – Jackpot
+        const leftPanel = document.createElement('div');
+        leftPanel.className = 'sm-side-panel sm-panel-left';
+        leftPanel.innerHTML = `
+            <div class="sm-jackpot-panel">
+                <div class="sm-jackpot-eye">🎰</div>
+                <div class="sm-jackpot-label">Progressive</div>
+                <div class="sm-jackpot-title">JACKPOT</div>
+                <div class="sm-jackpot-amount" id="sm-jackpot-amount">&euro; 1.284.920,00</div>
+                <div class="sm-jackpot-sub">Nexus Network &middot; Live</div>
+            </div>
+        `;
+        root.appendChild(leftPanel);
+
         // Cabinet
         const cabinet = document.createElement('div');
         cabinet.className = 'sm-cabinet';
         root.appendChild(cabinet);
+
+        // Right side panel – Last wins
+        const rightPanel = document.createElement('div');
+        rightPanel.className = 'sm-side-panel sm-panel-right';
+        rightPanel.innerHTML = `
+            <div class="sm-wins-panel">
+                <div class="sm-wins-panel-title">Letzte Gewinne</div>
+                <div class="sm-wins-list" id="sm-wins-list">
+                    <div class="sm-wins-empty">Noch keine Gewinne</div>
+                </div>
+            </div>
+        `;
+        root.appendChild(rightPanel);
 
         // Title
         const title = document.createElement('div');
@@ -1268,6 +1644,17 @@ export default {
         cabinet.appendChild(bigwinOverlay);
         bigwinOverlay.addEventListener('click', dismissBigWin);
 
+        // Win Banner (mini & nice tiers – overlays reels frame area)
+        const winBanner = document.createElement('div');
+        winBanner.className = 'sm-win-banner';
+        winBanner.id = 'sm-win-banner';
+        winBanner.innerHTML = `
+            <div class="wb-label" id="wb-label"></div>
+            <div class="wb-amount" id="wb-amount"></div>
+            <div class="wb-sub" id="wb-sub"></div>
+        `;
+        cabinet.appendChild(winBanner);
+
         // ─────────────────────────────────────────────────────────────────────
         //  RULES OVERLAY
         // ─────────────────────────────────────────────────────────────────────
@@ -1386,6 +1773,64 @@ export default {
         renderStaticReels();
         updateUI();
         setLastWin(0);
+
+        // ── Measure real symbol height so JS animation math is accurate ──────────
+        // Set CSS custom property + update SYM_H from actual rendered size
+        const measureAndApplySYMH = () => {
+            const firstCell = reelEls[0]?.querySelector('.sm-symbol');
+            if (firstCell) {
+                const h = firstCell.getBoundingClientRect().height;
+                if (h > 0) {
+                    SYM_H = h;
+                    root.style.setProperty('--sym-h', `${h}px`);
+                }
+            }
+        };
+        // Run once now; re-run on resize with debounce so spin math stays correct
+        measureAndApplySYMH();
+        let resizeDebounce = null;
+        const onResize = () => {
+            clearTimeout(resizeDebounce);
+            resizeDebounce = setTimeout(measureAndApplySYMH, 120);
+        };
+        window.addEventListener('resize', onResize);
+
+        // ── Jackpot ticker (increments ~€1–2 every 2.5 s) ──────────────────
+        let jackpotVal = 1_284_920 + Math.random() * 200;
+        const fmtJackpot = (v) =>
+            '€ ' + Math.floor(v).toLocaleString('de-DE') + ',00';
+        const jackpotEl = document.getElementById('sm-jackpot-amount');
+        if (jackpotEl) jackpotEl.textContent = fmtJackpot(jackpotVal);
+        const jackpotInterval = setInterval(() => {
+            jackpotVal += 0.8 + Math.random() * 1.8;
+            if (jackpotEl) jackpotEl.textContent = fmtJackpot(jackpotVal);
+        }, 2400);
+
+        // ── Last wins feed ──────────────────────────────────────────
+        const lastWins = [];  // [{emoji, desc, amount}]
+        const MAX_WINS_SHOWN = 5;
+        const winsListEl = document.getElementById('sm-wins-list');
+
+        const pushLastWin = (winData) => {
+            lastWins.unshift(winData);
+            if (lastWins.length > MAX_WINS_SHOWN) lastWins.pop();
+            if (!winsListEl) return;
+            winsListEl.innerHTML = lastWins.map(w => `
+                <div class="sm-win-entry">
+                    <div class="sm-win-entry-sym">${w.emoji}</div>
+                    <div class="sm-win-entry-info">
+                        <div class="sm-win-entry-desc">${w.desc}</div>
+                    </div>
+                    <div class="sm-win-entry-amt">€ ${w.amount.toFixed(0)}</div>
+                </div>
+            `).join('');
+        };
+
+        // Win burst: briefly pulse the ambient orb gold
+        const triggerWinBurst = () => {
+            root.classList.add('win-burst');
+            setTimeout(() => root.classList.remove('win-burst'), 900);
+        };
 
         // ─────────────────────────────────────────────────────────────────────
         //  SPIN ANIMATION
@@ -1634,6 +2079,7 @@ export default {
         //  BIG WIN OVERLAY
         // ─────────────────────────────────────────────────────────────────────
         let bigWinPending = false;
+        let bigWinAutoTimer = null;
 
         const showBigWin = (label, amount, winClass) => {
             bigWinPending = true;
@@ -1641,31 +2087,101 @@ export default {
             $('sm-bigwin-amount').textContent = `€ 0`;
             bigwinOverlay.classList.add('visible');
 
-            // Animate counter
-            let startAmt = 0;
+            // Animate win amount counter
             const amtEl = $('sm-bigwin-amount');
-            const counterDur = winClass === 'epic' ? 3000 : 1500;
+            const counterDur = winClass === 'epic' ? 3000 : 1800;
             animateCounter(amtEl, 0, amount, counterDur);
 
-            // Add confetti for epic
+            // Particle effects
             if (winClass === 'epic') {
                 shakeScreen();
-                spawnConfetti(80);
-                spawnCoins(30);
+                spawnConfetti(80); spawnCoins(30);
                 setTimeout(() => spawnConfetti(60), 700);
                 setTimeout(() => spawnCoins(20), 1200);
             } else {
-                spawnCoins(20);
-                spawnConfetti(30);
+                spawnCoins(20); spawnConfetti(30);
             }
+
+            // Animated auto-dismiss progress bar (4 s)
+            const autoDismissMs = 4000;
+            // Inject progress bar if not already present
+            let prog = bigwinOverlay.querySelector('.sm-bigwin-progress');
+            if (!prog) {
+                prog = document.createElement('div');
+                prog.className = 'sm-bigwin-progress';
+                const bar = document.createElement('div');
+                bar.className = 'sm-bigwin-progress-bar';
+                bar.id = 'sm-bigwin-pb';
+                prog.appendChild(bar);
+                bigwinOverlay.appendChild(prog);
+            }
+            const pb = bigwinOverlay.querySelector('.sm-bigwin-progress-bar');
+            if (pb) {
+                pb.style.transition = 'none';
+                pb.style.transform  = 'scaleX(1)';
+                // Force reflow then animate to 0
+                void pb.offsetWidth;
+                pb.style.transition = `transform ${autoDismissMs}ms linear`;
+                pb.style.transform  = 'scaleX(0)';
+            }
+
+            // Cancel any previous auto-timer
+            if (bigWinAutoTimer) clearTimeout(bigWinAutoTimer);
+            bigWinAutoTimer = setTimeout(dismissBigWin, autoDismissMs);
         };
 
         function dismissBigWin() {
             if (!bigWinPending) return;
+            if (bigWinAutoTimer) { clearTimeout(bigWinAutoTimer); bigWinAutoTimer = null; }
             bigWinPending = false;
             bigwinOverlay.classList.remove('visible');
             updateUI();
         }
+
+        // ─────────────────────────────────────────────────────────────────────
+        //  WIN BANNER  (mini / nice tiers)
+        // ─────────────────────────────────────────────────────────────────────
+        let winBannerTimer = null;
+
+        /**
+         * Show the floating win banner for mini and nice wins.
+         * @param {'mini'|'nice'} tier
+         * @param {string}        labelText   Header label
+         * @param {number}        amount      Win amount in €
+         * @param {string}        [subText]   Optional subtitle
+         * @param {number}        autoMs      Auto-dismiss delay in ms
+         */
+        const showWinBanner = (tier, labelText, amount, subText, autoMs) => {
+            // Clear any previous banner immediately
+            hideWinBanner(true);
+
+            $('wb-label').textContent  = labelText;
+            $('wb-amount').textContent = `€ 0`;
+            $('wb-sub').textContent    = subText || '';
+
+            winBanner.className = `sm-win-banner wb-${tier} wb-show`;
+
+            // Count up to win amount
+            animateCounter($('wb-amount'), 0, amount, Math.min(autoMs * 0.55, 900));
+
+            // Auto-dismiss
+            winBannerTimer = setTimeout(() => hideWinBanner(false), autoMs);
+
+            // Click-to-skip
+            winBanner.onclick = () => hideWinBanner(false);
+        };
+
+        const hideWinBanner = (instant) => {
+            if (winBannerTimer) { clearTimeout(winBannerTimer); winBannerTimer = null; }
+            winBanner.onclick = null;
+            if (instant) {
+                winBanner.className = 'sm-win-banner';
+            } else {
+                winBanner.classList.remove('wb-show');
+                winBanner.classList.add('wb-hide');
+                setTimeout(() => { winBanner.className = 'sm-win-banner'; }, 400);
+            }
+        };
 
         // ─────────────────────────────────────────────────────────────────────
         //  MAIN SPIN LOGIC
@@ -1714,64 +2230,74 @@ export default {
                 // Highlight winning symbols
                 highlightWinSymbols(winningLines);
 
-                const multiplier = totalWin / bet;
+            const multiplier = totalWin / bet;
 
-                // ── 5-Tier Win Audio System ─────────────────────────────────
+                // ── Visual Win Tiers ───────────────────────────────────
                 if (multiplier >= 30) {
-                    // MEGA / EPIC WIN  (≥30×)
+                    // MEGA WIN (≥30×)
                     sfx.win_epic();
-                    const counterDur = 3000;
-                    sfx.startCoinRollup(counterDur);
-                    animateCounter($('sm-balance'), prevBalance, balance, counterDur);
-                    setTimeout(() => sfx.stopCoinRollup(), counterDur + 100);
-                    setWinMsg('🔥 MEGA WIN! 🔥', true);
+                    const dur = 3000;
+                    sfx.startCoinRollup(dur);
+                    animateCounter($('sm-balance'), prevBalance, balance, dur);
+                    setTimeout(() => sfx.stopCoinRollup(), dur + 100);
+                    setWinMsg('');
                     showBigWin('🔥 MEGA WIN! 🔥', totalWin, 'epic');
+                    triggerWinBurst();
+                    pushLastWin({ emoji: winningLines[0]?.sym.emoji || '🎰', desc: `${multiplier.toFixed(0)}× – MEGA WIN`, amount: totalWin });
 
                 } else if (multiplier >= 15) {
-                    // BIG WIN  (15–30×)
+                    // BIG WIN (15–30×)
                     sfx.win_big();
-                    const counterDur = 2000;
-                    sfx.startCoinRollup(counterDur);
-                    animateCounter($('sm-balance'), prevBalance, balance, counterDur);
-                    setTimeout(() => sfx.stopCoinRollup(), counterDur + 100);
-                    setWinMsg('✨ BIG WIN! ✨', true);
+                    const dur = 2000;
+                    sfx.startCoinRollup(dur);
+                    animateCounter($('sm-balance'), prevBalance, balance, dur);
+                    setTimeout(() => sfx.stopCoinRollup(), dur + 100);
+                    setWinMsg('');
                     showBigWin('✨ BIG WIN! ✨', totalWin, 'big');
+                    triggerWinBurst();
+                    pushLastWin({ emoji: winningLines[0]?.sym.emoji || '✨', desc: `${multiplier.toFixed(0)}× – BIG WIN`, amount: totalWin });
 
                 } else if (multiplier >= 5) {
-                    // MEDIUM WIN  (5–15×)
+                    // NICE WIN (5–15×)
                     sfx.win_medium();
-                    const counterDur = 1200;
-                    sfx.startCoinRollup(counterDur);
-                    animateCounter($('sm-balance'), prevBalance, balance, counterDur);
-                    setTimeout(() => sfx.stopCoinRollup(), counterDur + 100);
-                    spawnCoins(16);
-                    spawnConfetti(20);
-                    setWinMsg(`✨ MEDIUM WIN! ✨ € ${totalWin.toFixed(0)}`, true);
+                    const dur = 1200;
+                    sfx.startCoinRollup(dur);
+                    animateCounter($('sm-balance'), prevBalance, balance, dur);
+                    setTimeout(() => sfx.stopCoinRollup(), dur + 100);
+                    spawnCoins(16); spawnConfetti(20);
+                    setWinMsg('');
+                    showWinBanner('nice', 'MEDIUM WIN', totalWin, `${multiplier.toFixed(1)}× Einsatz`, 2600);
+                    triggerWinBurst();
+                    pushLastWin({ emoji: winningLines[0]?.sym.emoji || '⭐', desc: `${multiplier.toFixed(1)}× – Medium Win`, amount: totalWin });
 
-                } else if (multiplier >= 1.5) {
-                    // SMALL WIN  (1.5–5×)
+                } else if (multiplier >= 2) {
+                    // NICE WIN (2–5×)
                     sfx.win_small();
                     animateCounter($('sm-balance'), prevBalance, balance, 600);
-                    spawnCoins(8);
-                    setWinMsg(`Gewinn: € ${totalWin.toFixed(0)}`, true);
+                    spawnCoins(10);
+                    setWinMsg('');
+                    showWinBanner('nice', 'NICE WIN', totalWin, `${multiplier.toFixed(1)}× Einsatz`, 2000);
+                    pushLastWin({ emoji: winningLines[0]?.sym.emoji || '🔔', desc: `${multiplier.toFixed(1)}×`, amount: totalWin });
 
                 } else {
-                    // MICRO WIN  (<1.5×)
+                    // MINI WIN (<2×)
                     sfx.win_micro();
                     animateCounter($('sm-balance'), prevBalance, balance, 400);
                     spawnCoins(4);
-                    setWinMsg(`Gewinn: € ${totalWin.toFixed(0)}`, true);
+                    setWinMsg('');
+                    showWinBanner('mini', 'GEWINN', totalWin, '', 1200);
+                    pushLastWin({ emoji: winningLines[0]?.sym.emoji || '🍒', desc: `×${multiplier.toFixed(1)}`, amount: totalWin });
                 }
 
             } else {
-                setWinMsg('Kein Gewinn – nächstes Mal!', false);
+                setWinMsg('Kein Gewinn – nächstes Mal!');
                 updateUI();
             }
 
             // If balance is 0, reset
             if (balance <= 0) {
                 balance = 1000;
-                setTimeout(() => setWinMsg('Guthaben aufgefüllt! € 1000', true), 1200);
+                setTimeout(() => setWinMsg('Guthaben aufgefüllt! € 1000'), 1200);
             }
 
             lockControls(false);
@@ -1829,6 +2355,9 @@ export default {
         return {
             destroy: () => {
                 document.removeEventListener('keydown', onKeyDown);
+                window.removeEventListener('resize', onResize);
+                clearTimeout(resizeDebounce);
+                clearInterval(jackpotInterval);
                 // Cancel spin ticker + coin rollup timers
                 sfx.stopSpinTicker();
                 sfx.stopCoinRollup();

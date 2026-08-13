@@ -1,169 +1,187 @@
-// QuickThinker.js
-// ------------------------------------------------------------
-// Simple 6x6 logic puzzle.
-// 0 = empty, 1 = circle, 2 = square
-//
-// To create more levels later, copy PUZZLE_6X6 and change:
-// - size
-// - givens
-// - relations
-// ------------------------------------------------------------
+import {
+    EMPTY,
+    CIRCLE,
+    SQUARE,
+    createEmptyBoard,
+    boardFromGivens,
+    isBoardFull,
+    isBoardSolvedLegal,
+    findRuleViolations,
+    cellKey
+} from './QuickThinkerRules.js';
 
-const CIRCLE = 1;
-const SQUARE = 2;
+import {
+    generatePuzzle,
+    DIFFICULTIES,
+    SUPPORTED_SIZES
+} from './QuickThinkerGenerator.js';
 
-const PUZZLE_6X6 = {
-  name: "QuickThinker 1",
-  size: 6,
-
-  // Fixed cells: [row, column, value]
-  givens: [
-    [0, 0, CIRCLE],
-    [0, 4, SQUARE],
-    [1, 5, SQUARE],
-    [2, 1, CIRCLE],
-    [2, 2, SQUARE],
-    [2, 4, SQUARE],
-    [3, 1, SQUARE],
-    [3, 5, SQUARE],
-    [4, 1, CIRCLE],
-    [5, 0, SQUARE],
-    [5, 2, CIRCLE],
-  ],
-
-  // Relations:
-  // type: 'same'      -> =
-  // type: 'different' -> ×
-  relations: [
-    { a: [0, 0], b: [0, 1], type: "same" },
-    { a: [0, 1], b: [0, 2], type: "different" },
-    { a: [0, 4], b: [0, 5], type: "same" },
-
-    { a: [0, 3], b: [1, 3], type: "different" },
-    { a: [0, 5], b: [1, 5], type: "same" },
-
-    { a: [1, 0], b: [2, 0], type: "different" },
-    { a: [2, 2], b: [3, 2], type: "same" },
-
-    { a: [3, 3], b: [4, 3], type: "different" },
-    { a: [4, 4], b: [5, 4], type: "different" },
-
-    { a: [5, 4], b: [5, 5], type: "same" },
-  ],
-};
+const GAME_ID='quick-thinker';
 
 export default {
-  manifest: {
-    id: "quick-thinker",
-    name: "QuickThinker",
-    description:
-      "Fill the grid with circles and squares while obeying every logic rule.",
-    icon: "🧠",
-    tags: ["Puzzle", "Logic", "Singleplayer"],
-  },
+    manifest:{
+        id:GAME_ID,
+        name:'QuickThinker',
+        description:'Logic puzzles with circles, squares, relation clues and guaranteed no-guess solutions.',
+        icon:'🧠',
+        tags:['Puzzle','Logic','Singleplayer']
+    },
 
-  init: (container) => {
-    const puzzle = PUZZLE_6X6;
+    init:(container,services)=>{
+        let destroyed=false;
+        let puzzle=null;
+        let board=[];
+        let given=[];
+        let relationElements=[];
+        let won=false;
+        let generating=false;
+        let startedAt=0;
+        let timerId=0;
 
-    let board = [];
-    let given = [];
-    let relationElements = [];
-    let won = false;
+        let selectedSize=6;
+        let selectedDifficulty='normal';
 
-    const style = document.createElement("style");
-
-    style.textContent = `
+        const style=document.createElement('style');
+        style.textContent=`
             .qt-game{
+                --board-size:6;
                 width:100%;
                 height:100%;
-                min-height:620px;
-                display:flex;
-                align-items:center;
-                justify-content:center;
+                min-height:650px;
+                overflow:auto;
                 background:#151c23;
                 color:#eef3f6;
                 font-family:Arial,Helvetica,sans-serif;
                 user-select:none;
-                overflow:auto;
             }
 
-            .qt-wrap{
-                width:min(680px,94vw);
-                padding:28px 20px 34px;
+            .qt-game *{box-sizing:border-box}
+
+            .qt-shell{
+                width:min(840px,96vw);
+                min-height:100%;
+                margin:0 auto;
+                padding:24px 18px 34px;
+                display:flex;
+                flex-direction:column;
+                align-items:center;
+            }
+
+            .qt-topbar{
+                width:min(720px,100%);
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                gap:14px;
+                margin-bottom:18px;
+            }
+
+            .qt-brand{text-align:left}
+            .qt-title{
+                margin:0;
+                font-size:1.85rem;
+                line-height:1;
+                font-weight:1000;
+                letter-spacing:-.03em;
+            }
+
+            .qt-meta{
+                margin-top:5px;
+                color:#89959e;
+                font-size:.68rem;
+                font-weight:800;
+            }
+
+            .qt-top-actions{
+                display:flex;
+                align-items:center;
+                gap:8px;
+            }
+
+            .qt-timer{
+                min-width:72px;
+                padding:8px 10px;
+                border:1px solid #3a444c;
+                border-radius:10px;
+                background:#202830;
+                color:#c9d2d8;
+                font-size:.72rem;
+                font-weight:1000;
                 text-align:center;
             }
 
-            .qt-title{
-                margin:0;
-                font-size:2rem;
+            .qt-small-btn{
+                padding:8px 11px;
+                border:1px solid #3c4750;
+                border-radius:10px;
+                background:#242d35;
+                color:#dce2e6;
+                font:inherit;
+                font-size:.67rem;
                 font-weight:900;
-                letter-spacing:.02em;
+                cursor:pointer;
             }
 
-            .qt-subtitle{
-                margin:6px 0 22px;
-                color:#8f9aa4;
-                font-size:.82rem;
-                font-weight:700;
-            }
+            .qt-small-btn:hover{background:#2c3740}
 
             .qt-board-wrap{
                 position:relative;
-                width:min(560px,88vw);
-                margin:0 auto;
+                width:min(620px,92vw);
             }
 
             .qt-board{
                 display:grid;
-                grid-template-columns:repeat(6,1fr);
-                gap:12px;
                 width:100%;
+                gap:clamp(5px,calc(16px - var(--board-size) * .75px),11px);
             }
 
             .qt-cell{
                 position:relative;
                 aspect-ratio:1;
-                border:4px solid #454e57;
-                border-radius:18px;
+                border:clamp(2px,calc(5px - var(--board-size) * .18px),4px) solid #454e57;
+                border-radius:clamp(9px,calc(24px - var(--board-size) * 1px),17px);
                 background:#323a40;
                 cursor:pointer;
                 transition:
-                    transform .08s ease,
-                    background .12s ease,
-                    border-color .12s ease;
+                    transform .07s ease,
+                    background .10s ease,
+                    border-color .10s ease,
+                    box-shadow .10s ease;
             }
 
             .qt-cell:hover:not(.given){
-                transform:scale(1.035);
-                border-color:#68747e;
+                transform:scale(1.025);
+                border-color:#65717a;
             }
 
             .qt-cell.given{
                 cursor:default;
-                border-color:#68727a;
-                box-shadow:inset 0 0 0 3px rgba(255,255,255,.12);
+                border-color:#7d8991;
+                box-shadow:
+                    inset 0 0 0 2px rgba(255,255,255,.16),
+                    inset 18px 18px 28px rgba(255,255,255,.07);
             }
 
-            /* Small corner marker = this cell was given by the puzzle. */
             .qt-cell.given::after{
                 content:"";
                 position:absolute;
-                left:8px;
-                top:8px;
-                width:7px;
-                height:7px;
+                left:9%;
+                top:9%;
+                width:8%;
+                aspect-ratio:1;
+                min-width:4px;
                 border-radius:50%;
-                background:rgba(255,255,255,.70);
+                background:rgba(255,255,255,.80);
             }
 
             .qt-cell.circle{
-                background:#71b8e7;
-                border-color:#637985;
+                background:#72b9e7;
+                border-color:#647d8b;
             }
 
             .qt-cell.square{
-                background:#df969b;
-                border-color:#806c70;
+                background:#df989d;
+                border-color:#826d72;
             }
 
             .qt-symbol{
@@ -182,92 +200,168 @@ export default {
             }
 
             .qt-cell.square .qt-symbol{
-                width:42%;
+                width:43%;
                 aspect-ratio:1;
-                border:4px solid #162028;
-                border-radius:11px;
+                border:clamp(2px,calc(6px - var(--board-size) * .25px),4px) solid #162028;
+                border-radius:clamp(6px,calc(16px - var(--board-size) * .5px),11px);
+            }
+
+            .qt-cell.error{
+                border-color:#f06c70 !important;
+                box-shadow:
+                    inset 0 0 0 2px rgba(255,70,70,.25),
+                    0 0 12px rgba(255,60,60,.22);
             }
 
             .qt-relation{
                 position:absolute;
                 z-index:5;
-                width:32px;
-                height:32px;
+                width:clamp(22px,calc(45px - var(--board-size) * 1.8px),32px);
+                aspect-ratio:1;
                 display:flex;
                 align-items:center;
                 justify-content:center;
                 transform:translate(-50%,-50%);
-                border:3px solid #1b242c;
+                border:clamp(2px,calc(5px - var(--board-size) * .22px),3px) solid #1b242c;
                 border-radius:50%;
                 background:#eef3f5;
                 color:#182129;
-                font-size:1.25rem;
+                font-size:clamp(.85rem,calc(1.55rem - var(--board-size) * .04rem),1.2rem);
                 font-weight:1000;
                 line-height:1;
                 pointer-events:none;
-                box-shadow:0 1px 3px rgba(0,0,0,.20);
+                box-shadow:0 1px 4px rgba(0,0,0,.22);
+            }
+
+            .qt-bottom{
+                width:min(620px,92vw);
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                gap:10px;
+                margin-top:22px;
             }
 
             .qt-check{
-                width:min(300px,76vw);
+                width:min(320px,72vw);
                 height:52px;
-                margin-top:28px;
                 border:0;
                 border-radius:13px;
                 background:#67b987;
                 color:#102018;
                 font:inherit;
-                font-size:.95rem;
+                font-size:.94rem;
                 font-weight:1000;
                 cursor:pointer;
-                transition:transform .08s ease,filter .12s ease;
+                transition:transform .07s ease,filter .10s ease;
             }
 
-            .qt-check:hover{
-                filter:brightness(1.08);
-            }
-
-            .qt-check:active{
-                transform:scale(.98);
-            }
+            .qt-check:hover{filter:brightness(1.07)}
+            .qt-check:active{transform:scale(.985)}
 
             .qt-rules{
-                max-width:560px;
-                margin:18px auto 0;
-                color:#7f8b94;
+                max-width:620px;
+                margin:15px auto 0;
+                color:#7e8a93;
                 font-size:.67rem;
                 line-height:1.55;
+                text-align:center;
             }
 
-            .qt-message{
+            .qt-status{
+                max-width:620px;
+                margin-top:10px;
+                color:#65737d;
+                font-size:.58rem;
+                font-weight:800;
+                text-align:center;
+            }
+
+            .qt-overlay{
                 position:fixed;
-                left:50%;
-                top:50%;
+                inset:0;
                 z-index:30;
-                width:min(460px,88vw);
-                padding:24px 22px;
-                transform:translate(-50%,-50%) scale(.94);
-                border:2px solid rgba(255,255,255,.10);
-                border-radius:18px;
-                background:#222a31;
-                box-shadow:0 20px 65px rgba(0,0,0,.45);
-                opacity:0;
-                pointer-events:none;
-                transition:opacity .15s ease,transform .15s ease;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                padding:22px;
+                background:rgba(10,15,20,.80);
+                backdrop-filter:blur(5px);
             }
 
-            .qt-message.show{
-                opacity:1;
-                transform:translate(-50%,-50%) scale(1);
-                pointer-events:auto;
+            .qt-overlay.hidden{display:none}
+
+            .qt-card{
+                width:min(590px,94vw);
+                padding:26px 26px 24px;
+                border:1px solid rgba(255,255,255,.09);
+                border-radius:20px;
+                background:#202830;
+                box-shadow:0 22px 70px rgba(0,0,0,.42);
+                text-align:center;
             }
 
-            .qt-message.wrong{
-                border-color:#d36b6b;
+            .qt-menu-logo{
+                font-size:2.55rem;
+                font-weight:1000;
+                letter-spacing:-.05em;
             }
 
-            .qt-message.win{
-                border-color:#62bd84;
+            .qt-menu-sub{
+                max-width:470px;
+                margin:8px auto 20px;
+                color:#8f9aa4;
+                font-size:.76rem;
+                line-height:1.5;
+            }
+
+            .qt-option-title{
+                margin:15px 0 7px;
+                color:#c4cdd3;
+                font-size:.59rem;
+                font-weight:1000;
+                letter-spacing:.10em;
+                text-transform:uppercase;
+            }
+
+            .qt-segments{
+                display:grid;
+                gap:7px;
+            }
+
+            .qt-size-options{grid-template-columns:repeat(3,1fr)}
+            .qt-diff-options{grid-template-columns:repeat(4,1fr)}
+
+            .qt-segment{
+                padding:9px 7px;
+                border:1px solid #39454e;
+                border-radius:10px;
+                background:#171e24;
+                color:#7f8c96;
+                font:inherit;
+                font-size:.66rem;
+                font-weight:900;
+                cursor:pointer;
+            }
+
+            .qt-segment.selected{
+                border-color:#60a9d6;
+                background:#244457;
+                color:#e9f7ff;
+            }
+
+            .qt-start{
+                width:100%;
+                height:47px;
+                margin-top:18px;
+                border:0;
+                border-radius:12px;
+                background:#68b98a;
+                color:#102019;
+                font:inherit;
+                font-size:.82rem;
+                font-weight:1000;
+                cursor:pointer;
             }
 
             .qt-message-title{
@@ -276,371 +370,458 @@ export default {
             }
 
             .qt-message-text{
-                margin-top:7px;
-                color:#a7b1b9;
-                font-size:.82rem;
-                line-height:1.45;
+                margin-top:8px;
+                color:#9ba6ae;
+                font-size:.80rem;
+                line-height:1.5;
             }
 
             .qt-message-close{
-                margin-top:17px;
-                min-width:130px;
+                min-width:145px;
                 height:40px;
+                margin-top:17px;
                 border:0;
                 border-radius:10px;
-                background:#3b454e;
-                color:#f0f4f6;
+                background:#3a4650;
+                color:#f1f4f6;
                 font:inherit;
-                font-size:.75rem;
+                font-size:.72rem;
                 font-weight:900;
                 cursor:pointer;
             }
 
-            .qt-board.shake{
-                animation:qtShake .28s ease;
+            .qt-message-card.wrong{border-color:#b45b60}
+            .qt-message-card.win{border-color:#58b17a}
+
+            .qt-generating-spinner{
+                width:34px;
+                height:34px;
+                margin:0 auto 13px;
+                border:4px solid #34414a;
+                border-top-color:#69b98a;
+                border-radius:50%;
+                animation:qtSpin .75s linear infinite;
             }
 
+            .qt-board.shake{animation:qtShake .27s ease}
+
+            @keyframes qtSpin{to{transform:rotate(360deg)}}
             @keyframes qtShake{
                 0%,100%{transform:translateX(0)}
                 25%{transform:translateX(-7px)}
                 75%{transform:translateX(7px)}
             }
 
-            @media(max-width:560px){
-                .qt-board{
-                    gap:8px;
-                }
-
-                .qt-cell{
-                    border-width:3px;
-                    border-radius:13px;
-                }
-
-                .qt-relation{
-                    width:27px;
-                    height:27px;
-                    font-size:1rem;
-                    border-width:2px;
-                }
+            @media(max-width:650px){
+                .qt-shell{padding-left:10px;padding-right:10px}
+                .qt-topbar{align-items:flex-start}
+                .qt-top-actions{flex-direction:column;align-items:flex-end}
+                .qt-diff-options{grid-template-columns:1fr 1fr}
+                .qt-rules{font-size:.61rem}
             }
         `;
 
-    const root = document.createElement("div");
-    root.className = "qt-game";
+        const root=document.createElement('div');
+        root.className='qt-game';
+        root.innerHTML=`
+            <div class="qt-shell">
+                <div class="qt-topbar">
+                    <div class="qt-brand">
+                        <h1 class="qt-title">QuickThinker</h1>
+                        <div class="qt-meta">Choose a puzzle to begin</div>
+                    </div>
 
-    root.innerHTML = `
-            <div class="qt-wrap">
-                <h1 class="qt-title">QuickThinker</h1>
-                <div class="qt-subtitle">${puzzle.size} × ${puzzle.size}</div>
+                    <div class="qt-top-actions">
+                        <div class="qt-timer">00:00</div>
+                        <button class="qt-small-btn qt-new" type="button">New Puzzle</button>
+                    </div>
+                </div>
 
                 <div class="qt-board-wrap">
                     <div class="qt-board"></div>
                 </div>
 
-                <button class="qt-check" type="button">CHECK</button>
+                <div class="qt-bottom">
+                    <button class="qt-check" type="button">CHECK</button>
+                </div>
 
                 <div class="qt-rules">
-                    Equal numbers of circles and squares in every row and column ·
-                    never three identical symbols in a row ·
+                    Every row and column contains exactly half circles and half squares ·
+                    never place three identical symbols consecutively ·
                     = means equal · × means different.
+                </div>
+
+                <div class="qt-status"></div>
+            </div>
+
+            <div class="qt-overlay qt-menu">
+                <div class="qt-card">
+                    <div class="qt-menu-logo">QuickThinker</div>
+                    <div class="qt-menu-sub">
+                        Every generated puzzle is verified to have exactly one solution and is solvable by logical deductions without blind guessing.
+                    </div>
+
+                    <div class="qt-option-title">Board Size</div>
+                    <div class="qt-segments qt-size-options">
+                        ${SUPPORTED_SIZES.map(size=>`
+                            <button class="qt-segment ${size===6?'selected':''}" type="button" data-size="${size}">
+                                ${size} × ${size}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <div class="qt-option-title">Difficulty</div>
+                    <div class="qt-segments qt-diff-options">
+                        ${Object.values(DIFFICULTIES).map(diff=>`
+                            <button class="qt-segment ${diff.id==='normal'?'selected':''}" type="button" data-diff="${diff.id}">
+                                ${diff.label}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <button class="qt-start" type="button">GENERATE PUZZLE</button>
                 </div>
             </div>
 
-            <div class="qt-message">
-                <div class="qt-message-title"></div>
-                <div class="qt-message-text"></div>
-                <button class="qt-message-close" type="button">CONTINUE</button>
+            <div class="qt-overlay qt-generating hidden">
+                <div class="qt-card">
+                    <div class="qt-generating-spinner"></div>
+                    <div class="qt-message-title">Building puzzle…</div>
+                    <div class="qt-message-text">
+                        Generating a valid board, removing clues, proving logical solvability and verifying uniqueness.
+                    </div>
+                </div>
+            </div>
+
+            <div class="qt-overlay qt-message hidden">
+                <div class="qt-card qt-message-card">
+                    <div class="qt-message-title"></div>
+                    <div class="qt-message-text"></div>
+                    <button class="qt-message-close" type="button">CONTINUE</button>
+                </div>
             </div>
         `;
 
-    container.append(style, root);
+        container.append(style,root);
 
-    const boardEl = root.querySelector(".qt-board");
-    const boardWrapEl = root.querySelector(".qt-board-wrap");
-    const checkBtn = root.querySelector(".qt-check");
+        const boardEl=root.querySelector('.qt-board');
+        const boardWrapEl=root.querySelector('.qt-board-wrap');
+        const checkBtn=root.querySelector('.qt-check');
+        const newBtn=root.querySelector('.qt-new');
+        const timerEl=root.querySelector('.qt-timer');
+        const metaEl=root.querySelector('.qt-meta');
+        const statusEl=root.querySelector('.qt-status');
 
-    const messageEl = root.querySelector(".qt-message");
-    const messageTitleEl = root.querySelector(".qt-message-title");
-    const messageTextEl = root.querySelector(".qt-message-text");
-    const messageCloseBtn = root.querySelector(".qt-message-close");
+        const menuEl=root.querySelector('.qt-menu');
+        const generatingEl=root.querySelector('.qt-generating');
+        const startBtn=root.querySelector('.qt-start');
+        const sizeButtons=[...root.querySelectorAll('[data-size]')];
+        const diffButtons=[...root.querySelectorAll('[data-diff]')];
 
-    // ------------------------------------------------------------
-    // Board setup
-    // ------------------------------------------------------------
+        const messageEl=root.querySelector('.qt-message');
+        const messageCard=root.querySelector('.qt-message-card');
+        const messageTitleEl=messageEl.querySelector('.qt-message-title');
+        const messageTextEl=messageEl.querySelector('.qt-message-text');
+        const messageCloseBtn=messageEl.querySelector('.qt-message-close');
 
-    const createEmptyBoard = (size) =>
-      Array.from({ length: size }, () => Array(size).fill(0));
+        const createGivenMask = currentPuzzle => {
+            const mask=Array.from(
+                {length:currentPuzzle.size},
+                ()=>Array(currentPuzzle.size).fill(false)
+            );
 
-    const applyGivens = () => {
-      for (const [row, col, value] of puzzle.givens) {
-        board[row][col] = value;
-        given[row][col] = true;
-      }
-    };
-
-    const renderBoard = () => {
-      boardEl.innerHTML = "";
-
-      for (let row = 0; row < puzzle.size; row++) {
-        for (let col = 0; col < puzzle.size; col++) {
-          const cell = document.createElement("button");
-
-          cell.type = "button";
-          cell.className = "qt-cell";
-          cell.dataset.row = row;
-          cell.dataset.col = col;
-
-          cell.innerHTML = `<span class="qt-symbol"></span>`;
-
-          if (given[row][col]) {
-            cell.classList.add("given");
-          }
-
-          cell.addEventListener("click", () => {
-            if (given[row][col] || won) {
-              return;
+            for(const [row,col] of currentPuzzle.givens){
+                mask[row][col]=true;
             }
 
-            // Requested cycle:
-            // empty -> circle -> square -> circle -> square ...
-            board[row][col] = board[row][col] === CIRCLE ? SQUARE : CIRCLE;
-
-            renderCell(cell, row, col);
-          });
-
-          boardEl.appendChild(cell);
-
-          renderCell(cell, row, col);
-        }
-      }
-
-      requestAnimationFrame(renderRelations);
-    };
-
-    const renderCell = (cell, row, col) => {
-      const value = board[row][col];
-
-      cell.classList.toggle("circle", value === CIRCLE);
-      cell.classList.toggle("square", value === SQUARE);
-
-      cell.setAttribute(
-        "aria-label",
-        value === CIRCLE ? "Circle" : value === SQUARE ? "Square" : "Empty"
-      );
-    };
-
-    // ------------------------------------------------------------
-    // Relation markers (= / ×)
-    // ------------------------------------------------------------
-
-    const renderRelations = () => {
-      for (const el of relationElements) {
-        el.remove();
-      }
-
-      relationElements = [];
-
-      const wrapRect = boardWrapEl.getBoundingClientRect();
-
-      for (const relation of puzzle.relations) {
-        const [ar, ac] = relation.a;
-        const [br, bc] = relation.b;
-
-        const a = boardEl.querySelector(`[data-row="${ar}"][data-col="${ac}"]`);
-
-        const b = boardEl.querySelector(`[data-row="${br}"][data-col="${bc}"]`);
-
-        if (!a || !b) {
-          continue;
-        }
-
-        const ra = a.getBoundingClientRect();
-        const rb = b.getBoundingClientRect();
-
-        const ax = ra.left + ra.width / 2;
-        const ay = ra.top + ra.height / 2;
-
-        const bx = rb.left + rb.width / 2;
-        const by = rb.top + rb.height / 2;
-
-        const marker = document.createElement("div");
-
-        marker.className = "qt-relation";
-        marker.textContent = relation.type === "same" ? "=" : "×";
-
-        marker.style.left = `${(ax + bx) / 2 - wrapRect.left}px`;
-
-        marker.style.top = `${(ay + by) / 2 - wrapRect.top}px`;
-
-        boardWrapEl.appendChild(marker);
-        relationElements.push(marker);
-      }
-    };
-
-    // ------------------------------------------------------------
-    // Validation
-    // ------------------------------------------------------------
-
-    const isBoardFull = () =>
-      board.every((row) => row.every((value) => value !== 0));
-
-    const hasEqualCounts = (values) => {
-      const half = puzzle.size / 2;
-
-      let circles = 0;
-      let squares = 0;
-
-      for (const value of values) {
-        if (value === CIRCLE) circles++;
-        if (value === SQUARE) squares++;
-      }
-
-      return circles === half && squares === half;
-    };
-
-    const hasNoTriple = (values) => {
-      for (let i = 0; i <= values.length - 3; i++) {
-        if (values[i] === values[i + 1] && values[i] === values[i + 2]) {
-          return false;
-        }
-      }
-
-      return true;
-    };
-
-    const relationsAreValid = () => {
-      for (const relation of puzzle.relations) {
-        const [ar, ac] = relation.a;
-        const [br, bc] = relation.b;
-
-        const a = board[ar][ac];
-        const b = board[br][bc];
-
-        if (relation.type === "same" && a !== b) {
-          return false;
-        }
-
-        if (relation.type === "different" && a === b) {
-          return false;
-        }
-      }
-
-      return true;
-    };
-
-    const boardIsLegal = () => {
-      // Rows
-      for (let row = 0; row < puzzle.size; row++) {
-        const values = board[row];
-
-        if (!hasEqualCounts(values)) {
-          return false;
-        }
-
-        if (!hasNoTriple(values)) {
-          return false;
-        }
-      }
-
-      // Columns
-      for (let col = 0; col < puzzle.size; col++) {
-        const values = board.map((row) => row[col]);
-
-        if (!hasEqualCounts(values)) {
-          return false;
-        }
-
-        if (!hasNoTriple(values)) {
-          return false;
-        }
-      }
-
-      return relationsAreValid();
-    };
-
-    // ------------------------------------------------------------
-    // Messages / Check button
-    // ------------------------------------------------------------
-
-    const showMessage = (type, title, text) => {
-      messageEl.className = `qt-message ${type} show`;
-
-      messageTitleEl.textContent = title;
-      messageTextEl.textContent = text;
-
-      messageCloseBtn.textContent = type === "win" ? "OK" : "CONTINUE";
-    };
-
-    const hideMessage = () => {
-      messageEl.classList.remove("show");
-    };
-
-    const checkBoard = () => {
-      if (!isBoardFull()) {
-        showMessage(
-          "wrong",
-          "Noch nicht fertig",
-          "Fülle zuerst alle Felder aus und versuche es dann erneut."
-        );
-
-        return;
-      }
-
-      if (!boardIsLegal()) {
-        boardEl.classList.remove("shake");
-
-        // Restart the animation even on repeated checks.
-        void boardEl.offsetWidth;
-
-        boardEl.classList.add("shake");
-
-        showMessage(
-          "wrong",
-          "Nicht ganz richtig",
-          "Mindestens eine Regel ist verletzt. Du kannst direkt weiterlösen und danach erneut auf Check klicken."
-        );
-
-        return;
-      }
-
-      won = true;
-
-      showMessage(
-        "win",
-        "Richtig gelöst!",
-        "Das gesamte Board wurde legal ausgefüllt. QuickThinker geschafft!"
-      );
-    };
-
-    checkBtn.addEventListener("click", checkBoard);
-    messageCloseBtn.addEventListener("click", hideMessage);
-
-    // ------------------------------------------------------------
-    // Start
-    // ------------------------------------------------------------
-
-    board = createEmptyBoard(puzzle.size);
-    given = createEmptyBoard(puzzle.size).map((row) => row.map(() => false));
-
-    applyGivens();
-    renderBoard();
-
-    const onResize = () => renderRelations();
-
-    window.addEventListener("resize", onResize);
-
-    return {
-      destroy: () => {
-        window.removeEventListener("resize", onResize);
-
-        for (const el of relationElements) {
-          el.remove();
-        }
-
-        style.remove();
-      },
-    };
-  },
+            return mask;
+        };
+
+        const clearRelationElements = () => {
+            for(const element of relationElements){
+                element.remove();
+            }
+            relationElements=[];
+        };
+
+        const renderCell = (cell,row,col) => {
+            const value=board[row][col];
+            cell.classList.toggle('circle',value===CIRCLE);
+            cell.classList.toggle('square',value===SQUARE);
+            cell.setAttribute(
+                'aria-label',
+                value===CIRCLE
+                    ?'Circle'
+                    :value===SQUARE
+                        ?'Square'
+                        :'Empty'
+            );
+        };
+
+        const renderBoard = () => {
+            if(!puzzle) return;
+
+            clearRelationElements();
+            boardEl.innerHTML='';
+            root.style.setProperty('--board-size',String(puzzle.size));
+            boardEl.style.gridTemplateColumns=`repeat(${puzzle.size},1fr)`;
+
+            for(let row=0;row<puzzle.size;row++){
+                for(let col=0;col<puzzle.size;col++){
+                    const cell=document.createElement('button');
+                    cell.type='button';
+                    cell.className='qt-cell';
+                    cell.dataset.row=row;
+                    cell.dataset.col=col;
+                    cell.innerHTML='<span class="qt-symbol"></span>';
+
+                    if(given[row][col]){
+                        cell.classList.add('given');
+                    }
+
+                    cell.addEventListener('click',()=>{
+                        if(given[row][col] || won || generating){
+                            return;
+                        }
+
+                        board[row][col]=
+                            board[row][col]===CIRCLE
+                                ?SQUARE
+                                :CIRCLE;
+
+                        cell.classList.remove('error');
+                        renderCell(cell,row,col);
+                    });
+
+                    boardEl.appendChild(cell);
+                    renderCell(cell,row,col);
+                }
+            }
+
+            requestAnimationFrame(renderRelations);
+        };
+
+        const renderRelations = () => {
+            if(!puzzle) return;
+
+            clearRelationElements();
+            const wrapRect=boardWrapEl.getBoundingClientRect();
+
+            for(const relation of puzzle.relations){
+                const [ar,ac]=relation.a;
+                const [br,bc]=relation.b;
+
+                const a=boardEl.querySelector(`[data-row="${ar}"][data-col="${ac}"]`);
+                const b=boardEl.querySelector(`[data-row="${br}"][data-col="${bc}"]`);
+                if(!a||!b) continue;
+
+                const ra=a.getBoundingClientRect();
+                const rb=b.getBoundingClientRect();
+
+                const marker=document.createElement('div');
+                marker.className='qt-relation';
+                marker.textContent=relation.type==='same' ? '=' : '×';
+                marker.style.left=`${(ra.left+ra.width/2+rb.left+rb.width/2)/2-wrapRect.left}px`;
+                marker.style.top=`${(ra.top+ra.height/2+rb.top+rb.height/2)/2-wrapRect.top}px`;
+
+                boardWrapEl.appendChild(marker);
+                relationElements.push(marker);
+            }
+        };
+
+        const updateTimer = () => {
+            if(!puzzle || !startedAt){
+                timerEl.textContent='00:00';
+                return;
+            }
+
+            const elapsed=Math.max(0,Math.floor((performance.now()-startedAt)/1000));
+            const min=Math.floor(elapsed/60);
+            const sec=elapsed%60;
+            timerEl.textContent=`${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+        };
+
+        const showMessage = (type,title,text,button='CONTINUE') => {
+            messageCard.className=`qt-card qt-message-card ${type}`;
+            messageTitleEl.textContent=title;
+            messageTextEl.textContent=text;
+            messageCloseBtn.textContent=button;
+            messageEl.classList.remove('hidden');
+        };
+
+        const hideMessage = () => {
+            messageEl.classList.add('hidden');
+        };
+
+        const clearErrors = () => {
+            for(const cell of boardEl.querySelectorAll('.qt-cell.error')){
+                cell.classList.remove('error');
+            }
+        };
+
+        const showViolations = violations => {
+            clearErrors();
+
+            for(const key of violations){
+                const [row,col]=key.split(',').map(Number);
+                const cell=boardEl.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+                cell?.classList.add('error');
+            }
+        };
+
+        const saveScore = elapsedSeconds => {
+            const diffRank={easy:1,normal:2,hard:3,expert:4}[puzzle.difficulty]??1;
+            const base=puzzle.size*puzzle.size*150*diffRank;
+            const score=Math.max(1,Math.round(base-elapsedSeconds*12));
+
+            services?.highscores?.saveHighscore?.(
+                `${GAME_ID}-${puzzle.size}-${puzzle.difficulty}`,
+                score
+            );
+        };
+
+        const checkBoard = () => {
+            if(!puzzle || generating || won){
+                return;
+            }
+
+            if(!isBoardFull(board)){
+                showMessage(
+                    'wrong',
+                    'Board not complete',
+                    'Fill every empty cell before checking the solution.'
+                );
+                return;
+            }
+
+            if(!isBoardSolvedLegal(board,puzzle.relations)){
+                const violations=findRuleViolations(board,puzzle.relations);
+                showViolations(violations);
+
+                boardEl.classList.remove('shake');
+                void boardEl.offsetWidth;
+                boardEl.classList.add('shake');
+
+                showMessage(
+                    'wrong',
+                    'Something is wrong',
+                    'At least one rule is violated. The marked cells are involved in an invalid row, column or relation. You can keep solving and check again.'
+                );
+                return;
+            }
+
+            clearErrors();
+            won=true;
+
+            const elapsed=Math.max(0,(performance.now()-startedAt)/1000);
+            saveScore(elapsed);
+
+            showMessage(
+                'win',
+                'Puzzle solved!',
+                `Correct. You solved this ${puzzle.size}×${puzzle.size} ${DIFFICULTIES[puzzle.difficulty].label} puzzle in ${timerEl.textContent}.`,
+                'NICE'
+            );
+        };
+
+        const loadPuzzle = newPuzzle => {
+            puzzle=newPuzzle;
+            board=boardFromGivens(puzzle.size,puzzle.givens);
+            given=createGivenMask(puzzle);
+            won=false;
+            startedAt=performance.now();
+
+            metaEl.textContent=
+                `${puzzle.size}×${puzzle.size} · ${DIFFICULTIES[puzzle.difficulty].label} · Seed ${puzzle.seed}`;
+
+            statusEl.textContent=
+                `Verified unique · logical-only solve · ${puzzle.givens.length} givens · ${puzzle.relations.length} relations`;
+
+            renderBoard();
+            updateTimer();
+        };
+
+        const generateSelectedPuzzle = () => {
+            if(generating) return;
+
+            generating=true;
+            generatingEl.classList.remove('hidden');
+            menuEl.classList.add('hidden');
+
+            // Give the browser one frame to paint the generation overlay before
+            // running the synchronous generator.
+            requestAnimationFrame(()=>{
+                setTimeout(()=>{
+                    try{
+                        const generated=generatePuzzle({
+                            size:selectedSize,
+                            difficulty:selectedDifficulty
+                        });
+
+                        if(destroyed) return;
+                        loadPuzzle(generated);
+                        generatingEl.classList.add('hidden');
+                    }catch(error){
+                        console.error('[QuickThinker] Generation failed:',error);
+                        generatingEl.classList.add('hidden');
+                        menuEl.classList.remove('hidden');
+                        showMessage(
+                            'wrong',
+                            'Generation failed',
+                            'This puzzle generation attempt failed. Please try again.'
+                        );
+                    }finally{
+                        generating=false;
+                    }
+                },20);
+            });
+        };
+
+        sizeButtons.forEach(button=>{
+            button.addEventListener('click',()=>{
+                selectedSize=Number(button.dataset.size)||6;
+                sizeButtons.forEach(b=>b.classList.toggle('selected',b===button));
+            });
+        });
+
+        diffButtons.forEach(button=>{
+            button.addEventListener('click',()=>{
+                selectedDifficulty=button.dataset.diff||'normal';
+                diffButtons.forEach(b=>b.classList.toggle('selected',b===button));
+            });
+        });
+
+        startBtn.addEventListener('click',generateSelectedPuzzle);
+        checkBtn.addEventListener('click',checkBoard);
+        messageCloseBtn.addEventListener('click',hideMessage);
+
+        newBtn.addEventListener('click',()=>{
+            if(generating) return;
+            menuEl.classList.remove('hidden');
+        });
+
+        const onResize=()=>renderRelations();
+        window.addEventListener('resize',onResize);
+
+        timerId=window.setInterval(updateTimer,500);
+
+        return {
+            destroy:()=>{
+                destroyed=true;
+                window.clearInterval(timerId);
+                window.removeEventListener('resize',onResize);
+                clearRelationElements();
+                style.remove();
+            }
+        };
+    }
 };
 
-export { CIRCLE, SQUARE, PUZZLE_6X6 };
+export {
+    GAME_ID,
+    EMPTY,
+    CIRCLE,
+    SQUARE,
+    DIFFICULTIES,
+    SUPPORTED_SIZES
+};

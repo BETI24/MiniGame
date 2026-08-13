@@ -362,14 +362,14 @@ export default {
         //  SYMBOL-DEFINITIONEN
         // ─────────────────────────────────────────────────────────────────────
         const SYMBOLS = [
-            { id: 'seven',    emoji: '7️⃣',  label: 'Seven',   weight: 2,  mult: [0, 0, 50, 100, 500]  },
-            { id: 'diamond',  emoji: '💎',  label: 'Diamond', weight: 4,  mult: [0, 0, 20,  50, 200]  },
-            { id: 'crown',    emoji: '👑',  label: 'Crown',   weight: 5,  mult: [0, 0, 15,  30, 100]  },
-            { id: 'star',     emoji: '⭐',  label: 'Star',    weight: 8,  mult: [0, 0, 10,  20,  50]  },
-            { id: 'bell',     emoji: '🔔',  label: 'Bell',    weight: 10, mult: [0, 0,  5,  10,  25]  },
-            { id: 'cherry',   emoji: '🍒',  label: 'Cherry',  weight: 12, mult: [0, 2,  4,   8,  15]  },
-            { id: 'lemon',    emoji: '🍋',  label: 'Lemon',   weight: 14, mult: [0, 0,  3,   5,  10]  },
-            { id: 'grape',    emoji: '🍇',  label: 'Grape',   weight: 16, mult: [0, 0,  2,   4,   8]  },
+            { id: 'seven',    emoji: '7️⃣',  label: 'Seven',   weight: 2,  mult: [0, 0, 50, 100, 500, 1000] },
+            { id: 'diamond',  emoji: '💎',  label: 'Diamond', weight: 4,  mult: [0, 0, 20, 50, 200, 500]  },
+            { id: 'crown',    emoji: '👑',  label: 'Crown',   weight: 5,  mult: [0, 0, 15, 30, 100, 250]  },
+            { id: 'star',     emoji: '⭐',  label: 'Star',    weight: 8,  mult: [0, 0, 10, 20, 50, 100]   },
+            { id: 'bell',     emoji: '🔔',  label: 'Bell',    weight: 10, mult: [0, 0, 5, 10, 25, 50]     },
+            { id: 'cherry',   emoji: '🍒',  label: 'Cherry',  weight: 12, mult: [0, 0, 2, 4, 8, 15]       },
+            { id: 'lemon',    emoji: '🍋',  label: 'Lemon',   weight: 14, mult: [0, 0, 3, 5, 10, 20]      },
+            { id: 'grape',    emoji: '🍇',  label: 'Grape',   weight: 16, mult: [0, 0, 2, 4, 8, 15]       },
         ];
 
         // Gewichtete Auswahl
@@ -419,7 +419,7 @@ export default {
                 }
                 const mult = firstSym.mult[count];
                 if (mult > 0) {
-                    const lineWin = bet * mult;
+                    const lineWin = (bet / PAYLINES.length) * mult;
                     totalWin += lineWin;
                     winningLines.push({ lineIdx: li, count, sym: firstSym, win: lineWin });
                 }

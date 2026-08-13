@@ -152,6 +152,7 @@ export class SurvivGame {
 
     isBotSpawnPointSafe(x, y) {
         if (!this.canActorOccupy(x, y, BOT_AI.radius + 4, null)) return false;
+        if (this.isInWater(x, y)) return false;
         if (this.circleOverlapsAnyHouse(x, y, BOT_AI.radius + 30, 40)) return false;
         for (const c of this.containers) {
             const left = c.x - c.w / 2 - 60;
@@ -167,13 +168,15 @@ export class SurvivGame {
 
     createBot(x, y) {
         const weaponPool = [
-            { id: 'g18', weight: 13 },
-            { id: 'mp5', weight: 19 },
-            { id: 'm870', weight: 14 },
-            { id: 'ak47', weight: 16 },
-            { id: 'm416', weight: 16 },
-            { id: 'mk12', weight: 12 },
-            { id: 'mosin', weight: 10 }
+            { id: 'g18', weight: 7 }, { id: 'dualberetta', weight: 7 },
+            { id: 'mp5', weight: 10 }, { id: 'mac10', weight: 8 },
+            { id: 'ump9', weight: 9 }, { id: 'vector', weight: 7 },
+            { id: 'm870', weight: 7 }, { id: 'saiga12', weight: 6 },
+            { id: 'ak47', weight: 9 }, { id: 'm416', weight: 9 },
+            { id: 'famas', weight: 8 }, { id: 'bar1918', weight: 5 },
+            { id: 'mk12', weight: 6 }, { id: 'm1garand', weight: 5 },
+            { id: 'ot38', weight: 4 }, { id: 'mosin', weight: 4 },
+            { id: 'sv98', weight: 3 }
         ];
         const weaponId = this.pickWeightedId(weaponPool);
         const def = WEAPONS[weaponId];
@@ -517,7 +520,7 @@ export class SurvivGame {
     tryBotFire(bot, target, now) {
         if (bot.useItem || bot.reload || now < bot.reactionUntil) return;
         const def = WEAPONS[bot.weapon.id];
-        if (def.automatic) {
+        if (def.automatic && !def.burstCount) {
             if (now < bot.burstPauseUntil) return;
             if (now >= bot.burstEndsAt) {
                 const burstLength = def.appearance === 'smg' ? 430 + Math.random() * 280 : 250 + Math.random() * 260;
@@ -525,16 +528,25 @@ export class SurvivGame {
                 bot.burstPauseUntil = bot.burstEndsAt + 170 + Math.random() * 300;
             }
         }
+        if (def.burstCount && now < (bot.weapon.burstPauseUntil || 0)) return;
         if (now - bot.lastShotAt < def.fireInterval) return;
-        if (bot.weapon.loaded <= 0) {
+        const ammoCost = def.ammoCost ?? 1;
+        if (bot.weapon.loaded < ammoCost) {
             this.tryBotReload(bot, now);
             return;
         }
         const dist = Math.hypot(target.x - bot.x, target.y - bot.y);
         if (dist > BOT_AI.fireLOSRadius * (bot.scope === 4 ? 1.15 : bot.scope === 2 ? 1.06 : 1)) return;
 
-        bot.weapon.loaded -= 1;
+        bot.weapon.loaded -= ammoCost;
         bot.lastShotAt = now;
+        if (def.burstCount) {
+            bot.weapon.burstIndex = (bot.weapon.burstIndex || 0) + 1;
+            if (bot.weapon.burstIndex >= def.burstCount) {
+                bot.weapon.burstIndex = 0;
+                bot.weapon.burstPauseUntil = now + (def.burstPauseMs ?? 300);
+            }
+        }
         bot.shotMoveScale = def.moveScale ?? 0.88;
         bot.shotSlowUntil = Math.max(bot.shotSlowUntil, now + (def.shotSlowMs ?? 120));
         const accuracyPenalty = (1 - bot.skill) * 0.085 + Math.min(0.055, dist / 10000);
@@ -543,9 +555,12 @@ export class SurvivGame {
             const spread = (Math.random() - 0.5) * 2 * def.spread + (Math.random() - 0.5) * accuracyPenalty;
             const angle = base + spread;
             const muzzle = bot.radius + def.barrel;
+            const side = def.dual ? (i % 2 === 0 ? -14 : 14) : 0;
+            const ox = -Math.sin(base) * side;
+            const oy = Math.cos(base) * side;
             this.bullets.push({
-                x: bot.x + Math.cos(angle) * muzzle,
-                y: bot.y + Math.sin(angle) * muzzle,
+                x: bot.x + Math.cos(angle) * muzzle + ox,
+                y: bot.y + Math.sin(angle) * muzzle + oy,
                 vx: Math.cos(angle) * def.bulletSpeed,
                 vy: Math.sin(angle) * def.bulletSpeed,
                 damage: def.damage,
@@ -609,6 +624,7 @@ export class SurvivGame {
         const now = performance.now();
         if (now < bot.shotSlowUntil) speedFactor *= bot.shotMoveScale;
         if (bot.useItem) speedFactor *= HEALS[bot.useItem.subtype].moveScale;
+        speedFactor *= this.getWaterMoveScale(bot.x, bot.y);
 
         this.maybeOpenDoorForBot(bot, dx, dy);
 
@@ -895,6 +911,24 @@ export class SurvivGame {
             if (x < hx + hw && x + w > hx && y < hy + hh && y + h > hy) return true;
         }
         return false;
+    }
+
+    isInWater(x, y) {
+        for (const lake of MAP.lakes || []) {
+            const cos = Math.cos(-(lake.rotation || 0));
+            const sin = Math.sin(-(lake.rotation || 0));
+            const dx = x - lake.x;
+            const dy = y - lake.y;
+            const lx = dx * cos - dy * sin;
+            const ly = dx * sin + dy * cos;
+            if ((lx * lx) / (lake.rx * lake.rx) + (ly * ly) / (lake.ry * lake.ry) <= 1) return lake;
+        }
+        return null;
+    }
+
+    getWaterMoveScale(x, y) {
+        const lake = this.isInWater(x, y);
+        return lake ? (lake.slowScale ?? 0.6) : 1;
     }
 
     getHousePlayerBlockers() {
@@ -1213,6 +1247,7 @@ export class SurvivGame {
             let speedScale = 1;
             if (this.player.useItem) speedScale *= HEALS[this.player.useItem.subtype].moveScale;
             if (performance.now() < this.player.shotSlowUntil) speedScale *= this.player.shotMoveScale;
+            speedScale *= this.getWaterMoveScale(this.player.x, this.player.y);
             const step = this.player.speed * speedScale * dt;
             this.movePlayer(dx * step, dy * step);
         }
@@ -1310,24 +1345,36 @@ export class SurvivGame {
     tryFire(now, slot, def) {
         if (this.player.useItem) this.player.useItem = null;
         if (this.player.reload) return;
+        if (def.burstCount && now < (slot.burstPauseUntil || 0)) return;
         if (now - this.player.lastShotAt < def.fireInterval) return;
-        if (slot.loaded <= 0) {
+        const ammoCost = def.ammoCost ?? 1;
+        if (slot.loaded < ammoCost) {
             this.tryReload(now);
             return;
         }
 
-        slot.loaded -= 1;
+        slot.loaded -= ammoCost;
         this.player.lastShotAt = now;
         this.player.shotMoveScale = def.moveScale ?? 0.9;
         this.player.shotSlowUntil = Math.max(this.player.shotSlowUntil, now + (def.shotSlowMs ?? 120));
+        if (def.burstCount) {
+            slot.burstIndex = (slot.burstIndex || 0) + 1;
+            if (slot.burstIndex >= def.burstCount) {
+                slot.burstIndex = 0;
+                slot.burstPauseUntil = now + (def.burstPauseMs ?? 300);
+            }
+        }
         const base = this.player.aimAngle;
         for (let i = 0; i < def.pellets; i++) {
             const spread = (Math.random() - 0.5) * 2 * def.spread;
             const angle = base + spread;
             const muzzle = this.player.radius + def.barrel;
+            const side = def.dual ? (i % 2 === 0 ? -14 : 14) : 0;
+            const ox = -Math.sin(base) * side;
+            const oy = Math.cos(base) * side;
             this.bullets.push({
-                x: this.player.x + Math.cos(angle) * muzzle,
-                y: this.player.y + Math.sin(angle) * muzzle,
+                x: this.player.x + Math.cos(angle) * muzzle + ox,
+                y: this.player.y + Math.sin(angle) * muzzle + oy,
                 vx: Math.cos(angle) * def.bulletSpeed,
                 vy: Math.sin(angle) * def.bulletSpeed,
                 damage: def.damage,

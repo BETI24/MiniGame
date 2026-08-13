@@ -5,6 +5,7 @@ import {
     COLORS,
     EQUIPMENT_VISUALS,
     HEALS,
+    MAP,
     SCOPES,
     THROWABLES,
     WEAPONS,
@@ -69,6 +70,7 @@ export class Renderer {
 
         this.drawGrid(ctx);
         this.drawMapBoundary(ctx);
+        this.drawLakes(ctx);
         this.drawHouses(ctx);
         this.drawContainerFloors(ctx);
         this.drawLoot(ctx);
@@ -117,6 +119,45 @@ export class Renderer {
         ctx.strokeStyle = 'rgba(29, 54, 19, 0.4)';
         ctx.lineWidth = 10;
         ctx.strokeRect(4, 4, WORLD.width - 8, WORLD.height - 8);
+    }
+
+    drawLakes(ctx) {
+        for (const lake of MAP.lakes || []) {
+            ctx.save();
+            ctx.translate(lake.x, lake.y);
+            ctx.rotate(lake.rotation || 0);
+
+            // simple irregular shoreline, deliberately asset-free and stable
+            ctx.fillStyle = COLORS.shore;
+            this.lakeBlob(ctx, lake.rx + 34, lake.ry + 30, 32, 0.035);
+            ctx.fill();
+            ctx.fillStyle = COLORS.waterDeep;
+            this.lakeBlob(ctx, lake.rx + 8, lake.ry + 8, 32, 0.028);
+            ctx.fill();
+            ctx.fillStyle = COLORS.water;
+            this.lakeBlob(ctx, lake.rx - 4, lake.ry - 4, 32, 0.025);
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.ellipse(-lake.rx * 0.10, -lake.ry * 0.08, lake.rx * 0.58, lake.ry * 0.48, 0, 0.18, 2.35);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    lakeBlob(ctx, rx, ry, points = 32, variance = 0.03) {
+        ctx.beginPath();
+        for (let i = 0; i <= points; i++) {
+            const a = (i / points) * TAU;
+            const wobble = 1 + Math.sin(i * 2.27 + rx * 0.01) * variance + Math.cos(i * 3.71 + ry * 0.01) * variance * 0.65;
+            const x = Math.cos(a) * rx * wobble;
+            const y = Math.sin(a) * ry * wobble;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
     }
 
     drawHouses(ctx) {
@@ -828,10 +869,16 @@ export class Renderer {
 
             if (bot.equipment.helmet) this.drawHelmet(ctx, bot.equipment.helmet, bot.radius);
             if (bot.weapon) {
-                ctx.save();
-                ctx.translate(16, 0);
-                this.drawWeaponSprite(ctx, bot.weapon.id, 1, false);
-                ctx.restore();
+                const def = WEAPONS[bot.weapon.id];
+                if (def?.dual) {
+                    ctx.save(); ctx.translate(18, -18); this.drawWeaponSprite(ctx, bot.weapon.id, 1, false, true); ctx.restore();
+                    ctx.save(); ctx.translate(18, 18); this.drawWeaponSprite(ctx, bot.weapon.id, 1, false, true); ctx.restore();
+                } else {
+                    ctx.save();
+                    ctx.translate(16, 0);
+                    this.drawWeaponSprite(ctx, bot.weapon.id, 1, false);
+                    ctx.restore();
+                }
             }
             this.drawBotHand(ctx, 28, -18);
             this.drawBotHand(ctx, 28, 18);
@@ -890,10 +937,16 @@ export class Renderer {
         if (p.equipment.helmet) this.drawHelmet(ctx, p.equipment.helmet, p.radius);
 
         if (active) {
-            ctx.save();
-            ctx.translate(16, 0);
-            this.drawWeaponSprite(ctx, active.id, 1, false);
-            ctx.restore();
+            const def = WEAPONS[active.id];
+            if (def?.dual) {
+                ctx.save(); ctx.translate(18, -18); this.drawWeaponSprite(ctx, active.id, 1, false, true); ctx.restore();
+                ctx.save(); ctx.translate(18, 18); this.drawWeaponSprite(ctx, active.id, 1, false, true); ctx.restore();
+            } else {
+                ctx.save();
+                ctx.translate(16, 0);
+                this.drawWeaponSprite(ctx, active.id, 1, false);
+                ctx.restore();
+            }
         } else if (p.activeSlot === 3 && p.throwables.frag > 0) {
             ctx.save();
             ctx.translate(18, 0);
@@ -937,16 +990,95 @@ export class Renderer {
         ctx.restore();
     }
 
-    drawWeaponSprite(ctx, weaponId, scale = 1, iconMode = false) {
+    drawWeaponSprite(ctx, weaponId, scale = 1, iconMode = false, singleDual = false) {
         const def = WEAPONS[weaponId];
         if (!def) return;
         ctx.save();
         ctx.scale(scale, scale);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+
+        if (weaponId === 'dualberetta') {
+            if (singleDual) {
+                this.drawBerettaShape(ctx, def);
+            } else {
+                ctx.save(); ctx.translate(0, -8); this.drawBerettaShape(ctx, def); ctx.restore();
+                ctx.save(); ctx.translate(0, 8); this.drawBerettaShape(ctx, def); ctx.restore();
+            }
+            ctx.restore();
+            return;
+        }
+        if (weaponId === 'mac10') {
+            ctx.fillStyle = '#151719'; ctx.strokeStyle = '#08090a'; ctx.lineWidth = 3;
+            this.roundRect(ctx, 1, -9, 28, 18, 4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#272a2c'; ctx.fillRect(27, -4, 15, 8);
+            ctx.fillStyle = '#0d0e0f'; ctx.fillRect(13, 7, 8, 20);
+            ctx.fillRect(-7, -5, 9, 10);
+            ctx.restore(); return;
+        }
+        if (weaponId === 'ump9') {
+            ctx.strokeStyle = '#151716'; ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.moveTo(-11, 0); ctx.lineTo(5, -7); ctx.stroke();
+            ctx.fillStyle = '#454a44'; ctx.strokeStyle = '#141615'; ctx.lineWidth = 3;
+            this.roundRect(ctx, 2, -8, 39, 16, 4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#222522'; ctx.fillRect(18, 7, 8, 18); ctx.fillRect(40, -3, 12, 6);
+            ctx.restore(); return;
+        }
+        if (weaponId === 'vector') {
+            ctx.fillStyle = '#303a3d'; ctx.strokeStyle = '#111618'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(29,-8); ctx.lineTo(40,-3); ctx.lineTo(37,8); ctx.lineTo(11,8); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#171b1c'; ctx.fillRect(18, 7, 8, 21); ctx.fillRect(38,-3,12,6);
+            ctx.fillStyle = '#646b6e'; ctx.fillRect(4,-12,17,4);
+            ctx.restore(); return;
+        }
+        if (weaponId === 'famas') {
+            ctx.fillStyle = '#5d674c'; ctx.strokeStyle = '#1b2117'; ctx.lineWidth = 3;
+            this.roundRect(ctx, 0,-8,49,16,4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#30382a';
+            ctx.beginPath(); ctx.moveTo(8,-9); ctx.lineTo(15,-18); ctx.lineTo(33,-18); ctx.lineTo(38,-9); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#242920'; ctx.fillRect(18,7,8,18); ctx.fillRect(47,-3,12,6); ctx.fillRect(-10,-6,12,12);
+            ctx.restore(); return;
+        }
+        if (weaponId === 'bar1918') {
+            ctx.strokeStyle = '#1c1610'; ctx.lineWidth = 3;
+            ctx.fillStyle = '#724b2b'; this.roundRect(ctx, -8,-6,56,12,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#1c1d1c'; ctx.fillRect(44,-3,28,6); ctx.fillRect(22,5,9,20);
+            ctx.fillStyle = '#4f321e'; ctx.fillRect(-16,-7,13,14);
+            ctx.restore(); return;
+        }
+        if (weaponId === 'm1garand') {
+            ctx.strokeStyle = '#24170f'; ctx.lineWidth = 3;
+            ctx.fillStyle = '#80552d'; this.roundRect(ctx, -10,-6,58,12,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#252525'; ctx.fillRect(44,-2.5,28,5); ctx.fillRect(19,-9,18,4);
+            ctx.fillStyle = '#684324'; ctx.beginPath(); ctx.moveTo(-18,-9); ctx.lineTo(-4,-6); ctx.lineTo(-4,6); ctx.lineTo(-18,9); ctx.closePath(); ctx.fill();
+            ctx.restore(); return;
+        }
+        if (weaponId === 'ot38') {
+            ctx.fillStyle = '#777872'; ctx.strokeStyle = '#222320'; ctx.lineWidth = 3;
+            this.roundRect(ctx, 2,-5,30,10,4); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(8,0,8,0,TAU); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#3b3a36'; ctx.beginPath(); ctx.moveTo(5,5); ctx.lineTo(14,7); ctx.lineTo(11,21); ctx.lineTo(3,19); ctx.closePath(); ctx.fill();
+            ctx.fillRect(30,-2,11,4);
+            ctx.restore(); return;
+        }
+        if (weaponId === 'saiga12') {
+            ctx.fillStyle = '#2d3031'; ctx.strokeStyle = '#101112'; ctx.lineWidth = 3;
+            this.roundRect(ctx, -2,-7,50,14,4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#171819'; ctx.fillRect(22,6,10,21); ctx.fillRect(46,-3,16,6);
+            ctx.fillStyle = '#525550'; ctx.fillRect(5,-11,18,4);
+            ctx.fillStyle = '#222'; ctx.fillRect(-12,-6,12,12);
+            ctx.restore(); return;
+        }
+        if (weaponId === 'sv98') {
+            ctx.fillStyle = '#697651'; ctx.strokeStyle = '#1d2417'; ctx.lineWidth = 3;
+            this.roundRect(ctx, -11,-5,65,10,5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#1b1d1a'; ctx.fillRect(50,-2.5,28,5); ctx.fillRect(18,-13,25,5); ctx.fillRect(26,-9,6,4); ctx.fillRect(25,5,9,15);
+            ctx.fillStyle = '#596344'; ctx.beginPath(); ctx.moveTo(-19,-9); ctx.lineTo(-7,-5); ctx.lineTo(-7,5); ctx.lineTo(-19,9); ctx.closePath(); ctx.fill();
+            ctx.restore(); return;
+        }
+
         ctx.strokeStyle = '#111';
         ctx.fillStyle = def.color;
-
         const barW = def.barrel;
         const barH = def.width;
         this.roundRect(ctx, 0, -barH / 2, barW, barH, Math.min(6, barH / 2));
@@ -982,6 +1114,16 @@ export class Renderer {
             ctx.fillRect(barW - 4, -2, 9, 4);
         }
         ctx.restore();
+    }
+
+    drawBerettaShape(ctx, def) {
+        ctx.fillStyle = def.color;
+        ctx.strokeStyle = def.accent;
+        ctx.lineWidth = 3;
+        this.roundRect(ctx, 1, -5, 35, 10, 4); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = def.magColor;
+        ctx.beginPath(); ctx.moveTo(9,4); ctx.lineTo(18,5); ctx.lineTo(15,19); ctx.lineTo(7,17); ctx.closePath(); ctx.fill();
+        ctx.fillRect(34,-2,8,4);
     }
 
     drawHand(ctx, x, y) {
@@ -1171,6 +1313,12 @@ export class Renderer {
             ctx.fillStyle = active ? 'rgba(51, 82, 31, 0.95)' : 'rgba(51,82,31,0.55)';
             this.roundRect(ctx, x, y - 32, 280, 64, 6);
             ctx.fill();
+            if (slot.kind === 'weapon' && slot.weapon) {
+                ctx.strokeStyle = AMMO[WEAPONS[slot.weapon.id].ammo].color;
+                ctx.lineWidth = active ? 6 : 4;
+                this.roundRect(ctx, x + 1, y - 31, 278, 62, 6);
+                ctx.stroke();
+            }
 
             ctx.fillStyle = '#fff';
             ctx.font = 'bold 26px Arial';
@@ -1288,6 +1436,16 @@ export class Renderer {
             ctx.beginPath();
             ctx.arc(x + r.x * sx, y + r.y * sy, 2.7, 0, TAU);
             ctx.fill();
+        }
+        ctx.fillStyle = COLORS.water;
+        for (const lake of MAP.lakes || []) {
+            ctx.save();
+            ctx.translate(x + lake.x * sx, y + lake.y * sy);
+            ctx.rotate(lake.rotation || 0);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, lake.rx * sx, lake.ry * sy, 0, 0, TAU);
+            ctx.fill();
+            ctx.restore();
         }
         ctx.fillStyle = '#223645';
         for (const c of this.game.containers) ctx.fillRect(x + (c.x - c.w / 2) * sx, y + (c.y - c.h / 2) * sy, c.w * sx, c.h * sy);

@@ -74,6 +74,9 @@ function drawObjects(ctx,city,cam,playerBuilding,state){
     else if(o.kind==='noticeboard'){ctx.fillStyle='#8b6b43';ctx.fillRect(-11*z,-9*z,22*z,18*z);ctx.fillStyle='#e8dbb1';ctx.fillRect(-7*z,-6*z,6*z,7*z);ctx.fillRect(2*z,-5*z,6*z,9*z);}
     else if(o.kind==='mailboxes'){ctx.fillStyle='#66747a';ctx.fillRect(-14*z,-7*z,28*z,14*z);for(let i=-8;i<=8;i+=8){ctx.strokeStyle='#303a3d';ctx.strokeRect(i*z-3*z,-4*z,6*z,8*z);}}
     else if(o.kind==='camera'){ctx.rotate(.35);ctx.fillStyle='#6d7c83';ctx.fillRect(-8*z,-5*z,16*z,10*z);ctx.fillStyle='#d44f54';ctx.beginPath();ctx.arc(5*z,0,2*z,0,CIRCLE);ctx.fill();}
+    else if(o.kind==='crate'){ctx.fillStyle='#735b3d';ctx.fillRect(-12*z,-12*z,24*z,24*z);ctx.strokeStyle='#2d241b';ctx.strokeRect(-12*z,-12*z,24*z,24*z);}
+    else if(o.kind==='evidenceLocker'){ctx.fillStyle='#45525a';ctx.fillRect(-12*z,-14*z,24*z,28*z);ctx.fillStyle='#d5b54e';ctx.fillRect(-3*z,-2*z,6*z,4*z);}
+    else if(o.kind==='policeTerminal'){ctx.fillStyle='#233b43';ctx.fillRect(-10*z,-9*z,20*z,18*z);ctx.fillStyle='#77b7ff';ctx.fillRect(-7*z,-6*z,14*z,8*z);}
     else if(o.kind==='lamp'){ctx.fillStyle='#1a1f22';ctx.fillRect(-2*z,-12*z,4*z,24*z);ctx.fillStyle='#f0d68d';ctx.beginPath();ctx.arc(0,-12*z,5*z,0,CIRCLE);ctx.fill();}
     ctx.restore();
   }
@@ -114,7 +117,7 @@ function drawCitizens(ctx,city,citizens,cam,playerBuilding,state){
     const X=sx(c.x,cam),Y=sy(c.y,cam),z=cam.zoom;
     ctx.save();ctx.translate(X,Y);ctx.rotate(c.facing);
     ctx.fillStyle='#182027';ctx.beginPath();ctx.arc(0,0,11*z,0,CIRCLE);ctx.fill();
-    ctx.fillStyle=c.color;ctx.beginPath();ctx.arc(0,0,8*z,0,CIRCLE);ctx.fill();
+    ctx.fillStyle=c.role==='law'?'#628ac4':c.role==='security'?'#8b6c50':c.color;ctx.beginPath();ctx.arc(0,0,8*z,0,CIRCLE);ctx.fill();
     ctx.fillStyle='#e8c9a5';ctx.beginPath();ctx.arc(7*z,0,4*z,0,CIRCLE);ctx.fill();
     ctx.restore();
     if(state.knownPeople.has(c.id)||Math.hypot(c.x-state.player.x,c.y-state.player.y)<80){

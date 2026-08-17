@@ -44,8 +44,8 @@ export function createCity(seed='city-1'){
   }
 
   const types=rng.shuffle([
-    'apartments','apartments','apartments','apartments','apartments','apartments',
-    'office','diner','bar','pharmacy','records','electronics'
+    'apartments','apartments','apartments','apartments',
+    'office','diner','bar','pharmacy','records','electronics','police','warehouse'
   ]);
 
   let bi=0;
@@ -102,6 +102,8 @@ function buildBuilding(city,set,rng,type,x0,y0,w,h){
   else if(type==='pharmacy') buildPharmacy(city,set,rng,b);
   else if(type==='records') buildRecords(city,set,rng,b);
   else if(type==='electronics') buildElectronics(city,set,rng,b);
+  else if(type==='police') buildPolice(city,set,rng,b);
+  else if(type==='warehouse') buildWarehouse(city,set,rng,b);
 
   return b;
 }
@@ -240,6 +242,23 @@ function buildElectronics(city,set,rng,b){
   for(let i=0;i<4;i++){const tx=x+2+i,ty=y+2;b.workTiles.push({x:tx,y:ty});city.jobSlots.push({buildingId:b.id,x:tx,y:ty,type:b.type});}
   addObject(city,b,'shopCounter',x+6,y+5,'shop',{shop:true});
   addObject(city,b,'employeeTerminal',x+7,y+2,'workshop');
+}
+
+
+function buildPolice(city,set,rng,b){
+  const x=b.x,y=b.y;
+  wallH(city,set,b,y+3,x+1,x+b.w-2,x+4,{roomId:'staff',private:true,locked:true,label:'Precinct staff area'});
+  room(city,set,b,'staff',x+1,y+1,b.w-2,2,'private');room(city,set,b,'lobby',x+1,y+4,b.w-2,3,'public');
+  for(let i=0;i<5;i++){const tx=x+1+i,ty=y+2;b.workTiles.push({x:tx,y:ty});city.jobSlots.push({buildingId:b.id,x:tx,y:ty,type:b.type});}
+  addObject(city,b,'policeTerminal',x+6,y+2,'staff');addObject(city,b,'cctvTerminal',x+2,y+5,'lobby');addObject(city,b,'evidenceLocker',x+7,y+2,'staff');
+}
+function buildWarehouse(city,set,rng,b){
+  const x=b.x,y=b.y;
+  wallV(city,set,b,x+5,y+1,y+b.h-2,y+5,{roomId:'office',private:true,locked:true,label:'Warehouse office'});
+  room(city,set,b,'storage',x+1,y+1,4,b.h-2,'private');room(city,set,b,'office',x+6,y+1,2,b.h-2,'private');
+  for(const q of [[2,2],[3,2],[2,4],[3,5],[4,6]])addObject(city,b,'crate',x+q[0]-1,y+q[1]-1,'storage',{solid:true});
+  for(let i=0;i<4;i++){const tx=x+6,ty=y+1+i;b.workTiles.push({x:tx,y:ty});city.jobSlots.push({buildingId:b.id,x:tx,y:ty,type:b.type});}
+  addObject(city,b,'employeeTerminal',x+7,y+2,'office');addObject(city,b,'trash',x+7,y+5,'office');
 }
 
 export function tileAt(city,tx,ty){return city.grid[ty]?.[tx]||null;}

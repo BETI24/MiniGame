@@ -3,6 +3,7 @@ import {createCity,tileAt,worldToTile,tileCenter,isPlayerWalkable,doorAt,lineOfS
 import {createCitizens,citizenById,getCitizenDescriptor,updateCitizens,nearbyCitizens} from './NeonDossierSim.js';
 import {createMurderCase,evidenceForObject,employeeRecordsForBuilding,cctvRecords,directorySearch,createRepeatCrime,evaluateAccusation} from './NeonDossierCase.js';
 import {drawGame,drawMinimap} from './NeonDossierRender.js';
+import {updateSecurity} from './NeonDossierSecurity.js';
 
 export default {
   manifest:{
@@ -33,6 +34,7 @@ export default {
       cash:110,
       rep:0,
       lockpicks:5,
+      keys:new Set(),trackedCitizenId:null,securityCaught:false,
       bribes:1,
       heat:0,
       collected:new Set(),
@@ -149,7 +151,7 @@ export default {
       seed=$('.nd-seed').value.trim()||seed;
       city=createCity(seed);
       citizens=createCitizens(city,`${seed}-people`,42);
-      state.gameMinutes=8*60+30;caseIndex=1;state.cash=110;state.rep=0;state.lockpicks=5;state.bribes=1;state.heat=0;state.solvedCases=0;state.score=0;state.sideJob=null;state.secondCrimeTriggered=false;
+      state.gameMinutes=8*60+30;caseIndex=1;state.cash=110;state.rep=0;state.lockpicks=5;state.keys=new Set();state.trackedCitizenId=null;state.securityCaught=false;state.bribes=1;state.heat=0;state.solvedCases=0;state.score=0;state.sideJob=null;state.secondCrimeTriggered=false;
       state.collected=new Set();state.evidenceOrder=[];state.dynamicEvidence=new Map();state.knownPeople=new Set();state.knownPlaces=new Set();state.accessRooms=new Set();state.toasts=[];
       const records=city.buildings.find(b=>b.type==='records')||city.buildings[0];const startTile={x:records.entry.x,y:records.entry.y+2};const p=tileCenter(startTile.x,startTile.y);
       player={x:p.x,y:p.y,r:11,angle:0,speed:155};state.player=player;cam.x=player.x;cam.y=player.y;cam.zoom=.92;
@@ -175,7 +177,7 @@ export default {
     function update(dt){
       if(modalOpen||!caseEl.classList.contains('hide')||!mapEl.classList.contains('hide')||!winEl.classList.contains('hide')){updateToasts(dt);return;}
       state.gameMinutes+=dt*2.25;
-      updatePlayer(dt);updateCitizens(city,citizens,dt,state.gameMinutes);updateAction(dt);updateTrespass(dt);updateToasts(dt);updateCaseConsequences();
+      updatePlayer(dt);updateCitizens(city,citizens,dt,state.gameMinutes);updateAction(dt);updateTrespass(dt);const guard=updateSecurity(city,citizens,player,state,dt);if(state.securityCaught){state.securityCaught=false;busted();}updateToasts(dt);updateCaseConsequences();
       cam.x+=(player.x-cam.x)*Math.min(1,dt*7);cam.y+=(player.y-cam.y)*Math.min(1,dt*7);
     }
 
@@ -241,7 +243,7 @@ export default {
       if(i.type==='evidence')return `E · ${i.target.kind==='fingerprint'?'SCAN FINGERPRINT':i.target.kind==='shoeprint'?'SCAN SHOE PRINT':i.target.kind==='body'?'INSPECT BODY':'PICK UP EVIDENCE'}`;
       if(i.type==='citizen')return `E · TALK TO ${state.knownPeople.has(i.target.id)?i.target.name.toUpperCase():'CITIZEN'}`;
       if(i.type==='door')return i.target.locked?`E · LOCKPICK ${i.target.label.toUpperCase()}`:`E · ${i.target.label.toUpperCase()}`;
-      const names={addressbook:'READ ADDRESS BOOK',phone:'CHECK PHONE LOG',trash:'SEARCH TRASH',employeeTerminal:'EMPLOYEE RECORDS',emailTerminal:'PRIVATE EMAIL TERMINAL',cctvTerminal:'CCTV ARCHIVE',directoryTerminal:'CITIZEN DIRECTORY',noticeboard:'JOB BOARD',shopCounter:'BYTE & KEY SHOP',register:'COUNTER',mailboxes:'MAILBOXES'};
+      const names={addressbook:'READ ADDRESS BOOK',phone:'CHECK PHONE LOG',trash:'SEARCH TRASH',employeeTerminal:'EMPLOYEE RECORDS',emailTerminal:'PRIVATE EMAIL TERMINAL',cctvTerminal:'CCTV ARCHIVE',directoryTerminal:'CITIZEN DIRECTORY',noticeboard:'JOB BOARD',shopCounter:'BYTE & KEY SHOP',register:'COUNTER',mailboxes:'MAILBOXES',policeTerminal:'POLICE DATABASE',evidenceLocker:'EVIDENCE LOCKER'};
       return `E · ${names[i.target.kind]||'INTERACT'}`;
     }
 
@@ -256,7 +258,9 @@ export default {
 
     function interactDoor(d){
       if(!d.locked){toast('The door is unlocked.','',2);return;}
-      const access=state.accessRooms.has(`${d.buildingId}:${d.roomId}`);
+      const keyId=`${d.buildingId}:${d.roomId}`;
+      if(state.keys.has(keyId)){d.locked=false;toast('Unlocked with your key.','good',2);tone(430,.04,.015);return;}
+      const access=state.accessRooms.has(keyId);
       if(access){d.locked=false;toast('You have permission to enter.','good',2);tone(430,.04,.015);return;}
       if(state.lockpicks<=0){toast('No lockpicks left. Byte & Key sells more.','bad',3);return;}
       state.lockpicks--;action={label:'Picking lock...',total:1.35,t:1.35,done:()=>{d.locked=false;state.heat+=5;toast('Lock opened. If anyone sees you inside, expect trouble.','clue',3);tone(520,.06,.02,'square')}};
@@ -272,6 +276,8 @@ export default {
       else if(o.kind==='shopCounter')openShop();
       else if(o.kind==='register')openCounter(o);
       else if(o.kind==='mailboxes')openMailboxes(o);
+      else if(o.kind==='policeTerminal')openPoliceTerminal(o);
+      else if(o.kind==='evidenceLocker'){state.heat+=14;toast('The evidence locker is sealed. Tampering here attracts immediate attention.','bad',3);}
       else if(o.kind==='trash')toast('Mostly food wrappers and junk. Nothing relevant to the active case.','',2.5);
       else if(o.kind==='phone')toast('No case-relevant calls on this phone.','',2.5);
       else if(o.kind==='addressbook')toast('No useful names jump out from this address book.','',2.5);
@@ -300,6 +306,8 @@ export default {
       buttons.push(`<button class="nd-choice" data-talk="alibi"><b>Ask where they were</b><span>Get their claimed whereabouts around ${fmtTime(caseData.timeOfDeath)}.</span></button>`);
       if(c.homeRoomId)buttons.push(`<button class="nd-choice" data-talk="entry"><b>Ask to enter their apartment</b><span>They may grant legal access to ${c.address}.</span></button>`);
       buttons.push(`<button class="nd-choice" data-talk="bribe"><b>Offer $25 for cooperation</b><span>Money can improve your odds of getting access.</span></button>`);
+      buttons.push(`<button class="nd-choice" data-talk="track"><b>${state.trackedCitizenId===c.id?'Stop tracking':'Follow this person'}</b><span>Keep this citizen marked while they move through their daily routine.</span></button>`);
+      if(c.homeRoomId)buttons.push(`<button class="nd-choice danger" data-talk="pickpocket"><b>Try to steal their apartment key</b><span>Risky. Nearby witnesses or the target may notice.</span></button>`);
       openModal(`Interview · ${c.name}`,`<div>${getCitizenDescriptor(c)} · ${c.jobTitle} at ${c.workplaceName}</div>${buttons.join('')}`,'CITIZEN');
       $$('.nd-choice[data-talk]').forEach(btn=>btn.onclick=()=>{
         const t=btn.dataset.talk;
@@ -345,11 +353,24 @@ export default {
       state.heat+=5;
     }
 
+    function openPoliceTerminal(o){
+      state.heat+=7;
+      const wanted=citizens.filter(c=>state.knownPeople.has(c.id)).slice(0,8);
+      openModal('Police Intelligence Database',`<div>Restricted municipal records. Accessing this terminal without authorization raises Heat.</div>${wanted.map(c=>`<button class="nd-choice" data-police="${c.id}"><b>${c.name}</b><span>${c.address} · ${c.fingerprint} · last registered workplace: ${c.workplaceName}</span></button>`).join('')||'<div>No useful identities are currently known.</div>'}`,'RESTRICTED POLICE SYSTEM');
+      $$('.nd-choice[data-police]').forEach(b=>b.onclick=()=>{const c=citizenById(citizens,b.dataset.police);if(c)addCitizenProfile(c,'Police intelligence record')});
+    }
+
     function openJobBoard(){
       if(state.sideJob&&!state.sideJob.done){openModal('Side Job Board',`<div>You already accepted a side job:</div><div class="nd-choice"><b>${state.sideJob.title}</b><span>${state.sideJob.desc} · Reward $${state.sideJob.reward}</span></div>`,'OPTIONAL WORK');return;}
-      const pool=citizens.filter(c=>c.alive&&c.id!==caseData.victimId);const target=pool[Math.floor(Math.random()*pool.length)];const reward=90+Math.floor(Math.random()*70);
-      openModal('Side Job Board',`<div>Small jobs can earn extra cash while your murder investigation remains active.</div><button class="nd-choice good nd-accept-job"><b>Locate a citizen</b><span>Client only knows: ${target.hair} hair, ${target.build} build, employed at ${target.workplaceName}. Find and speak to them. Reward $${reward}.</span></button>`,'OPTIONAL WORK');
-      $('.nd-accept-job').onclick=()=>{state.sideJob={type:'locate',targetId:target.id,title:'Locate Citizen',desc:`Find a ${target.build} person with ${target.hair} hair who works at ${target.workplaceName}.`,reward,done:false};toast('Side job accepted.','good',3);closeModal()};
+      const pool=citizens.filter(c=>c.alive&&c.id!==caseData.victimId),target=pool[Math.floor(Math.random()*pool.length)],roll=Math.random();
+      const type=roll<.34?'missing':roll<.67?'stalker':'theft',reward=type==='theft'?180:type==='stalker'?150:125;
+      const info=type==='missing'
+        ?{title:'Missing Person',desc:`Locate a ${target.build} citizen with ${target.hair} hair who works at ${target.workplaceName}. Speak to them to confirm they are safe.`}
+        :type==='stalker'
+        ?{title:'Suspicious Follower',desc:`A client reports being watched by someone matching: ${target.hair} hair, ${target.build} build. Identify and speak to the person.`}
+        :{title:'Stolen Property',desc:`A stolen data drive is believed to be connected to an employee at ${target.workplaceName}. Identify the ${target.hair}-haired, ${target.build} suspect and question them.`};
+      openModal('Side Job Board',`<div>Independent investigation contracts appear here alongside your major case.</div><button class="nd-choice good nd-accept-job"><b>${info.title}</b><span>${info.desc} Reward $${reward}.</span></button>`,'OPTIONAL CASES');
+      $('.nd-accept-job').onclick=()=>{state.sideJob={type,targetId:target.id,title:info.title,desc:info.desc,reward,done:false};toast(`${info.title} accepted.`,'good',3);closeModal()};
     }
 
     function openShop(){
@@ -426,7 +447,7 @@ export default {
       if(!city||!player)return;state.player=player;drawGame(ctx,city,citizens,caseData,player,cam,state);const mr=mini.getBoundingClientRect();drawMinimap(mctx,city,citizens,player,caseData,state,mr.width,mr.height);updateHud();
     }
     function updateHud(){
-      timeEl.textContent=fmtTime(state.gameMinutes);cashEl.textContent=`$${Math.round(state.cash)}`;repEl.textContent=state.rep.toFixed(0);heatEl.textContent=`${Math.round(state.heat)}%`;toolsEl.textContent=`${state.lockpicks} picks · scan ${state.scannerRange}`;scanEl.classList.toggle('on',state.scanner);
+      timeEl.textContent=fmtTime(state.gameMinutes);cashEl.textContent=`$${Math.round(state.cash)}`;repEl.textContent=state.rep.toFixed(0);heatEl.textContent=`${Math.round(state.heat)}%`;toolsEl.textContent=`${state.lockpicks} picks · ${state.keys.size} keys · scan ${state.scannerRange}`;scanEl.classList.toggle('on',state.scanner);
       if(caseData){objTitle.textContent=caseData.title;if(!state.collected.has('body'))objDesc.textContent=`Go to ${citizenById(citizens,caseData.victimId)?.address||buildingName(caseData.sceneBuildingId)} and inspect the crime scene.`;else if(!state.collected.has('killer-print')&&!state.collected.has('cctv')&&!state.collected.has('phone-log'))objDesc.textContent='Build leads: scan the scene, inspect the victim’s home, question neighbors or check CCTV.';else objDesc.textContent='Cross-reference your clues, identify a suspect, and submit a resolution from the Case Board.';}
       if(state.sideJob&&!state.sideJob.done){sideEl.classList.add('on');sideTitle.textContent=state.sideJob.title;sideDesc.textContent=state.sideJob.desc;}else sideEl.classList.remove('on');
       const i=nearestInteraction(),p=promptFor(i);promptEl.innerHTML=p?`<b>${p.split(' · ')[0]}</b> · ${p.split(' · ').slice(1).join(' · ')}`:'';promptEl.classList.toggle('on',!!p);

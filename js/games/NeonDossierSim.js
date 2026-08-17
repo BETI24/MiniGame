@@ -5,7 +5,7 @@ export function createCitizens(city,seed='citizens',count=42){
   const rng=new RNG(seed);
   const citizens=[];
   const homes=[];
-  for(const h of city.homeSlots){homes.push(h,h);}
+  for(const h of city.homeSlots){homes.push(h,h,h);}
   const shuffledHomes=rng.shuffle(homes);
   const workBuildings=city.buildings.filter(b=>b.type!=='apartments');
   const usedNames=new Set();
@@ -52,7 +52,9 @@ export function createCitizens(city,seed='citizens',count=42){
       path:[],pathIndex:0,pathCooldown:rng.float(0,.8),speed:rng.float(42,58),
       idle:rng.float(0,2),facing:rng.float(0,Math.PI*2),
       knowsPlayer:false,accessGranted:false,lastSeenPlayer:-999,
-      caseNotes:[]
+      caseNotes:[],
+      role:workplace.type==='police'?'law':(jobTitle==='Bouncer'?'security':'civilian'),
+      keyIds:[`${home.buildingId}:${home.roomId}`,`${workplace.id}:staff`,`${workplace.id}:office`,`${workplace.id}:back`,`${workplace.id}:workshop`,`${workplace.id}:archive`,`${workplace.id}:stock`]
     };
     citizens.push(citizen);
   }

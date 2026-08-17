@@ -52,7 +52,8 @@ export const BUILDING_NAMES = {
   pharmacy: ['VitaCare Pharmacy','Helix Drugs','Northline Chemist'],
   records: ['Civic Records Annex','Municipal Registry','Citizen Services'],
   electronics: ['Byte & Key','Circuit Exchange','Neon Hardware'],
-  warehouse: ['Blackline Storage','Atlas Depot','Morrow Freight']
+  warehouse: ['Blackline Storage','Atlas Depot','Morrow Freight'],
+  police: ['Central Precinct','Vesper Police Annex','Metro Watch Station']
 };
 
 export const JOB_TITLES = {
@@ -62,7 +63,8 @@ export const JOB_TITLES = {
   pharmacy: ['Pharmacist','Cashier','Stock Clerk','Manager'],
   records: ['Records Clerk','Archivist','Administrator','Receptionist'],
   electronics: ['Technician','Sales Clerk','Repair Specialist','Manager'],
-  warehouse: ['Loader','Dispatcher','Inventory Clerk','Foreman']
+  warehouse: ['Loader','Dispatcher','Inventory Clerk','Foreman'],
+  police: ['Patrol Officer','Detective','Desk Sergeant','Security Officer']
 };
 
 export const HAIR = ['black','brown','blonde','red','silver'];

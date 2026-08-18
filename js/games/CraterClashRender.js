@@ -19,9 +19,11 @@ export function render(ctx,state,W,H){
   drawTanks(ctx,state);
   drawProjectiles(ctx,state);
   drawFx(ctx,state);
+  drawDamageNumbers(ctx,state);
   ctx.restore();
   drawAim(ctx,state,W,H);
   drawHud(ctx,state,W,H);
+  drawDamageSummary(ctx,state,W,H);
 }
 
 function drawSky(ctx,s,W,H){
@@ -273,6 +275,46 @@ function drawFx(ctx,s){
       ctx.strokeStyle=f.color;ctx.globalAlpha=t;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(f.x1,f.y1);ctx.lineTo(f.x2,f.y2);ctx.stroke();ctx.globalAlpha=1;
     }
   }
+}
+
+function drawDamageNumbers(ctx,s){
+  for(const n of s.damageNumbers||[]){
+    const life=clamp(n.life/n.max,0,1);
+    const pop=1+Math.sin((1-life)*Math.PI)*.16;
+    const value=Math.max(1,Math.round(n.value));
+    let color="#f6f7fb",glow="rgba(255,255,255,.30)",label="";
+    if(n.self){color="#cbbcff";glow="rgba(182,146,255,.55)";label="SELF";}
+    if(n.x2){color="#ff4f62";glow="rgba(255,55,77,.95)";label="×2";}
+    if(n.crit&&!n.x2){color="#72ff86";glow="rgba(72,255,111,1)";label="CRIT";}
+    if(n.crit&&n.x2){color="#ff4f62";glow="rgba(77,255,115,1)";label="CRIT ×2";}
+    ctx.save();ctx.translate(n.x,n.y);ctx.scale(pop,pop);ctx.globalAlpha=Math.min(1,life*1.55);
+    ctx.textAlign="center";ctx.textBaseline="middle";ctx.font=`1000 ${n.crit||n.x2?19:16}px Inter,system-ui,sans-serif`;
+    ctx.lineWidth=3;ctx.strokeStyle="rgba(4,8,13,.85)";ctx.shadowColor=glow;ctx.shadowBlur=n.crit||n.x2?15:6;
+    ctx.strokeText(String(value),0,0);ctx.fillStyle=color;ctx.fillText(String(value),0,0);
+    if(label){ctx.shadowBlur=n.crit?10:5;ctx.font="1000 7px Inter,system-ui,sans-serif";ctx.fillStyle=n.crit?"#8dff99":color;ctx.fillText(label,0,14);}
+    ctx.restore();
+  }
+}
+
+function drawDamageSummary(ctx,s,W,H){
+  const q=s.damageSummary;if(!q||q.life<=0)return;
+  const t=clamp(q.life/q.max,0,1),appear=clamp((q.max-q.life)/.18,0,1),fade=clamp(q.life/.42,0,1),alpha=Math.min(appear,fade);
+  const d=getWeaponTierStats(q.weaponId,q.tier||1);
+  const total=Math.round(q.totalDamage);
+  const x=W/2,y=Math.max(118,Math.min(H*.24,170));
+  const width=Math.min(390,W-30),height=58;
+  ctx.save();ctx.globalAlpha=alpha;ctx.translate(x,y);ctx.scale(.92+.08*appear,.92+.08*appear);
+  const grad=ctx.createLinearGradient(-width/2,0,width/2,0);grad.addColorStop(0,"rgba(7,13,22,.18)");grad.addColorStop(.5,"rgba(7,13,22,.94)");grad.addColorStop(1,"rgba(7,13,22,.18)");
+  ctx.fillStyle=grad;ctx.beginPath();ctx.roundRect(-width/2,-height/2,width,height,14);ctx.fill();
+  ctx.strokeStyle=q.hadX2?"rgba(255,79,98,.55)":q.crit?"rgba(100,255,129,.55)":"rgba(105,224,255,.28)";ctx.lineWidth=1.5;ctx.stroke();
+  ctx.textAlign="center";ctx.textBaseline="middle";ctx.font="900 9px Inter,system-ui,sans-serif";ctx.fillStyle="#8ba0ae";
+  const flags=[q.crit?"CRITICAL":"",q.hadX2?"×2 GATE":""].filter(Boolean).join(" · ");
+  ctx.fillText(`${d.name} · T${q.tier}${flags?" · "+flags:""}`,0,-15);
+  const color=q.hadX2?"#ff596b":q.crit?"#72ff86":"#f5f9fb";
+  ctx.shadowColor=q.crit?"#51ff73":q.hadX2?"#ff3954":"rgba(110,226,255,.5)";ctx.shadowBlur=q.crit||q.hadX2?18:8;
+  ctx.font="1000 25px Inter,system-ui,sans-serif";ctx.fillStyle=color;ctx.fillText(`${total} TOTAL DAMAGE`,0,8);
+  ctx.shadowBlur=0;ctx.font="800 8px Inter,system-ui,sans-serif";ctx.fillStyle="#718694";ctx.fillText(`${q.hitCount} damage event${q.hitCount===1?"":"s"} · self damage excluded`,0,24);
+  ctx.restore();
 }
 
 function drawAim(ctx,s,W,H){

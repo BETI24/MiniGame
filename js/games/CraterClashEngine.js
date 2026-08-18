@@ -129,7 +129,7 @@ export function createState({width,height,mode="ffa",difficulty="normal",arenaIn
     current:0,round:1,turnTime:Number(cfg.turnTime)||28,turnTimer:Number(cfg.turnTime)||28,phase:"aim",shotInProgress:false,nextTurnDelay:0,
     gameOver:false,winner:null,message:"YOUR TURN",messageTimer:1.8,cameraShake:0,
     selectedWeapon:"pulse",selectedTier:1,playerAngle:Math.PI*.25,playerPower:58,nextId:1,crate:null,
-    lastShotTraces:[],traceCurrent:[],skillHits:0
+    lastShotTraces:[],traceCurrent:[],skillHits:0,damageNumbers:[],damageSummary:null,activeShotSummary:null
   };
   const margin=width*.075,xs=[];
   for(let i=0;i<tankCount;i++)xs.push(margin+(width-margin*2)*(i/Math.max(1,tankCount-1)));
@@ -209,7 +209,7 @@ function projectileBase(s,t,angle,power,weaponId,tier=1,extra={}){
   const speed=(85+power*3.05)*(extra.launchSpeedMult||1);
   return {id:s.nextId++,owner:t.id,weaponId,tier,x:t.x+Math.cos(angle)*18,y:t.y-8-Math.sin(angle)*18,
     vx:Math.cos(angle)*speed,vy:-Math.sin(angle)*speed,age:0,alive:true,radius:4,bounces:0,wallBounces:0,
-    trace:[],traceTimer:0,portalCooldown:0,bumperCooldown:0,...extra};
+    trace:[],traceTimer:0,portalCooldown:0,bumperCooldown:0,critShot:false,x2Active:false,...extra};
 }
 
 export function fire(s,t,angle,power,weaponId=t.selected,weaponTier=t.selectedTier||1){
@@ -221,7 +221,8 @@ export function fire(s,t,angle,power,weaponId=t.selected,weaponTier=t.selectedTi
   if(t.overchargeReady){t.overchargeReady=false;t.overcharge=0;s.message="OVERCHARGED SHOT";s.messageTimer=1.1;}
   if(crit>1){s.message="CRITICAL SHOT";s.messageTimer=1.0;}
   s.phase="shot";s.shotInProgress=true;s.projectiles.length=0;s.traceCurrent=[];
-  const add=(a=angle,p=power,extra={})=>s.projectiles.push(projectileBase(s,t,a,p,weaponId,weaponTier,{damageMult:mult,startX:t.x,...extra}));
+  s.activeShotSummary={ownerId:t.id,weaponId,tier:weaponTier,totalDamage:0,hitCount:0,crit:crit>1,hadX2:false};
+  const add=(a=angle,p=power,extra={})=>s.projectiles.push(projectileBase(s,t,a,p,weaponId,weaponTier,{damageMult:mult,startX:t.x,critShot:crit>1,x2Active:false,...extra}));
   s.fx.push({kind:"muzzle",weaponId,tier:weaponTier,x:t.x+Math.cos(angle)*19,y:t.y-8-Math.sin(angle)*19,angle,life:.28,max:.28,color:d.color});
   if(weaponId==="counter3000"){
     let seq=0;for(let group=1;group<=d.counterVolleys;group++){
@@ -286,7 +287,11 @@ function resolveRail(s,t,angle,d,mult){
     x+=Math.cos(angle)*step;y-=Math.sin(angle)*step;
     if(x<0||x>=s.width||y<0||y>=s.height)break;
     for(const o of s.skillObjects){
-      if(o.kind==="multiplier"&&!touched.has(o.id)&&Math.hypot(x-o.x,y-o.y)<o.r+4){boost*=o.value;touched.add(o.id);o.dead=true;s.skillHits++;s.message="×2 DAMAGE GATE";s.messageTimer=1;}
+      if(o.kind==="multiplier"&&!touched.has(o.id)&&Math.hypot(x-o.x,y-o.y)<o.r+4){
+        boost*=o.value;touched.add(o.id);o.dead=true;s.skillHits++;
+        if(s.activeShotSummary)s.activeShotSummary.hadX2=true;
+        s.message="×2 DAMAGE GATE";s.messageTimer=1;
+      }
     }
     for(const q of s.tanks){if(q.alive&&q.id!==t.id&&Math.hypot(q.x-x,q.y-y)<13){hitTank=q;break;}}
     hitX=x;hitY=y;if(hitTank||y>=terrainY(s,x))break;
@@ -294,11 +299,15 @@ function resolveRail(s,t,angle,d,mult){
   s.skillObjects=s.skillObjects.filter(o=>!o.dead);
   s.traceCurrent.push([{x:t.x,y:t.y-10},{x:hitX,y:hitY}]);
   s.fx.push({kind:"beam",x1:t.x,y1:t.y-10,x2:hitX,y2:hitY,life:.35,max:.35,color:d.color});
-  if(hitTank)damageTank(s,hitTank,d.damage*boost,t);else modifyTerrainCrater(s,hitX,hitY,9,.45);
+  if(hitTank)damageTank(s,hitTank,d.damage*boost,t,{x2:touched.size>0});else modifyTerrainCrater(s,hitX,hitY,9,.45);
 }
 function scheduleTurnEnd(s,delay=.9){s.shotInProgress=false;s.nextTurnDelay=Math.max(s.nextTurnDelay,delay);}
 
-function explosion(s,x,y,radius,damage,owner,terrainScale=1,color="#fff"){
+function damageMeta(source){
+  if(!source)return {};
+  return {crit:!!source.critShot,x2:!!source.x2Active};
+}
+function explosion(s,x,y,radius,damage,owner,terrainScale=1,color="#fff",meta={}){
   if(radius>0&&terrainScale>0)modifyTerrainCrater(s,x,y,radius,terrainScale);
   s.fx.push({kind:"explosion",x,y,r:Math.max(12,radius),life:.55,max:.55,color});
   s.cameraShake=Math.max(s.cameraShake,Math.min(12,radius*.09));
@@ -306,16 +315,41 @@ function explosion(s,x,y,radius,damage,owner,terrainScale=1,color="#fff"){
   for(const t of s.tanks){
     if(!t.alive)continue;
     const dist=Math.hypot(t.x-x,t.y-y);if(dist>radius+14)continue;
-    damageTank(s,t,damage*clamp(1-dist/(radius+18),.08,1),owner);
+    damageTank(s,t,damage*clamp(1-dist/(radius+18),.08,1),owner,meta);
   }
 }
-function damageTank(s,t,amount,owner){
-  if(amount<=0||!t.alive)return;
+function explosionP(s,p,x,y,radius,damage,owner,terrainScale=1,color="#fff"){
+  return explosion(s,x,y,radius,damage,owner,terrainScale,color,damageMeta(p));
+}
+function damageTankP(s,p,t,amount,owner){
+  return damageTank(s,t,amount,owner,damageMeta(p));
+}
+function damageTank(s,t,amount,owner,meta={}){
+  if(amount<=0||!t.alive)return 0;
+  const before=Math.max(0,t.hp)+Math.max(0,t.armor||0);
+  const applied=Math.min(amount,before);
+  const crit=meta.crit ?? !!s.activeShotSummary?.crit;
+  const x2=!!meta.x2;
   let left=amount;
   if(t.armor>0){const a=Math.min(t.armor,left);t.armor-=a;left-=a;}
   t.hp-=left;
-  if(owner&&owner.id!==t.id){owner.damage+=amount;owner.overcharge=clamp(owner.overcharge+amount*.55*(owner.overchargeRate||1),0,100);if(owner.overcharge>=100)owner.overchargeReady=true;}
+  const self=!!(owner&&owner.id===t.id);
+  s.damageNumbers.push({x:t.x+rand(-7,7),y:t.y-38-rand(0,5),value:applied,life:1.05,max:1.05,crit,x2,self,vy:-34-rand(0,10),drift:rand(-4,4)});
+  if(owner&&owner.id!==t.id){
+    owner.damage+=amount;
+    owner.overcharge=clamp(owner.overcharge+amount*.55*(owner.overchargeRate||1),0,100);
+    if(owner.overcharge>=100)owner.overchargeReady=true;
+    if(s.activeShotSummary&&s.activeShotSummary.ownerId===owner.id){
+      s.activeShotSummary.totalDamage+=applied;s.activeShotSummary.hitCount++;if(x2)s.activeShotSummary.hadX2=true;
+    }
+  }
   if(t.hp<=0){t.hp=0;t.alive=false;if(owner&&owner.id!==t.id)owner.kills++;s.fx.push({kind:"tankPop",x:t.x,y:t.y,life:.75,max:.75,color:t.color});}
+  return applied;
+}
+function finalizeShotSummary(s){
+  const q=s.activeShotSummary;if(!q)return;
+  s.damageSummary={...q,life:1.75,max:1.75};
+  s.activeShotSummary=null;
 }
 function ownerOf(s,p){return s.tanks.find(t=>t.id===p.owner)||null;}
 function nearestEnemy(s,ownerId,x,y,range=1e9){
@@ -326,7 +360,7 @@ function nearestEnemy(s,ownerId,x,y,range=1e9){
 
 function spawnMiniProjectile(s,p,{angle,speed,weaponId=p.weaponId,kind="fragment",damageMult=p.damageMult,extra={}}){
   s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId,tier:p.tier,kind,x:p.x,y:p.y,
-    vx:Math.cos(angle)*speed,vy:-Math.sin(angle)*speed,age:0,alive:true,radius:3,damageMult,bounces:0,didSplit:true,...extra});
+    vx:Math.cos(angle)*speed,vy:-Math.sin(angle)*speed,age:0,alive:true,radius:3,damageMult,bounces:0,didSplit:true,critShot:!!p.critShot,x2Active:!!p.x2Active,...extra});
 }
 function splitProjectile(s,p){
   const d=weaponDef(p.weaponId,p.tier);if(!d.fragments)return;
@@ -391,7 +425,7 @@ function spawnStrike(s,p,d,x,kind="skyBomb"){
     if(kind==="gunshipShot"){
       const q=count<=1?0:i/(count-1);px=clamp(x-(d.gunshipSpan||320)/2+q*(d.gunshipSpan||320),8,s.width-8);py=-60-i*3;vx=rand(-4,4);vy=rand(150,195);
     }
-    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind,x:px,y:py,vx,vy,age:-.28-i*.08,alive:true,damageMult:p.damageMult,radius:4});
+    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind,x:px,y:py,vx,vy,age:-.28-i*.08,alive:true,damageMult:p.damageMult,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:4});
   }
 }
 
@@ -407,7 +441,7 @@ function spawnAirStrikeFamily(s,p,d,x){
   const positions=[];
   if(d.artilleryOrder)positions.push(x,clamp(x-d.spreadX,8,s.width-8),clamp(x+d.spreadX,8,s.width-8));
   else for(let i=0;i<d.bombs;i++)positions.push(clamp(x+rand(-d.spreadX,d.spreadX),8,s.width-8));
-  positions.forEach((px,i)=>s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"airstrikeBomb",x:px,y:-100-i*24,vx:d.artilleryOrder?0:rand(-5,5),vy:d.artilleryOrder?155:rand(130,180),age:-(d.artilleryOrder?[0,.35,.70][i]||0:i*.07),alive:true,damageMult:p.damageMult,radius:d.artilleryOrder?7:4,noTerrainDamage:false}));
+  positions.forEach((px,i)=>s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"airstrikeBomb",x:px,y:-100-i*24,vx:d.artilleryOrder?0:rand(-5,5),vy:d.artilleryOrder?155:rand(130,180),age:-(d.artilleryOrder?[0,.35,.70][i]||0:i*.07),alive:true,damageMult:p.damageMult,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:d.artilleryOrder?7:4,noTerrainDamage:false}));
   s.fx.push({kind:"marker",x,y:terrainY(s,x),life:1.0,max:1.0,color:d.color});
 }
 function spawnCarpetFamily(s,p,d,x){
@@ -415,14 +449,14 @@ function spawnCarpetFamily(s,p,d,x){
   for(let i=0;i<count;i++){
     const q=count<=1?0:i/(count-1),tx=clamp(x-d.spreadX/2+q*d.spreadX,8,s.width-8),sy=-70-i*3;
     const dx=tx-start,dy=terrainY(s,tx)-sy,len=Math.max(1,Math.hypot(dx,dy)),speed=230;
-    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"carpetBombDrop",x:start,y:sy,vx:dx/len*speed,vy:dy/len*speed,age:-.15-i*.055,alive:true,damageMult:p.damageMult,radius:4,noGravity:true,windFactor:0,noTerrainDamage:true,carpetFire:!!d.burn});
+    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"carpetBombDrop",x:start,y:sy,vx:dx/len*speed,vy:dy/len*speed,age:-.15-i*.055,alive:true,damageMult:p.damageMult,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:4,noGravity:true,windFactor:0,noTerrainDamage:true,carpetFire:!!d.burn});
   }
   s.fx.push({kind:"marker",x,y:terrainY(s,x),life:1.0,max:1.0,color:d.color});
 }
 function spawnBoltFamily(s,p,d,x){
-  for(let i=0;i<(d.bolts||1);i++)s.fields.push({kind:"lightningStrike",x:clamp(x+(i-(d.bolts-1)/2)*(d.boltSpread||0),8,s.width-8),life:.15+i*.20,max:.15+i*.20,delay:.10+i*.20,owner:p.owner,damage:d.damage*p.damageMult,r:d.radius||18,color:d.color});
-  if(d.comets)for(let i=0;i<d.comets;i++)s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"boltComet",x:clamp(x+rand(-55,55),8,s.width-8),y:-180-i*45,vx:rand(-25,25),vy:125,age:-.25-i*.18,alive:true,damageMult:p.damageMult*(d.cometDamage/d.damage),radius:5});
-  if(d.apocalypseFire)for(let i=0;i<d.apocalypseFire;i++){const fx=clamp(x+rand(-80,80),8,s.width-8);s.fires.push({x:fx,y:terrainY(s,fx)-3,r:16,life:1.5,damage:d.fireDamage*p.damageMult,owner:p.owner,tick:0,color:"fire"});}
+  for(let i=0;i<(d.bolts||1);i++)s.fields.push({kind:"lightningStrike",x:clamp(x+(i-(d.bolts-1)/2)*(d.boltSpread||0),8,s.width-8),life:.15+i*.20,max:.15+i*.20,delay:.10+i*.20,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*p.damageMult,r:d.radius||18,color:d.color});
+  if(d.comets)for(let i=0;i<d.comets;i++)s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"boltComet",x:clamp(x+rand(-55,55),8,s.width-8),y:-180-i*45,vx:rand(-25,25),vy:125,age:-.25-i*.18,alive:true,damageMult:p.damageMult*(d.cometDamage/d.damage),critShot:!!p.critShot,x2Active:!!p.x2Active,radius:5});
+  if(d.apocalypseFire)for(let i=0;i<d.apocalypseFire;i++){const fx=clamp(x+rand(-80,80),8,s.width-8);s.fires.push({x:fx,y:terrainY(s,fx)-3,r:16,life:1.5,damage:d.fireDamage*p.damageMult,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,tick:0,color:"fire"});}
   s.fx.push({kind:"marker",x,y:terrainY(s,x),life:.8,max:.8,color:d.color});
 }
 function spawnRecruiterFamily(s,p,d,x){
@@ -430,14 +464,14 @@ function spawnRecruiterFamily(s,p,d,x){
   for(let i=0;i<count;i++){
     const left=i%2===0,startX=left?-30:s.width+30,startY=clamp(targetY-130+rand(-80,80),25,s.height*.55),tx=clamp(x+rand(-45,45),8,s.width-8),ty=terrainY(s,tx)-6;
     const dx=tx-startX,dy=ty-startY,len=Math.max(1,Math.hypot(dx,dy)),speed=310;
-    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"recruitShot",x:startX,y:startY,vx:dx/len*speed,vy:dy/len*speed,age:-.10-i*.045,alive:true,damageMult:p.damageMult,radius:2.5,noGravity:true,windFactor:0,customColor:col});
+    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"recruitShot",x:startX,y:startY,vx:dx/len*speed,vy:dy/len*speed,age:-.10-i*.045,alive:true,damageMult:p.damageMult,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:2.5,noGravity:true,windFactor:0,customColor:col});
   }
   s.fx.push({kind:"marker",x,y:targetY,life:1.0,max:1.0,color:d.color});
 }
 function spawnStickyRain(s,p,d,x){
   for(let i=0;i<(d.bombs||20);i++){
     const q=i/Math.max(1,(d.bombs||20)-1),px=clamp(x-d.spreadX/2+q*d.spreadX,8,s.width-8);
-    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"stickyRainBomb",x:px,y:-100-i*11,vx:rand(-4,4),vy:150,age:-.18-i*.035,alive:true,damageMult:p.damageMult,radius:3,rainIndex:i});
+    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"stickyRainBomb",x:px,y:-100-i*11,vx:rand(-4,4),vy:150,age:-.18-i*.035,alive:true,damageMult:p.damageMult,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:3,rainIndex:i});
   }
   s.fx.push({kind:"marker",x,y:terrainY(s,x),life:1.0,max:1.0,color:d.color});
 }
@@ -476,15 +510,15 @@ function onImpact(s,p,x,y,hitTank=null){
   if(p.weaponId==="deadweight"&&p.deadWeightMode==="riser"&&p.kind!=="deadRiserTunnel"){p.kind="deadRiserTunnel";p.x=x;p.y=terrainY(s,x)+16;p.vx=0;p.vy=0;p.noGravity=true;p.windFactor=0;return;}
   if(p.weaponId==="fireworks"&&p.kind==="fireworkRocket"){p.alive=false;return;}
   if(p.weaponId==="flame"){
-    p.alive=false;if(hitTank){for(let i=0;i<(d.burnTicks||3);i++)s.fields.push({kind:"burnTarget",targetId:hitTank.id,life:.18+i*.34,max:.18+i*.34,delay:.12+i*.34,owner:p.owner,damage:(d.burnTickDamage||d.damage)*mult,color:d.color});}return;
+    p.alive=false;if(hitTank){for(let i=0;i<(d.burnTicks||3);i++)s.fields.push({kind:"burnTarget",targetId:hitTank.id,life:.18+i*.34,max:.18+i*.34,delay:.12+i*.34,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:(d.burnTickDamage||d.damage)*mult,color:d.color});}return;
   }
-  if(p.weaponId==="uzi"){p.alive=false;if(hitTank)damageTank(s,hitTank,d.damage*mult,owner);s.fx.push({kind:"bulletHit",x,y,life:.18,max:.18,color:d.color});return;}
-  if(p.weaponId==="bfg1000"){p.alive=false;const travel=Math.abs(x-(p.startX??x)),q=clamp(travel/(s.width*.62),0,1),dd=(d.distanceMin||d.damage)+((d.distanceMax||d.damage)-(d.distanceMin||d.damage))*q;explosion(s,x,y,d.radius,dd*mult,owner,1.0,d.color);return;}
+  if(p.weaponId==="uzi"){p.alive=false;if(hitTank)damageTankP(s,p,hitTank,d.damage*mult,owner);s.fx.push({kind:"bulletHit",x,y,life:.18,max:.18,color:d.color});return;}
+  if(p.weaponId==="bfg1000"){p.alive=false;const travel=Math.abs(x-(p.startX??x)),q=clamp(travel/(s.width*.62),0,1),dd=(d.distanceMin||d.damage)+((d.distanceMax||d.damage)-(d.distanceMin||d.damage))*q;explosionP(s,p,x,y,d.radius,dd*mult,owner,1.0,d.color);return;}
   if(p.weaponId==="tadpoles"){
     const q=clamp(Math.abs(x-(p.startX??x))/(s.width*.60),0,1),lo=p.bullfrog?(d.bigDamageMin||16):(d.distanceMin||4),hi=p.bullfrog?(d.bigDamageMax||40):(d.distanceMax||7),dd=lo+(hi-lo)*q,rr=p.bullfrog?(d.bigRadius||25):d.radius;
-    if(hitTank){p.alive=false;explosion(s,x,y,rr,dd*mult,owner,.12,d.color);return;}
+    if(hitTank){p.alive=false;explosionP(s,p,x,y,rr,dd*mult,owner,.12,d.color);return;}
     p.tadBounces=(p.tadBounces||0)+1;if(p.tadBounces<=(d.tadBounces||2)){p.y=terrainY(s,x)-4;p.vx*=.72;p.vy=-Math.max(45,Math.abs(p.vy)*.53);s.fx.push({kind:"frogBounce",x,y,life:.22,max:.22,color:d.color});return;}
-    p.alive=false;explosion(s,x,y,rr,dd*mult,owner,.22,d.color);return;
+    p.alive=false;explosionP(s,p,x,y,rr,dd*mult,owner,.22,d.color);return;
   }
   if(p.weaponId==="bounder"&&!p.bounderLocked&&!hitTank){
     const target=nearestEnemy(s,p.owner,x,y);if(target){const dx=target.x-x,dy=target.y-y,len=Math.max(1,Math.hypot(dx,dy)),sp=d.bounderSpeed||220;p.bounderLocked=true;p.noGravity=true;p.windFactor=0;p.x=x;p.y=terrainY(s,x)-5;p.vx=dx/len*sp;p.vy=dy/len*sp;s.fx.push({kind:"bounderLock",x,y,targetX:target.x,targetY:target.y,life:.28,max:.28,color:d.color});return;}
@@ -494,20 +528,20 @@ function onImpact(s,p,x,y,hitTank=null){
   if(p.weaponId==="recruiter"&&p.kind!=="recruitShot"){bounceFlareOrTrigger(s,p,d,x,y,()=>spawnRecruiterFamily(s,p,d,x));return;}
   if(p.weaponId==="carpetbomb"&&p.kind!=="carpetBombDrop"){bounceFlareOrTrigger(s,p,d,x,y,()=>spawnCarpetFamily(s,p,d,x));return;}
   if(p.weaponId==="stickybomb"){
-    if(p.kind==="stickyRainBomb"){p.alive=false;s.fields.push({kind:"stickyMine",x,y:terrainY(s,x)-3,life:.45+(p.rainIndex||0)*.045,max:.45+(p.rainIndex||0)*.045,owner:p.owner,damage:d.damage*mult,r:d.radius,color:d.color});return;}
+    if(p.kind==="stickyRainBomb"){p.alive=false;s.fields.push({kind:"stickyMine",x,y:terrainY(s,x)-3,life:.45+(p.rainIndex||0)*.045,max:.45+(p.rainIndex||0)*.045,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult,r:d.radius,color:d.color});return;}
     if(p.stickyRainFlare){bounceFlareOrTrigger(s,p,d,x,y,()=>spawnStickyRain(s,p,d,x));return;}
     if(p.mineLayerShot){
-      const groundY=terrainY(s,x)-3;s.fields.push({kind:"stickyMine",x,y:groundY,life:999,max:999,owner:p.owner,damage:d.damage*mult,r:d.radius,color:d.color,group:p.mineGroup,dormant:true});p.mineBounces=(p.mineBounces||0)+1;
+      const groundY=terrainY(s,x)-3;s.fields.push({kind:"stickyMine",x,y:groundY,life:999,max:999,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult,r:d.radius,color:d.color,group:p.mineGroup,dormant:true});p.mineBounces=(p.mineBounces||0)+1;
       if(p.mineBounces<(d.mineBounces||5)){p.x=x;p.y=groundY-3;p.vx*=.76;p.vy=-Math.max(42,Math.abs(p.vy)*(d.bouncePower||.7));return;}
       p.alive=false;const group=s.fields.filter(f=>f.kind==="stickyMine"&&f.group===p.mineGroup);group.forEach((f,i)=>{f.dormant=false;f.life=.28+i*.035;f.max=f.life;});return;
     }
-    if(p.stickyShot){p.alive=false;s.fields.push({kind:"stickyMine",x,y:hitTank?hitTank.y:terrainY(s,x)-3,targetId:hitTank?.id||null,life:d.stickyDelay||2,max:d.stickyDelay||2,owner:p.owner,damage:d.damage*mult,r:d.radius,color:d.color});return;}
+    if(p.stickyShot){p.alive=false;s.fields.push({kind:"stickyMine",x,y:hitTank?hitTank.y:terrainY(s,x)-3,targetId:hitTank?.id||null,life:d.stickyDelay||2,max:d.stickyDelay||2,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult,r:d.radius,color:d.color});return;}
   }
-  if(p.weaponId==="snake"){p.alive=false;s.fields.push({kind:"snake",x,y:terrainY(s,x)-3,life:(d.snakeHits||10)*(d.snakeStep||.20)+.05,max:(d.snakeHits||10)*(d.snakeStep||.20)+.05,tick:0,steps:0,dir:Math.sign(p.vx||1),owner:p.owner,damage:d.damage*mult,r:d.radius,step:d.snakeStep||.20,travel:d.snakeTravel||25,turn:d.snakeTurn||1,color:d.color,tier:p.tier});return;}
+  if(p.weaponId==="snake"){p.alive=false;s.fields.push({kind:"snake",x,y:terrainY(s,x)-3,life:(d.snakeHits||10)*(d.snakeStep||.20)+.05,max:(d.snakeHits||10)*(d.snakeStep||.20)+.05,tick:0,steps:0,dir:Math.sign(p.vx||1),owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult,r:d.radius,step:d.snakeStep||.20,travel:d.snakeTravel||25,turn:d.snakeTurn||1,color:d.color,tier:p.tier});return;}
   if(p.weaponId==="fireworks"){
     if(p.kind==="fireworkRocket"){p.alive=false;return;}
     if(p.kind==="pyroShell"){p.alive=false;resolvePyrotechnics(s,p,d,x,y);return;}
-    if(p.kind==="fireworkSpark"){p.alive=false;explosion(s,x,y,d.radius,p.fragDamage||d.damage*mult,owner,.18,d.color);return;}
+    if(p.kind==="fireworkSpark"){p.alive=false;explosionP(s,p,x,y,d.radius,p.fragDamage||d.damage*mult,owner,.18,d.color);return;}
   }
   if(p.weaponId==="spider"){p.alive=false;resolveSpiderWeb(s,p,d,x,y);return;}
 
@@ -518,9 +552,9 @@ function onImpact(s,p,x,y,hitTank=null){
     const terrainScale=(p.kind==="deadDrop"?1.05:(p.weaponId==="carpetbomb"||p.weaponId==="recruiter"?0:(d.terrainScale??.75)));
     const rad=p.weaponId==="bolt"&&p.kind==="boltComet"?(d.cometRadius||24):(d.radius||32);
     const dmg=p.weaponId==="bolt"&&p.kind==="boltComet"?(d.cometDamage||15)*mult:d.damage*mult;
-    explosion(s,x,y,rad,dmg,owner,terrainScale,d.color);
-    if(p.weaponId==="acidrain")s.fires.push({x,y:terrainY(s,x)-3,r:30,life:d.acidTime||4,damage:d.acid||5,owner:p.owner,tick:0,color:"acid"});
-    if(p.weaponId==="carpetbomb"&&d.burn)s.fires.push({x,y:terrainY(s,x)-3,r:20,life:d.burnTime||2.2,damage:d.burn,owner:p.owner,tick:0,color:"fire"});
+    explosionP(s,p,x,y,rad,dmg,owner,terrainScale,d.color);
+    if(p.weaponId==="acidrain")s.fires.push({x,y:terrainY(s,x)-3,r:30,life:d.acidTime||4,damage:d.acid||5,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,tick:0,color:"acid"});
+    if(p.weaponId==="carpetbomb"&&d.burn)s.fires.push({x,y:terrainY(s,x)-3,r:20,life:d.burnTime||2.2,damage:d.burn,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,tick:0,color:"fire"});
     return;
   }
 
@@ -537,11 +571,11 @@ function onImpact(s,p,x,y,hitTank=null){
     p.bounces++;p.y=terrainY(s,p.x)-6;p.vy=-Math.abs(p.vy)*(d.bouncePower||.7)-35;p.vx*=.92;return;
   }
   if(p.weaponId==="jumper"&&p.bounces<d.bounces){
-    explosion(s,x,y,18,d.damage*(d.jumpDamageScale||.52)*mult,owner,.16,d.color);p.bounces++;p.y=terrainY(s,p.x)-6;p.vy=-Math.abs(p.vy)*.64-45;p.vx*=.82;return;
+    explosionP(s,p,x,y,18,d.damage*(d.jumpDamageScale||.52)*mult,owner,.16,d.color);p.bounces++;p.y=terrainY(s,p.x)-6;p.vy=-Math.abs(p.vy)*.64-45;p.vx*=.82;return;
   }
   if(p.weaponId==="discoball"&&p.bounces<d.bounces){
     const range=d.laserRange||160;
-    for(const t of s.tanks){if(t.alive&&t.id!==p.owner&&Math.abs(t.y-y)<34&&Math.abs(t.x-x)<range)damageTank(s,t,d.laserDamage*mult,owner);}
+    for(const t of s.tanks){if(t.alive&&t.id!==p.owner&&Math.abs(t.y-y)<34&&Math.abs(t.x-x)<range)damageTankP(s,p,t,d.laserDamage*mult,owner);}
     s.fx.push({kind:"beam",x1:clamp(x-range,0,s.width),y1:y,x2:clamp(x+range,0,s.width),y2:y,life:.20,max:.20,color:d.color});
     if(d.doubleLaser)s.fx.push({kind:"beam",x1:x,y1:y-range*.45,x2:x,y2:y+range*.45,life:.20,max:.20,color:d.color});
     p.bounces++;p.y=terrainY(s,p.x)-6;p.vy=-Math.abs(p.vy)*.70-35;p.vx*=.86;return;
@@ -549,15 +583,15 @@ function onImpact(s,p,x,y,hitTank=null){
   if(p.weaponId==="clustergrenade"&&d.grenadeStorm&&!p.didSplit){
     p.alive=false;s.fx.push({kind:"marker",x,y:terrainY(s,x),life:1.2,max:1.2,color:d.color});
     const count=d.bombs||15;
-    for(let i=0;i<count-1;i++)s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x:clamp(x+rand(-d.spreadX,d.spreadX),8,s.width-8),y:-rand(40,250)-i*8,vx:rand(-7,7),vy:rand(115,165),age:-.42-i*.045,alive:true,damageMult:mult,radius:3});
-    if(d.stormHeavy)s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x,y:-290,vx:0,vy:125,age:-1.0,alive:true,damageMult:mult*2.4,radius:9});
+    for(let i=0;i<count-1;i++)s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x:clamp(x+rand(-d.spreadX,d.spreadX),8,s.width-8),y:-rand(40,250)-i*8,vx:rand(-7,7),vy:rand(115,165),age:-.42-i*.045,alive:true,damageMult:mult,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:3});
+    if(d.stormHeavy)s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x,y:-290,vx:0,vy:125,age:-1.0,alive:true,damageMult:mult*2.4,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:9});
     return;
   }
   if(p.weaponId==="clustergrenade"&&!p.didSplit){
     if(p.bounces<d.bounces){p.bounces++;p.y=terrainY(s,p.x)-6;p.vy=-Math.abs(p.vy)*.55-30;p.vx*=.72;return;}
     p.didSplit=true;p.alive=false;
-    if(!(d.fragments>0)){explosion(s,x,y,d.radius,d.damage*mult,owner,.82,d.color);return;}
-    explosion(s,x,y,15,d.damage*mult*.35,owner,.12,d.color);
+    if(!(d.fragments>0)){explosionP(s,p,x,y,d.radius,d.damage*mult,owner,.82,d.color);return;}
+    explosionP(s,p,x,y,15,d.damage*mult*.35,owner,.12,d.color);
     for(let i=0;i<d.fragments;i++){const a=Math.PI*(.18+.64*Math.random());spawnMiniProjectile(s,{...p,x,y},{angle:a,speed:rand(90,155),kind:"clusterFrag",extra:{customBounces:1}});}return;
   }
   if(p.weaponId==="bumperbombs"&&!p.didSplit){
@@ -589,51 +623,51 @@ function onImpact(s,p,x,y,hitTank=null){
     p.alive=false;s.fx.push({kind:"marker",x,y:terrainY(s,x),life:1.1,max:1.1,color:d.color});
     const kind=p.weaponId==="asteroidbelt"?"asteroid":p.weaponId==="gunship"?"gunshipShot":"skyBomb";
     spawnStrike(s,p,d,x,kind);
-    if(d.centerBomb&&p.weaponId==="areastrike")s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x,y:-180,vx:0,vy:185,age:-.5,alive:true,damageMult:mult*1.25,radius:5});
-    if(d.gunshipMissile&&p.weaponId==="gunship")s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x,y:-230,vx:0,vy:150,age:-1.1,alive:true,damageMult:mult*1.8,radius:6});
-    if(d.asteroidHeavy&&p.weaponId==="asteroidbelt")s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"asteroid",x:clamp(x+rand(-55,55),8,s.width-8),y:-260,vx:rand(-35,35),vy:105,age:-1.0,alive:true,damageMult:mult*1.75,radius:8});
+    if(d.centerBomb&&p.weaponId==="areastrike")s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x,y:-180,vx:0,vy:185,age:-.5,alive:true,damageMult:mult*1.25,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:5});
+    if(d.gunshipMissile&&p.weaponId==="gunship")s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x,y:-230,vx:0,vy:150,age:-1.1,alive:true,damageMult:mult*1.8,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:6});
+    if(d.asteroidHeavy&&p.weaponId==="asteroidbelt")s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"asteroid",x:clamp(x+rand(-55,55),8,s.width-8),y:-260,vx:rand(-35,35),vy:105,age:-1.0,alive:true,damageMult:mult*1.75,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:8});
     return;
   }
   if(p.weaponId==="skymarker"||p.weaponId==="meteorchoir"){
     p.alive=false;s.fx.push({kind:"marker",x,y:terrainY(s,x),life:1,max:1,color:d.color});
     for(let i=0;i<d.bombs;i++)s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",
       x:clamp(x+rand(-d.spreadX,d.spreadX),8,s.width-8),y:-rand(30,260)-i*22,vx:rand(-8,8)+s.wind*.12,vy:rand(100,160),
-      age:-.35-i*.10,alive:true,damageMult:mult,radius:4});
-    if(d.artilleryHeavy)for(const off of [-55,55])s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x:clamp(x+off,8,s.width-8),y:-320,vx:0,vy:130,age:-1.0-Math.random()*.25,alive:true,damageMult:mult*2.0,radius:8});
+      age:-.35-i*.10,alive:true,damageMult:mult,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:4});
+    if(d.artilleryHeavy)for(const off of [-55,55])s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"skyBomb",x:clamp(x+off,8,s.width-8),y:-320,vx:0,vy:130,age:-1.0-Math.random()*.25,alive:true,damageMult:mult*2.0,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:8});
     return;
   }
-  if(p.weaponId==="gravityseed"){p.alive=false;s.fields.push({kind:"gravity",x,y:terrainY(s,x)-5,r:d.fieldRadius,life:d.fieldTime,max:d.fieldTime,owner:p.owner,damage:d.damage*mult});return;}
-  if(p.weaponId==="voidwell"){p.alive=false;s.fields.push({kind:"voidwell",x,y:terrainY(s,x)-5,r:d.fieldRadius,life:d.fieldTime,max:d.fieldTime,owner:p.owner,damage:d.damage*mult,projectilePull:d.projectilePull||1});return;}
+  if(p.weaponId==="gravityseed"){p.alive=false;s.fields.push({kind:"gravity",x,y:terrainY(s,x)-5,r:d.fieldRadius,life:d.fieldTime,max:d.fieldTime,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult});return;}
+  if(p.weaponId==="voidwell"){p.alive=false;s.fields.push({kind:"voidwell",x,y:terrainY(s,x)-5,r:d.fieldRadius,life:d.fieldTime,max:d.fieldTime,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult,projectilePull:d.projectilePull||1});return;}
   if(p.weaponId==="rampart"){p.alive=false;modifyTerrainRaise(s,x,d.radius,d.raise);s.fx.push({kind:"terraform",x,y:terrainY(s,x),life:.65,max:.65,color:d.color});return;}
-  if(p.weaponId==="bulger"){p.alive=false;explosion(s,x,y,d.radius,d.damage*mult,owner,.25,d.color);modifyTerrainRaise(s,x,d.radius,d.raise);if(d.doubleBulge){modifyTerrainRaise(s,x-d.radius*.72,d.radius*.55,d.raise*.55);modifyTerrainRaise(s,x+d.radius*.72,d.radius*.55,d.raise*.55);}s.fx.push({kind:"terraform",x,y:terrainY(s,x),life:.7,max:.7,color:d.color});return;}
-  if(p.weaponId==="sinker"){p.alive=false;explosion(s,x,y,d.radius,d.damage*mult,owner,1.28,d.color);return;}
-  if(p.weaponId==="groundwave"){p.alive=false;s.fields.push({kind:"groundwave",x,y:terrainY(s,x)-3,dir:p.vx>=0?1:-1,life:2.1,max:2.1,owner:p.owner,damage:d.damage*mult,lastX:x});return;}
-  if(p.weaponId==="quakecharge"){p.alive=false;for(let i=0;i<d.quakePops;i++){const q=d.quakePops<=1?0:i/(d.quakePops-1),px=clamp(x-d.quakeSpan/2+q*d.quakeSpan,5,s.width-5);s.fields.push({kind:"faultPop",x:px,life:1.7,max:1.7,delay:i*.085,owner:p.owner,damage:d.damage*mult});}return;}
-  if(p.weaponId==="horizon"){p.alive=false;const count=d.horizonPulses||9;for(let i=0;i<count;i++){const q=count<=1?0:i/(count-1),px=clamp(x-d.horizonRange/2+q*d.horizonRange,4,s.width-4),py=terrainY(s,px);explosion(s,px,py,Math.max(10,d.radius),d.damage*mult,owner,.12,d.color);}return;}
+  if(p.weaponId==="bulger"){p.alive=false;explosionP(s,p,x,y,d.radius,d.damage*mult,owner,.25,d.color);modifyTerrainRaise(s,x,d.radius,d.raise);if(d.doubleBulge){modifyTerrainRaise(s,x-d.radius*.72,d.radius*.55,d.raise*.55);modifyTerrainRaise(s,x+d.radius*.72,d.radius*.55,d.raise*.55);}s.fx.push({kind:"terraform",x,y:terrainY(s,x),life:.7,max:.7,color:d.color});return;}
+  if(p.weaponId==="sinker"){p.alive=false;explosionP(s,p,x,y,d.radius,d.damage*mult,owner,1.28,d.color);return;}
+  if(p.weaponId==="groundwave"){p.alive=false;s.fields.push({kind:"groundwave",x,y:terrainY(s,x)-3,dir:p.vx>=0?1:-1,life:2.1,max:2.1,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult,lastX:x});return;}
+  if(p.weaponId==="quakecharge"){p.alive=false;for(let i=0;i<d.quakePops;i++){const q=d.quakePops<=1?0:i/(d.quakePops-1),px=clamp(x-d.quakeSpan/2+q*d.quakeSpan,5,s.width-5);s.fields.push({kind:"faultPop",x:px,life:1.7,max:1.7,delay:i*.085,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult});}return;}
+  if(p.weaponId==="horizon"){p.alive=false;const count=d.horizonPulses||9;for(let i=0;i<count;i++){const q=count<=1?0:i/(count-1),px=clamp(x-d.horizonRange/2+q*d.horizonRange,4,s.width-4),py=terrainY(s,px);explosionP(s,p,px,py,Math.max(10,d.radius),d.damage*mult,owner,.12,d.color);}return;}
 
   if(p.weaponId==="arcchain"){
     p.alive=false;let first=null;
     for(const t of s.tanks){if(t.alive&&Math.hypot(t.x-x,t.y-y)<d.radius+16){first=t;break;}}
     if(first){
-      const hit=[first];damageTank(s,first,d.damage*mult,owner);let last=first;
+      const hit=[first];damageTankP(s,p,first,d.damage*mult,owner);let last=first;
       for(let i=1;i<d.chain;i++){
         const q=s.tanks.filter(t=>t.alive&&!hit.includes(t)&&Math.hypot(t.x-last.x,t.y-last.y)<=d.chainRange)
           .sort((a,b)=>Math.hypot(a.x-last.x,a.y-last.y)-Math.hypot(b.x-last.x,b.y-last.y))[0];
-        if(!q)break;damageTank(s,q,d.damage*mult*Math.pow(.78,i),owner);hit.push(q);last=q;
+        if(!q)break;damageTankP(s,p,q,d.damage*mult*Math.pow(.78,i),owner);hit.push(q);last=q;
       }
       s.fx.push({kind:"chain",points:[{x,y},...hit.map(t=>({x:t.x,y:t.y}))],life:.28,max:.28,color:d.color});
-    }else explosion(s,x,y,20,18*mult,owner,.4,d.color);
+    }else explosionP(s,p,x,y,20,18*mult,owner,.4,d.color);
     return;
   }
 
 
   if(["fountain","flower","cactus","clover","breakerwave"].includes(p.weaponId)&&!p.didSplit){
-    p.alive=false;explosion(s,x,y,16,d.damage*mult,owner,.18,d.color);
+    p.alive=false;explosionP(s,p,x,y,16,d.damage*mult,owner,.18,d.color);
     const mode=p.weaponId==="fountain"?"fountain":p.weaponId==="breakerwave"?"breaker":p.weaponId==="clover"?"clover":"radial";
     spawnRadial(s,p,d,x,y,{mode});return;
   }
   if((p.weaponId==="beehive"||p.weaponId==="guppies")&&!p.didSplit){
-    p.alive=false;explosion(s,x,y,13,d.damage*mult*.45,owner,.12,d.color);spawnSwarm(s,p,d,x,y,p.weaponId);return;
+    p.alive=false;explosionP(s,p,x,y,13,d.damage*mult*.45,owner,.12,d.color);spawnSwarm(s,p,d,x,y,p.weaponId);return;
   }
   if(p.weaponId==="moonfall"){
     p.alive=false;s.fx.push({kind:"ring",x,y:terrainY(s,x)-60,life:1.8,max:1.8,color:d.color});
@@ -641,32 +675,32 @@ function onImpact(s,p,x,y,hitTank=null){
       const a=i/d.bombs*Math.PI*2;
       s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"orbital",
         x:clamp(x+Math.cos(a)*85,10,s.width-10),y:terrainY(s,x)-130-Math.sin(a)*35,
-        vx:-Math.cos(a)*24,vy:42+i*8,age:-i*.18,alive:true,damageMult:mult,radius:4});
+        vx:-Math.cos(a)*24,vy:42+i*8,age:-i*.18,alive:true,damageMult:mult,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:4});
     }
     return;
   }
 
   if(p.weaponId==="deaddrop"){
     p.alive=false;s.fx.push({kind:"marker",x,y:terrainY(s,x),life:1.2,max:1.2,color:d.color});
-    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"deadDrop",x,y:-120,vx:0,vy:0,age:-1.1,alive:true,damageMult:mult,radius:12});
+    s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"deadDrop",x,y:-120,vx:0,vy:0,age:-1.1,alive:true,damageMult:mult,critShot:!!p.critShot,x2Active:!!p.x2Active,radius:12});
     return;
   }
   if(p.weaponId==="faultline"){
-    p.alive=false;for(let i=0;i<9;i++){const px=clamp(x-d.lineRadius/2+i*d.lineRadius/8,5,s.width-5);s.fields.push({kind:"faultPop",x:px,life:1.3,max:1.3,delay:i*.08,owner:p.owner,damage:d.damage*mult});}
+    p.alive=false;for(let i=0;i<9;i++){const px=clamp(x-d.lineRadius/2+i*d.lineRadius/8,5,s.width-5);s.fields.push({kind:"faultPop",x:px,life:1.3,max:1.3,delay:i*.08,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult});}
     return;
   }
   if(p.weaponId==="echobomb"){
-    p.alive=false;explosion(s,x,y,d.radius,d.damage*mult,owner,1,d.color);s.fields.push({kind:"echo",x,y,life:.95,max:.95,owner:p.owner,damage:d.echoDamage*mult,r:d.echoRadius,color:d.color});return;
+    p.alive=false;explosionP(s,p,x,y,d.radius,d.damage*mult,owner,1,d.color);s.fields.push({kind:"echo",x,y,life:.95,max:.95,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.echoDamage*mult,r:d.echoRadius,color:d.color});return;
   }
   if(p.weaponId==="timeskip"){
-    p.alive=false;s.fields.push({kind:"timebomb",x,y:terrainY(s,x),life:d.delay,max:d.delay,owner:p.owner,damage:d.damage*mult,r:d.radius,color:d.color});s.fx.push({kind:"marker",x,y:terrainY(s,x),life:d.delay,max:d.delay,color:d.color});return;
+    p.alive=false;s.fields.push({kind:"timebomb",x,y:terrainY(s,x),life:d.delay,max:d.delay,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,damage:d.damage*mult,r:d.radius,color:d.color});s.fx.push({kind:"marker",x,y:terrainY(s,x),life:d.delay,max:d.delay,color:d.color});return;
   }
   if(p.weaponId==="scatterrise"){
-    p.alive=false;explosion(s,x,y,18,d.damage*mult,owner,.35,d.color);
+    p.alive=false;explosionP(s,p,x,y,18,d.damage*mult,owner,.35,d.color);
     for(let i=0;i<d.fragments;i++){
       const a=Math.PI*(.20+.60*Math.random()),sp=rand(95,175);
       s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:"pulse",kind:"scatterFrag",x:x+rand(-9,9),y:y-5,
-        vx:Math.cos(a)*sp,vy:-Math.sin(a)*sp,age:0,alive:true,radius:3,damageMult:1,fragDamage:d.damage*mult});
+        vx:Math.cos(a)*sp,vy:-Math.sin(a)*sp,age:0,alive:true,radius:3,damageMult:1,fragDamage:d.damage*mult,critShot:!!p.critShot,x2Active:!!p.x2Active});
     }
     return;
   }
@@ -675,36 +709,36 @@ function onImpact(s,p,x,y,hitTank=null){
   }
 
   p.alive=false;
-  explosion(s,x,y,d.radius||25,(p.fragDamage||d.damage)*mult,owner,p.weaponId==="megaflux"?1.1:1,d.color);
-  if(p.weaponId==="emberrain"||p.weaponId==="infernojet")s.fires.push({x,y:terrainY(s,x)-3,r:p.weaponId==="infernojet"?24:32,life:d.burnTime||p.burnData?.time||3,damage:d.burn||p.burnData?.damage||5,owner:p.owner,tick:0,color:"fire"});
-  if(p.weaponId==="acidrain")s.fires.push({x,y:terrainY(s,x)-3,r:30,life:d.acidTime||4,damage:d.acid||5,owner:p.owner,tick:0,color:"acid"});
+  explosionP(s,p,x,y,d.radius||25,(p.fragDamage||d.damage)*mult,owner,p.weaponId==="megaflux"?1.1:1,d.color);
+  if(p.weaponId==="emberrain"||p.weaponId==="infernojet")s.fires.push({x,y:terrainY(s,x)-3,r:p.weaponId==="infernojet"?24:32,life:d.burnTime||p.burnData?.time||3,damage:d.burn||p.burnData?.damage||5,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,tick:0,color:"fire"});
+  if(p.weaponId==="acidrain")s.fires.push({x,y:terrainY(s,x)-3,r:30,life:d.acidTime||4,damage:d.acid||5,owner:p.owner,critShot:!!p.critShot,x2Active:!!p.x2Active,tick:0,color:"acid"});
 }
 
 function updateFields(s,dt){
   for(const f of s.fields){
     if(!f.dormant)f.life-=dt;
-    if(f.kind==="burnTarget"){f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const target=s.tanks.find(t=>t.id===f.targetId&&t.alive);if(target){damageTank(s,target,f.damage,s.tanks.find(t=>t.id===f.owner));s.fx.push({kind:"burnTick",x:target.x,y:target.y,life:.28,max:.28,color:f.color});}}}
-    else if(f.kind==="lightningStrike"){f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const y=terrainY(s,f.x);s.fx.push({kind:"lightningBolt",x:f.x,y,life:.38,max:.38,color:f.color});explosion(s,f.x,y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),0,f.color);}}
-    else if(f.kind==="stickyMine"){if(f.targetId){const t=s.tanks.find(t=>t.id===f.targetId&&t.alive);if(t){f.x=t.x;f.y=t.y-5;}}if(!f.dormant&&f.life<=0&&!f.done){f.done=true;s.fx.push({kind:"stickyBurst",x:f.x,y:f.y,life:.36,max:.36,color:f.color});explosion(s,f.x,f.y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),.70,f.color);}}
-    else if(f.kind==="snake"){f.tick-=dt;if(f.tick<=0&&f.steps<10){f.tick=f.step;f.steps++;if(Math.random()<f.turn*.35)f.dir*=-1;const dx=f.dir*f.travel*rand(.55,1.15);f.x=clamp(f.x+dx,5,s.width-5);f.y=terrainY(s,f.x)-3;s.fx.push({kind:"snakeBurst",x:f.x,y:f.y,life:.30,max:.30,color:f.color,tier:f.tier});explosion(s,f.x,f.y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),.15,f.color);}}
+    if(f.kind==="burnTarget"){f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const target=s.tanks.find(t=>t.id===f.targetId&&t.alive);if(target){damageTank(s,target,f.damage,s.tanks.find(t=>t.id===f.owner),{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"burnTick",x:target.x,y:target.y,life:.28,max:.28,color:f.color});}}}
+    else if(f.kind==="lightningStrike"){f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const y=terrainY(s,f.x);s.fx.push({kind:"lightningBolt",x:f.x,y,life:.38,max:.38,color:f.color});explosion(s,f.x,y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),0,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}}
+    else if(f.kind==="stickyMine"){if(f.targetId){const t=s.tanks.find(t=>t.id===f.targetId&&t.alive);if(t){f.x=t.x;f.y=t.y-5;}}if(!f.dormant&&f.life<=0&&!f.done){f.done=true;s.fx.push({kind:"stickyBurst",x:f.x,y:f.y,life:.36,max:.36,color:f.color});explosion(s,f.x,f.y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),.70,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}}
+    else if(f.kind==="snake"){f.tick-=dt;if(f.tick<=0&&f.steps<10){f.tick=f.step;f.steps++;if(Math.random()<f.turn*.35)f.dir*=-1;const dx=f.dir*f.travel*rand(.55,1.15);f.x=clamp(f.x+dx,5,s.width-5);f.y=terrainY(s,f.x)-3;s.fx.push({kind:"snakeBurst",x:f.x,y:f.y,life:.30,max:.30,color:f.color,tier:f.tier});explosion(s,f.x,f.y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),.15,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}}
     else if(f.kind==="gravity"){
       for(const t of s.tanks){
         if(!t.alive)continue;const dx=f.x-t.x,dy=f.y-t.y,dist=Math.hypot(dx,dy);
         if(dist<f.r&&dist>3)t.x=clamp(t.x+dx/dist*42*dt*(1-dist/f.r),10,s.width-10);
       }
-      if(f.life<=0)explosion(s,f.x,f.y,55,f.damage,s.tanks.find(t=>t.id===f.owner),.8,"#9e77ff");
+      if(f.life<=0)explosion(s,f.x,f.y,55,f.damage,s.tanks.find(t=>t.id===f.owner),.8,"#9e77ff",{crit:!!f.critShot,x2:!!f.x2Active});
     }else if(f.kind==="voidwell"){
       for(const t of s.tanks){if(!t.alive)continue;const dx=f.x-t.x,dy=f.y-t.y,dist=Math.hypot(dx,dy);if(dist<f.r&&dist>3)t.x=clamp(t.x+dx/dist*54*dt*(1-dist/f.r),10,s.width-10);}
       for(const p of s.projectiles){if(!p.alive)continue;const dx=f.x-p.x,dy=f.y-p.y,dist=Math.hypot(dx,dy);if(dist<f.r&&dist>6){const force=(f.projectilePull||1)*190*(1-dist/f.r);p.vx+=dx/dist*force*dt;p.vy+=dy/dist*force*dt;}}
-      if(f.life<=0)explosion(s,f.x,f.y,58,f.damage,s.tanks.find(t=>t.id===f.owner),.9,"#8d70ff");
+      if(f.life<=0)explosion(s,f.x,f.y,58,f.damage,s.tanks.find(t=>t.id===f.owner),.9,"#8d70ff",{crit:!!f.critShot,x2:!!f.x2Active});
     }else if(f.kind==="groundwave"){
       f.lastX+=f.dir*180*dt;const y=terrainY(s,f.lastX)-4;s.fx.push({kind:"spark",x:f.lastX,y,life:.18,max:.18,color:"#73df9c"});
-      for(const t of s.tanks){if(t.alive&&t.id!==f.owner&&Math.abs(t.x-f.lastX)<13&&Math.abs(t.y-y)<30)damageTank(s,t,f.damage*dt*2.5,s.tanks.find(q=>q.id===f.owner));}
+      for(const t of s.tanks){if(t.alive&&t.id!==f.owner&&Math.abs(t.x-f.lastX)<13&&Math.abs(t.y-y)<30)damageTank(s,t,f.damage*dt*2.5,s.tanks.find(q=>q.id===f.owner),{crit:!!f.critShot,x2:!!f.x2Active});}
       if(f.lastX>2&&f.lastX<s.width-2)modifyTerrainCrater(s,f.lastX,y,9,.15);
-    }else if(f.kind==="echo"&&f.life<=0)explosion(s,f.x,f.y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),.8,f.color);
-    else if(f.kind==="timebomb"&&f.life<=0)explosion(s,f.x,f.y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),1,f.color);
+    }else if(f.kind==="echo"&&f.life<=0)explosion(s,f.x,f.y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),.8,f.color,{crit:!!f.critShot,x2:!!f.x2Active});
+    else if(f.kind==="timebomb"&&f.life<=0)explosion(s,f.x,f.y,f.r,f.damage,s.tanks.find(t=>t.id===f.owner),1,f.color,{crit:!!f.critShot,x2:!!f.x2Active});
     else if(f.kind==="faultPop"){
-      f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const y=terrainY(s,f.x);explosion(s,f.x,y,28,f.damage,s.tanks.find(t=>t.id===f.owner),.55,"#cf8c58");}
+      f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const y=terrainY(s,f.x);explosion(s,f.x,y,28,f.damage,s.tanks.find(t=>t.id===f.owner),.55,"#cf8c58",{crit:!!f.critShot,x2:!!f.x2Active});}
     }
   }
   s.fields=s.fields.filter(f=>(f.dormant||f.life>0)&&!(f.done&&["faultPop","burnTarget","lightningStrike","stickyMine"].includes(f.kind)));
@@ -712,7 +746,7 @@ function updateFields(s,dt){
 function updateFires(s,dt){
   for(const f of s.fires){
     f.life-=dt;f.tick-=dt;
-    if(f.tick<=0){f.tick=.55;for(const t of s.tanks)if(t.alive&&Math.hypot(t.x-f.x,t.y-f.y)<f.r+13)damageTank(s,t,f.damage,s.tanks.find(q=>q.id===f.owner));}
+    if(f.tick<=0){f.tick=.55;for(const t of s.tanks)if(t.alive&&Math.hypot(t.x-f.x,t.y-f.y)<f.r+13)damageTank(s,t,f.damage,s.tanks.find(q=>q.id===f.owner),{crit:!!f.critShot,x2:!!f.x2Active});}
   }
   s.fires=s.fires.filter(f=>f.life>0);
 }
@@ -728,7 +762,7 @@ function handleSkillObjects(s,p){
   for(const o of s.skillObjects){
     if(o.dead)continue;
     if(o.kind==="multiplier"&&Math.hypot(p.x-o.x,p.y-o.y)<o.r+(p.radius||4)){
-      p.damageMult=(p.damageMult||1)*o.value;o.dead=true;s.skillHits++;
+      p.damageMult=(p.damageMult||1)*o.value;p.x2Active=true;o.dead=true;s.skillHits++;if(s.activeShotSummary&&s.activeShotSummary.ownerId===p.owner)s.activeShotSummary.hadX2=true;
       s.fx.push({kind:"multiplier",x:o.x,y:o.y,life:.55,max:.55,color:"#ffe66c"});s.message="×2 DAMAGE!";s.messageTimer=1;
     }else if(o.kind==="portal"&&p.portalCooldown<=0&&Math.hypot(p.x-o.x,p.y-o.y)<o.r+(p.radius||4)){
       const other=s.skillObjects.find(q=>q.kind==="portal"&&q.pair===o.pair&&q.id!==o.id);
@@ -757,12 +791,12 @@ function updateProjectile(s,p,dt){
   if(!p.skipSkillObjects)handleSkillObjects(s,p);
   if(p.kind==="burrow"){
     p.tunnelLeft-=dt;p.y+=58*dt;
-    if(p.tunnelLeft<=0){p.alive=false;explosion(s,p.x,p.y,d.radius,d.damage*(p.damageMult||1),ownerOf(s,p),1.1,d.color);}
+    if(p.tunnelLeft<=0){p.alive=false;explosionP(s,p,p.x,p.y,d.radius,d.damage*(p.damageMult||1),ownerOf(s,p),1.1,d.color);}
     return;
   }
   if(p.kind==="ghost"){
     p.ghostLeft-=Math.hypot(p.vx,p.vy)*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;
-    if(p.ghostLeft<=0){p.alive=false;explosion(s,p.x,p.y,d.radius,d.damage*(p.damageMult||1),ownerOf(s,p),1.0,d.color);if(d.ghostPulse)explosion(s,p.x,p.y,22,d.damage*.28*(p.damageMult||1),ownerOf(s,p),.15,d.color);}return;
+    if(p.ghostLeft<=0){p.alive=false;explosionP(s,p,p.x,p.y,d.radius,d.damage*(p.damageMult||1),ownerOf(s,p),1.0,d.color);if(d.ghostPulse)explosionP(s,p,p.x,p.y,22,d.damage*.28*(p.damageMult||1),ownerOf(s,p),.15,d.color);}return;
   }
   if(p.kind==="roller"||p.kind==="viper"){
     p.rollLeft-=dt;p.hitCooldown=Math.max(0,(p.hitCooldown||0)-dt);const owner=ownerOf(s,p);
@@ -774,18 +808,18 @@ function updateProjectile(s,p,dt){
     for(const t of s.tanks){
       if(!t.alive||t.id===p.owner)continue;
       if(Math.hypot(t.x-p.x,t.y-p.y)<15+grow*8){
-        if(p.weaponId==="sawblade"){if(p.hitCooldown<=0){damageTank(s,t,d.damage*(p.damageMult||1),owner);p.hitCooldown=.28;}}
-        else{p.alive=false;explosion(s,p.x,p.y,d.radius*(1+grow*.35),hitDamage*(p.damageMult||1),owner,.7,d.color);return;}
+        if(p.weaponId==="sawblade"){if(p.hitCooldown<=0){damageTankP(s,p,t,d.damage*(p.damageMult||1),owner);p.hitCooldown=.28;}}
+        else{p.alive=false;explosionP(s,p,p.x,p.y,d.radius*(1+grow*.35),hitDamage*(p.damageMult||1),owner,.7,d.color);return;}
       }
     }
-    if(p.rollLeft<=0){p.alive=false;if(p.weaponId!=="sawblade")explosion(s,p.x,p.y,d.radius*(1+grow*.35),hitDamage*(p.damageMult||1),owner,.7,d.color);}
+    if(p.rollLeft<=0){p.alive=false;if(p.weaponId!=="sawblade")explosionP(s,p,p.x,p.y,d.radius*(1+grow*.35),hitDamage*(p.damageMult||1),owner,.7,d.color);}
     return;
   }
   if(p.kind==="deadDrop"&&p.vy===0)p.vy=310;
   if(p.kind==="deadRiserTunnel"){
     const target=nearestEnemy(s,p.owner,p.x,p.y);if(!target){p.alive=false;return;}
     if(!p.riserAscending){const dx=target.x-p.x;if(Math.abs(dx)>8){p.x+=Math.sign(dx)*95*dt;p.y=terrainY(s,p.x)+16;}else{p.riserAscending=true;p.x=target.x;}}
-    else{p.y-=175*dt;if(p.y<=target.y+8){p.alive=false;damageTank(s,target,d.damage*(p.damageMult||1),ownerOf(s,p));s.fx.push({kind:"deadWeightHit",x:target.x,y:target.y,life:.42,max:.42,color:d.color});}}return;
+    else{p.y-=175*dt;if(p.y<=target.y+8){p.alive=false;damageTankP(s,p,target,d.damage*(p.damageMult||1),ownerOf(s,p));s.fx.push({kind:"deadWeightHit",x:target.x,y:target.y,life:.42,max:.42,color:d.color});}}return;
   }
   if(p.deadWeightMode==="drop"&&!p.deadLocked){const target=nearestEnemy(s,p.owner,p.x,p.y);if(target&&p.y<target.y-28&&Math.abs(p.x-target.x)<13){p.deadLocked=true;p.noGravity=true;p.windFactor=0;p.vx=0;p.vy=260;s.fx.push({kind:"deadWeightLock",x:p.x,y:p.y,targetX:target.x,targetY:target.y,life:.40,max:.40,color:d.color});}}
   if(p.kind==="fireworkRocket"&&!p.didSplit&&p.vy>=0&&p.age>.18){p.didSplit=true;p.alive=false;spawnFireworkSparks(s,p,d,p.sparksPerRocket);return;}
@@ -825,13 +859,13 @@ function updateProjectile(s,p,dt){
   for(const t of s.tanks){
     if(!t.alive||(t.id===p.owner&&p.age<.25))continue;
     if(Math.hypot(t.x-p.x,t.y-p.y)<12+(p.radius||3)){
-      if(p.kind==="scatterFrag"){p.alive=false;damageTank(s,t,p.fragDamage||16,ownerOf(s,p));return;}
-      if((p.pierceHits||0)>0){damageTank(s,t,d.damage*(p.damageMult||1),ownerOf(s,p));p.pierceHits--;p.x+=Math.sign(p.vx||1)*16;continue;}
+      if(p.kind==="scatterFrag"){p.alive=false;damageTankP(s,p,t,p.fragDamage||16,ownerOf(s,p));return;}
+      if((p.pierceHits||0)>0){damageTankP(s,p,t,d.damage*(p.damageMult||1),ownerOf(s,p));p.pierceHits--;p.x+=Math.sign(p.vx||1)*16;continue;}
       onImpact(s,p,p.x,p.y,t);return;
     }
   }
   if(p.x>=0&&p.x<s.width&&p.y>=terrainY(s,p.x)){
-    if(p.kind==="scatterFrag"){p.alive=false;explosion(s,p.x,p.y,14,p.fragDamage||12,ownerOf(s,p),.25,"#ffd56d");}
+    if(p.kind==="scatterFrag"){p.alive=false;explosionP(s,p,p.x,p.y,14,p.fragDamage||12,ownerOf(s,p),.25,"#ffd56d");}
     else onImpact(s,p,p.x,p.y);
   }
 }
@@ -855,6 +889,7 @@ function nextAliveIndex(s,start){
 }
 function advanceTurn(s){
   evaluateWin(s);if(s.gameOver)return;
+  finalizeShotSummary(s);
   const old=s.current;
   s.lastShotTraces=s.settings.tracer?s.traceCurrent.map(path=>path.slice()):[];s.traceCurrent=[];
   s.current=nextAliveIndex(s,s.current);
@@ -889,12 +924,16 @@ function updateCrate(s,dt){
 }
 
 export function updateState(s,dt){
-  if(s.gameOver)return;s.messageTimer=Math.max(0,s.messageTimer-dt);s.cameraShake=Math.max(0,s.cameraShake-dt*18);
+  if(s.gameOver)return;
+  s.messageTimer=Math.max(0,s.messageTimer-dt);s.cameraShake=Math.max(0,s.cameraShake-dt*18);
+  for(const n of s.damageNumbers){n.life-=dt;n.y+=n.vy*dt;n.x+=n.drift*dt;n.vy*=Math.pow(.965,dt*60);}
+  s.damageNumbers=s.damageNumbers.filter(n=>n.life>0);
+  if(s.damageSummary){s.damageSummary.life-=dt;if(s.damageSummary.life<=0)s.damageSummary=null;}
   updateFields(s,dt);updateFires(s,dt);updateCrate(s,dt);
   for(const p of s.projectiles)updateProjectile(s,p,dt);
   for(const p of s.projectiles){if(!p.alive&&!p.traceSaved&&p.trace?.length>1){p.traceSaved=true;s.traceCurrent.push(p.trace.slice());}}
   s.projectiles=s.projectiles.filter(p=>p.alive);s.fx.forEach(f=>f.life-=dt);s.fx=s.fx.filter(f=>f.life>0);
-  settleTanks(s,dt);evaluateWin(s);if(s.gameOver)return;
+  settleTanks(s,dt);evaluateWin(s);if(s.gameOver){finalizeShotSummary(s);return;}
 
   if(s.phase==="aim"){
     s.turnTimer-=dt;

@@ -1,5 +1,5 @@
 import {WEAPONS,DIFFICULTIES,MODES,ARENAS,MATCH_DEFAULTS} from "./CraterClashData.js";
-import {createState,updateState,currentTank,fire,selectWeapon,clamp,performBotShot,moveTank} from "./CraterClashEngine.js";
+import {createState,updateState,currentTank,fire,selectWeapon,clamp,performBotShot,moveTank,resetTrainingRange} from "./CraterClashEngine.js";
 import {getWeaponTierStats,createRogueRun,getRogueEnemyScale,rogueStageLabel,rewardRogueVictory,getRogueShopCatalog,buyRogueUpgrade} from "./CraterClashProgression.js";
 import {render} from "./CraterClashRender.js";
 
@@ -13,8 +13,8 @@ export default {
   },
 
   init:(container,services)=>{
-    let destroyed=false,raf=0,last=performance.now(),state=null,W=1,H=1,dpr=1,running=false,botThinkDelay=.7,lastTurnId=null;
-    let menuMode="standard",mode="ffa",difficulty="normal",arenaIndex=0,rogueRun=null;
+    let destroyed=false,raf=0,last=performance.now(),state=null,W=1,H=1,dpr=1,running=false,botThinkDelay=.7,lastTurnId=null,lastInventorySig="";
+    let menuMode="standard",mode="ffa",difficulty="normal",arenaIndex=0,trainingArena=0,rogueRun=null;
     const settings={...MATCH_DEFAULTS};
     const moveKeys={left:false,right:false};
 
@@ -58,7 +58,7 @@ export default {
     const root=document.createElement("div");root.className="cc";
     root.innerHTML=`
       <canvas></canvas>
-      <div class="cc-controls">A / D = Drive · ← / → = Angle · ↑ / ↓ = Power<br>Q / E = Weapon · SPACE = Fire · Mouse = Aim + Fire</div>
+      <div class="cc-controls">A / D = Drive · ← / → = Angle · ↑ / ↓ = Power<br>Q / E = Weapon · SPACE = Fire · Mouse = Aim + Fire · Training: R = Reset</div>
       <div class="cc-bottom">
         <div class="cc-panel cc-aim">
           <div class="cc-aim-row"><label>Angle</label><input class="angle" type="range" min="5" max="175" step="1"><b class="angle-v">45°</b></div>
@@ -72,9 +72,9 @@ export default {
       <div class="cc-overlay menu"><div class="cc-menu">
         <div class="cc-k">Turn-Based Ballistics Arena</div><div class="cc-title">CRATER<br>CLASH</div>
         <div class="cc-desc">Destructible terrain, tactical movement, trick-shot gates, portals, bumpers and over 80 distinct weapons with uneven two-, three- and four-tier evolution families. Standard matches expose the full arsenal immediately; Rogue Run uses a session-only salvage economy and upgrade shop.</div>
-        <div class="cc-tabs"><button class="cc-tab sel" data-tab="standard">STANDARD MATCH</button><button class="cc-tab" data-tab="rogue">ROGUE RUN</button></div>
+        <div class="cc-tabs"><button class="cc-tab sel" data-tab="standard">STANDARD MATCH</button><button class="cc-tab" data-tab="rogue">ROGUE RUN</button><button class="cc-tab" data-tab="training">TRAINING RANGE</button></div>
         <div class="standard-panel">
-          <div class="cc-sec">Battle Type</div><div class="cc-opts modeopts">${Object.entries(MODES).map(([k,m])=>`<button class="cc-opt ${k==="ffa"?"sel":""}" data-mode="${k}"><b>${m.label}</b><span>${m.description}</span></button>`).join("")}</div>
+          <div class="cc-sec">Battle Type</div><div class="cc-opts modeopts">${Object.entries(MODES).filter(([k])=>k!=="training").map(([k,m])=>`<button class="cc-opt ${k==="ffa"?"sel":""}" data-mode="${k}"><b>${m.label}</b><span>${m.description}</span></button>`).join("")}</div>
           <div class="cc-sec">Arena</div><div class="cc-opts cc-arenas arenaopts">${ARENAS.map((a,i)=>`<button class="cc-opt ${i===0?"sel":""}" data-arena="${i}"><b>${a.name}</b><span>Wind ${a.wind.toFixed(2)}× · Gravity ${(a.gravity||1).toFixed(2)}×</span></button>`).join("")}</div>
           <div class="cc-sec">Bot Difficulty</div><div class="cc-opts diffopts">${Object.entries(DIFFICULTIES).map(([k,d])=>`<button class="cc-opt ${k==="normal"?"sel":""}" data-d="${k}"><b>${d.label}</b><span>${k==="easy"?"More forgiving ballistic calculations.":k==="hard"?"Tight aim and stronger tactical positioning.":"Balanced artillery opponents."}</span></button>`).join("")}</div>
           <div class="cc-sec">Match Settings</div>
@@ -98,6 +98,16 @@ export default {
             <div class="cc-desc">Start with a basic tank, Tier-I technology and a small arsenal. Victories award Salvage based on stage and performance. Between battles, spend it freely across skill trees, weapon-tech unlocks and utility upgrades. Every fifth battle is an elite spike; lose once and the run ends.</div>
             <div class="cc-rogue-loop"><div><b>1 · Fight</b>Random arena, movement, trick objects and premium airdrops.</div><div><b>2 · Salvage</b>Victory awards spendable run currency.</div><div><b>3 · Shop</b>Buy several upgrades or save currency for expensive tech.</div><div><b>4 · Escalate</b>Bots scale forever; elite fights arrive every fifth stage.</div></div>
             <button class="cc-start start-rogue">START NEW RUN</button>
+          </div>
+        </div>
+        <div class="training-panel" style="display:none">
+          <div class="cc-rogue-card" style="background:linear-gradient(135deg,#102b32,#1d1837)">
+            <div class="cc-k">Weapon Laboratory · No Enemy Turns</div><h2>TRAINING RANGE</h2>
+            <div class="cc-desc">Test every weapon family and every valid tier with infinite ammo. Four reinforced dummies reset after every shot, damage summaries stay enabled, movement has unlimited fuel, and <b>R</b> rebuilds the terrain and resets all targets whenever the range gets too cratered.</div>
+            <div class="cc-sec">Training Arena</div>
+            <div class="cc-setting" style="max-width:320px"><label>Arena</label><select class="training-arena">${ARENAS.map((a,i)=>`<option value="${i}">${a.name}</option>`).join("")}</select></div>
+            <div class="cc-note"><b>Arsenal:</b> all valid T1–T4 variants are loaded with infinite ammo. Q/E cycles the full range. No bots fire back and dummies are restored after each completed weapon sequence.</div>
+            <button class="cc-start start-training">ENTER TRAINING RANGE</button>
           </div>
         </div>
       </div></div>
@@ -135,6 +145,7 @@ export default {
 
     function renderWeapons(){
       if(!state)return;const p=playerTank();
+      lastInventorySig=p.inventory.map(x=>`${x.id}:${x.tier}:${x.ammo}`).join("|");
       weaponsEl.innerHTML=p.inventory.map(slot=>{const d=getWeaponTierStats(slot.id,slot.tier);return `<button class="cc-weapon t${slot.tier} ${p.selected===slot.id&&p.selectedTier===slot.tier?"on":""} ${slot.ammo<=0?"empty":""}" data-id="${slot.id}" data-tier="${slot.tier}"><span class="cc-ammo">${slot.ammo>=99?"∞":"×"+slot.ammo}</span><div class="cc-wicon" style="color:${d.color}">${d.icon}</div><div class="cc-wname">${d.name}</div><div class="cc-wcat">${d.category}</div><span class="cc-tier">T${slot.tier}</span></button>`;}).join("");
       weaponsEl.querySelectorAll(".cc-weapon").forEach(btn=>{
         btn.onclick=()=>{if(playerTurn()&&selectWeapon(state,p,btn.dataset.id,Number(btn.dataset.tier))){renderWeapons();renderInfo();}};
@@ -153,7 +164,7 @@ export default {
     function cycleWeapon(dir){if(!playerTurn())return;const p=playerTank(),usable=p.inventory.filter(s=>s.ammo>0);if(!usable.length)return;let i=usable.findIndex(s=>s.id===p.selected&&s.tier===p.selectedTier);i=(i+dir+usable.length)%usable.length;selectWeapon(state,p,usable[i].id,usable[i].tier);renderWeapons();renderInfo();}
     function keyDown(e){
       if(!state||!running)return;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space"].includes(e.code))e.preventDefault();
-      if(e.code==="Space"){firePlayer();return;}if(!playerTurn())return;
+      if(e.code==="Space"){firePlayer();return;}if((e.key==="r"||e.key==="R")&&state.training){resetTrainingRange(state);renderWeapons();renderInfo();syncAimUI();return;}if(!playerTurn())return;
       if(e.key==="a"||e.key==="A")moveKeys.left=true;if(e.key==="d"||e.key==="D")moveKeys.right=true;
       if(e.key==="ArrowLeft")state.playerAngle=clamp(state.playerAngle+.025,.08,Math.PI-.08);if(e.key==="ArrowRight")state.playerAngle=clamp(state.playerAngle-.025,.08,Math.PI-.08);
       if(e.key==="ArrowUp")state.playerPower=clamp(state.playerPower+2,10,100);if(e.key==="ArrowDown")state.playerPower=clamp(state.playerPower-2,10,100);
@@ -167,9 +178,12 @@ export default {
     canvas.addEventListener("click",()=>{if(playerTurn())firePlayer();});
 
     function startMatch(opts){
-      state=createState({width:W,height:H,...opts});running=true;lastTurnId=null;menu.classList.add("hide");end.classList.add("hide");upgrade.classList.add("hide");syncAimUI();renderWeapons();renderInfo();last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);
+      state=createState({width:W,height:H,...opts});running=true;lastTurnId=null;lastInventorySig="";menu.classList.add("hide");end.classList.add("hide");upgrade.classList.add("hide");syncAimUI();renderWeapons();renderInfo();last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);
     }
     function startStandard(){rogueRun=null;startMatch({mode,difficulty,arenaIndex,settings:{...settings}});}
+    function startTraining(){
+      rogueRun=null;startMatch({mode:"training",difficulty:"easy",arenaIndex:trainingArena,settings:{playerCount:5,hp:500,turnTime:9999,wind:"off",fuel:9999,weaponCount:20,skillObjects:"off",crates:"off",tracer:true}});
+    }
     function startNewRogue(){rogueRun=createRogueRun();startRogueBattle();}
     function startRogueBattle(){
       const stage=rogueRun.stage,arena=(stage-1)%ARENAS.length;
@@ -185,12 +199,14 @@ export default {
       updateState(state,dt);render(ctx,state,state.width,state.height);
       const nowTurn=currentTank(state)?.id;if(nowTurn!==lastTurnId){lastTurnId=nowTurn;renderWeapons();renderInfo();}
       if(playerTurn())syncAimUI();
-      if(Math.floor(now/260)%2===0){renderInfo();renderWeapons();}
+      const pp=playerTank();if(pp){const sig=pp.inventory.map(x=>`${x.id}:${x.tier}:${x.ammo}`).join("|");if(sig!==lastInventorySig)renderWeapons();}
+      if(Math.floor(now/260)%2===0)renderInfo();
       if(state.gameOver&&running){finish();return;}raf=requestAnimationFrame(loop);
     }
 
     function playerWon(){return state.mode==="teams"?state.winner==="Team 1":state.winner==="YOU";}
     function finish(){
+      if(state?.training)return;
       running=false;moveKeys.left=moveKeys.right=false;const p=playerTank(),won=playerWon();
       services?.highscores?.saveHighscore?.("crater-clash",Math.round(p.damage*8+p.kills*500+(won?2500:0)+(rogueRun?rogueRun.stage*850:0)));
       if(rogueRun){
@@ -230,13 +246,14 @@ export default {
       end.classList.remove("hide");const p=playerTank(),scale=getRogueEnemyScale(rogueRun);end.querySelector(".result-title").textContent="RUN OVER";end.querySelector(".result-desc").textContent=`You reached battle ${rogueRun.stage} with ${rogueRun.wins} wins. This run used no permanent save: start again and build a different tank.`;end.querySelector(".rw").textContent=`Stage ${rogueRun.stage}`;end.querySelector(".rr").textContent=state.round;end.querySelector(".rd").textContent=Math.round(p.damage);end.querySelector(".rk").textContent=p.kills;
     }
 
-    root.querySelectorAll("[data-tab]").forEach(btn=>btn.onclick=()=>{root.querySelectorAll("[data-tab]").forEach(x=>x.classList.remove("sel"));btn.classList.add("sel");menuMode=btn.dataset.tab;root.querySelector(".standard-panel").style.display=menuMode==="standard"?"block":"none";root.querySelector(".rogue-panel").style.display=menuMode==="rogue"?"block":"none";});
+    root.querySelectorAll("[data-tab]").forEach(btn=>btn.onclick=()=>{root.querySelectorAll("[data-tab]").forEach(x=>x.classList.remove("sel"));btn.classList.add("sel");menuMode=btn.dataset.tab;root.querySelector(".standard-panel").style.display=menuMode==="standard"?"block":"none";root.querySelector(".rogue-panel").style.display=menuMode==="rogue"?"block":"none";root.querySelector(".training-panel").style.display=menuMode==="training"?"block":"none";});
     root.querySelectorAll("[data-mode]").forEach(btn=>btn.onclick=()=>{root.querySelectorAll("[data-mode]").forEach(x=>x.classList.remove("sel"));btn.classList.add("sel");mode=btn.dataset.mode;});
     root.querySelectorAll("[data-arena]").forEach(btn=>btn.onclick=()=>{root.querySelectorAll("[data-arena]").forEach(x=>x.classList.remove("sel"));btn.classList.add("sel");arenaIndex=Number(btn.dataset.arena);});
     root.querySelectorAll("[data-d]").forEach(btn=>btn.onclick=()=>{root.querySelectorAll("[data-d]").forEach(x=>x.classList.remove("sel"));btn.classList.add("sel");difficulty=btn.dataset.d;});
     root.querySelectorAll("[data-set]").forEach(sel=>sel.onchange=()=>{const k=sel.dataset.set,v=sel.value;settings[k]=["playerCount","hp","turnTime","fuel","weaponCount"].includes(k)?Number(v):k==="tracer"?v==="true":v;});
     upgrade.querySelector(".cc-next").onclick=()=>{if(!rogueRun)return;rogueRun.stage++;upgrade.classList.add("hide");startRogueBattle();};
-    root.querySelector(".start-standard").onclick=startStandard;root.querySelector(".start-rogue").onclick=startNewRogue;root.querySelector(".restart").onclick=()=>{end.classList.add("hide");menu.classList.remove("hide");rogueRun=null;};
+    root.querySelector(".training-arena").onchange=e=>trainingArena=Number(e.target.value)||0;
+    root.querySelector(".start-standard").onclick=startStandard;root.querySelector(".start-rogue").onclick=startNewRogue;root.querySelector(".start-training").onclick=startTraining;root.querySelector(".restart").onclick=()=>{end.classList.add("hide");menu.classList.remove("hide");rogueRun=null;};
 
     return {destroy:()=>{destroyed=true;cancelAnimationFrame(raf);ro.disconnect();window.removeEventListener("keydown",keyDown);window.removeEventListener("keyup",keyUp);style.remove();}};
   }

@@ -1,5 +1,5 @@
 import {WEAPONS} from "./CraterClashData.js";
-import {terrainY,terrainSlope,currentTank,clamp} from "./CraterClashEngine.js";
+import {terrainY,terrainSlope,currentTank,clamp,launchSpeedFromPower} from "./CraterClashEngine.js";
 import {getWeaponTierStats} from "./CraterClashProgression.js";
 import {weaponVisual,polygon,tierRoman} from "./CraterClashWeaponFX.js";
 
@@ -70,6 +70,10 @@ function drawSkillObjects(ctx,s){
     }else if(o.kind==="portal"){
       ctx.save();ctx.translate(o.x,o.y);ctx.strokeStyle=o.color;ctx.shadowColor=o.color;ctx.shadowBlur=18;ctx.lineWidth=4;
       ctx.beginPath();ctx.arc(0,0,o.r,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=.45;ctx.beginPath();ctx.arc(0,0,o.r-8,0,Math.PI*2);ctx.stroke();ctx.restore();
+    }else if(o.kind==="loot"){
+      ctx.save();ctx.translate(o.x,o.y);ctx.rotate(Math.sin((s.round+o.id)*.7)*.10);ctx.shadowColor="#7eeeff";ctx.shadowBlur=20;
+      const g=ctx.createLinearGradient(-15,-15,15,15);g.addColorStop(0,"#fff0a6");g.addColorStop(.45,"#ffc955");g.addColorStop(1,"#55dff3");ctx.fillStyle=g;rr(ctx,-14,-11,28,22,5);ctx.fill();
+      ctx.strokeStyle="#eaffff";ctx.lineWidth=2;ctx.stroke();ctx.fillStyle="#102330";ctx.font="1000 11px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("LOOT",0,1);ctx.restore();
     }
   }
 }
@@ -83,10 +87,11 @@ function drawTanks(ctx,s){
     ctx.strokeStyle=t.color;ctx.lineWidth=5;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(0,-13);ctx.lineTo(Math.cos(t.angle)*22,-13-Math.sin(t.angle)*22);ctx.stroke();
     ctx.fillStyle="#1a2027";ctx.beginPath();ctx.arc(-10,5,6,0,Math.PI*2);ctx.arc(10,5,6,0,Math.PI*2);ctx.fill();ctx.restore();
 
-    ctx.textAlign="center";ctx.font="800 10px sans-serif";ctx.fillStyle="#edf4f7";ctx.fillText(t.name,t.x,t.y-31);
-    const w=56;ctx.fillStyle="rgba(0,0,0,.45)";ctx.fillRect(t.x-w/2,t.y-26,w,5);
-    ctx.fillStyle=t.hp/t.maxHp>.45?"#65dc86":"#ef6d75";ctx.fillRect(t.x-w/2,t.y-26,w*clamp(t.hp/t.maxHp,0,1),5);
-    if(t.armor>0){ctx.fillStyle="#62bdf2";ctx.fillRect(t.x-w/2,t.y-20,w*clamp(t.armor/Math.max(35,t.armor),0,1),3);}
+    ctx.textAlign="center";ctx.font="900 9px sans-serif";ctx.fillStyle="#edf4f7";ctx.fillText(t.name,t.x,t.y-45);
+    const w=60;ctx.fillStyle="rgba(0,0,0,.50)";ctx.fillRect(t.x-w/2,t.y-40,w,5);
+    ctx.fillStyle=t.hp/t.maxHp>.45?"#65dc86":"#ef6d75";ctx.fillRect(t.x-w/2,t.y-40,w*clamp(t.hp/t.maxHp,0,1),5);
+    if(t.armor>0){ctx.fillStyle="rgba(0,0,0,.50)";ctx.fillRect(t.x-w/2,t.y-34,w,3);ctx.fillStyle="#62bdf2";ctx.fillRect(t.x-w/2,t.y-34,w*clamp(t.armor/Math.max(t.trainingArmor||35,t.armor,35),0,1),3);}
+    ctx.font="800 8px sans-serif";ctx.fillStyle="#d8e4e9";ctx.fillText(`${Math.ceil(t.hp)} HP${t.armor>0?` · ${Math.ceil(t.armor)} ARM`:""}`,t.x,t.y-25);
     if(t.overchargeReady){ctx.strokeStyle="#f1d95a";ctx.lineWidth=2;ctx.beginPath();ctx.arc(t.x,t.y-4,24,0,Math.PI*2);ctx.stroke();}
     if(currentTank(s)?.id===t.id&&s.phase==="aim"){
       const fuelPct=t.maxFuel>9000?1:clamp(t.fuel/t.maxFuel,0,1);
@@ -319,7 +324,7 @@ function drawDamageSummary(ctx,s,W,H){
 
 function drawAim(ctx,s,W,H){
   const t=currentTank(s);if(!t?.alive||!t.isPlayer||s.phase!=="aim")return;
-  const d=getWeaponTierStats(t.selected,t.selectedTier||1),speed=85+s.playerPower*3.05;
+  const d=getWeaponTierStats(t.selected,t.selectedTier||1),speed=launchSpeedFromPower(s.playerPower);
   let x=t.x+Math.cos(s.playerAngle)*18,y=t.y-8-Math.sin(s.playerAngle)*18,vx=Math.cos(s.playerAngle)*speed,vy=-Math.sin(s.playerAngle)*speed;
   const dt=.055;ctx.fillStyle="rgba(255,255,255,.55)";
   for(let i=0;i<38;i++){vx+=s.wind*dt;vy+=s.gravity*(d.gravity||1)*dt;x+=vx*dt;y+=vy*dt;if(i%2===0){ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);ctx.fill();}if(x<0||x>W||y>H||y>=terrainY(s,x))break;}
@@ -327,10 +332,10 @@ function drawAim(ctx,s,W,H){
 
 function drawHud(ctx,s,W,H){
   const t=currentTank(s);ctx.fillStyle="rgba(7,12,20,.84)";rr(ctx,14,14,W-28,68,12);ctx.fill();
-  ctx.textAlign="left";ctx.fillStyle="#eaf5f7";ctx.font="900 16px sans-serif";ctx.fillText(`ROUND ${s.round}`,30,40);ctx.font="700 11px sans-serif";ctx.fillStyle="#8093a1";ctx.fillText(`${s.arena.name}${s.rogueRun?` · ROGUE ${s.rogueRun.stage}`:""}`,30,60);
+  ctx.textAlign="left";ctx.fillStyle="#eaf5f7";ctx.font="900 16px sans-serif";ctx.fillText(`ROUND ${s.round}`,30,40);ctx.font="700 11px sans-serif";ctx.fillStyle="#8093a1";ctx.fillText(`${s.arena.name}${s.rogueRun?` · ROGUE ${s.rogueRun.stage}`:""}${s.training?" · TRAINING":""}`,30,60);
   const wd=t?getWeaponTierStats(t.selected,t.selectedTier||1):null;
   ctx.textAlign="center";ctx.fillStyle=t?.color||"#fff";ctx.font="1000 16px sans-serif";ctx.fillText(t?`${t.name} · ${wd?.name||"—"} T${t.selectedTier||1}`:"—",W/2,37);
   ctx.fillStyle="#8799a7";ctx.font="700 11px sans-serif";const fuel=t?(t.maxFuel>9000?"∞":Math.ceil(t.fuel)):"—";ctx.fillText(`Turn ${Math.ceil(s.turnTimer)}s · Fuel ${fuel}`,W/2,59);
-  ctx.textAlign="right";ctx.font="900 15px sans-serif";ctx.fillStyle=s.wind>=0?"#75dbff":"#c38dff";ctx.fillText(`${s.wind>=0?"→":"←"} WIND ${Math.abs(s.wind).toFixed(0)}`,W-30,41);ctx.fillStyle="#8799a7";ctx.font="700 11px sans-serif";ctx.fillText(`Gravity ${(s.gravity/150).toFixed(2)}× · Objects ${s.skillObjects.length}`,W-30,60);
+  ctx.textAlign="right";ctx.font="900 15px sans-serif";ctx.fillStyle=s.wind>=0?"#75dbff":"#c38dff";ctx.fillText(`${s.wind>=0?"→":"←"} WIND ${Math.abs(s.wind).toFixed(0)}`,W-30,41);ctx.fillStyle="#8799a7";ctx.font="700 11px sans-serif";ctx.fillText(s.training?`R RESET · ${s.tanks.length-1} DUMMIES`:`Gravity ${(s.gravity/150).toFixed(2)}× · Restock ${s.playerShotsFired%8}/8`,W-30,60);
   if(s.messageTimer>0){ctx.textAlign="center";ctx.font="1000 18px sans-serif";ctx.fillStyle="#fff";ctx.fillText(s.message,W/2,106);}
 }

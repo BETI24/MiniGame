@@ -4,7 +4,7 @@ export const WEAPONS = {
   tristar:{id:"tristar",name:"Tri-Star",icon:"✦",category:"Spread",damage:24,radius:25,count:3,spread:.085,color:"#f9d866",description:"Three shells fan out from the barrel."},
   shardbloom:{id:"shardbloom",name:"Shard Bloom",icon:"✺",category:"Airburst",damage:19,radius:22,fragments:7,splitTime:.82,color:"#9ef19d",description:"Splits near the apex into seven falling shards."},
   ricochet:{id:"ricochet",name:"Ricochet Orb",icon:"◇",category:"Bounce",damage:58,radius:38,bounces:2,color:"#d69cff",description:"Bounces twice before detonating. Excellent behind cover."},
-  roller:{id:"roller",name:"Hill Roller",icon:"◉",category:"Ground",damage:68,radius:43,rollTime:3.4,color:"#ffbf69",description:"Lands softly, then rolls downhill before exploding."},
+  roller:{id:"roller",name:"Hill Roller",icon:"◉",category:"Ground",damage:68,radius:43,rollTime:3.4,rollSpeed:100,color:"#ffbf69",description:"Lands softly, then rolls downhill quickly before exploding."},
   burrow:{id:"burrow",name:"Burrow Charge",icon:"▼",category:"Tunneling",damage:82,radius:48,tunnelTime:1.1,color:"#b7805a",description:"Drills through the ground and detonates underneath the impact point."},
   skymarker:{id:"skymarker",name:"Sky Marker",icon:"⌄",category:"Strike",damage:30,radius:28,bombs:5,spreadX:95,color:"#ff6f91",description:"A marker round calls five bombs down around the impact point."},
   meteorchoir:{id:"meteorchoir",name:"Meteor Choir",icon:"☄",category:"Strike",damage:34,radius:30,bombs:8,spreadX:165,color:"#ff9c5e",description:"Marks a wide area for a delayed meteor shower."},
@@ -24,10 +24,10 @@ export const WEAPONS = {
   faultline:{id:"faultline",name:"Fault Line",icon:"⌁",category:"Terraform",damage:34,radius:0,lineRadius:320,color:"#cf8c58",description:"Sends repeated underground eruptions across a wide horizontal area."},
   corkscrew:{id:"corkscrew",name:"Corkscrew",icon:"∿",category:"Trick",damage:62,radius:35,color:"#55dfff",description:"Wobbles around its ballistic path, making the final impact less obvious."},
   droneswarm:{id:"droneswarm",name:"Drone Swarm",icon:"⋙",category:"Smart",damage:17,radius:16,count:6,homing:1.4,color:"#68f2c3",description:"Six micro-drones aggressively home after a short launch phase."},
-  sawblade:{id:"sawblade",name:"Saw Runner",icon:"✹",category:"Ground",damage:16,radius:13,rollTime:5.0,multiHit:true,color:"#d9e0e6",description:"A spinning blade follows the surface and can cut the same tank repeatedly."},
+  sawblade:{id:"sawblade",name:"Saw Runner",icon:"✹",category:"Ground",damage:16,radius:13,rollTime:5.0,rollSpeed:140,multiHit:true,color:"#d9e0e6",description:"A fast spinning blade follows the surface and can cut the same tank repeatedly."},
   echobomb:{id:"echobomb",name:"Echo Bomb",icon:"◌",category:"Delayed",damage:46,radius:38,echoDamage:35,echoRadius:56,color:"#db8cff",description:"Explodes once on impact, then detonates a larger echo at the same spot."},
   mirror:{id:"mirror",name:"Mirror Shot",icon:"◆",category:"Bounce",damage:66,radius:39,wallBounces:3,color:"#8de9ff",description:"Reflects from arena side walls up to three times before exploding."},
-  viper:{id:"viper",name:"Viper Line",icon:"S",category:"Ground",damage:54,radius:30,travel:520,seekGround:true,color:"#8ed35d",description:"Becomes a ground serpent that crawls toward the nearest tank."},
+  viper:{id:"viper",name:"Viper Line",icon:"S",category:"Ground",damage:54,radius:30,travel:520,rollSpeed:98,seekGround:true,color:"#8ed35d",description:"Becomes a quick ground serpent that crawls toward the nearest tank."},
   pinpoint:{id:"pinpoint",name:"Pinpoint",icon:"·",category:"Precision",damage:112,radius:8,color:"#ffffff",description:"Tiny hitbox, enormous direct-hit damage and almost no splash."},
   megaflux:{id:"megaflux",name:"Mega Flux",icon:"✸",category:"Heavy",damage:145,radius:92,color:"#ff5c88",description:"Rare superweapon with a huge blast and massive terrain deformation."},
   scatterrise:{id:"scatterrise",name:"Scatter Rise",icon:"↟",category:"Impact Effect",damage:16,radius:18,fragments:9,color:"#ffd56d",description:"Impact launches nine fragments upward before they rain back down."},
@@ -38,7 +38,7 @@ export const WEAPONS = {
   clustergrenade:{id:"clustergrenade",name:"Cluster Grenade",icon:"✥",category:"Grenade",damage:18,radius:22,bounces:1,fragments:3,clusterSpread:1.05,color:"#98db73",description:"Bounces once, then bursts into a cluster of timed mini-grenades.",tierNote:"3 mini-grenades",tierUpgrades:{2:{fragments:5,bounces:2,tierNote:"5 mini-grenades after 2 bounces"},3:{fragments:8,bounces:2,clusterSpread:1.35,tierNote:"8-wide grenade storm"}}},
   aquastream:{id:"aquastream",name:"Aqua Stream",icon:"≋",category:"Stream",damage:11,radius:14,count:7,burstGap:.055,streamSpread:.028,color:"#6ac8ff",description:"A rapid stream of light shells follows almost the same ballistic arc.",tierNote:"7 droplets",tierUpgrades:{2:{count:10,streamSpread:.024,tierNote:"10-drop creek"},3:{count:14,streamSpread:.020,tierNote:"14-drop river"}}},
   infernojet:{id:"infernojet",name:"Inferno Jet",icon:"♨",category:"Fire",damage:13,radius:17,count:5,spread:.075,burn:5,burnTime:3.2,color:"#ff7854",description:"Short-range flaming spray. Each impact can leave a small burning patch.",tierNote:"5 flames",tierUpgrades:{2:{count:7,burn:6,burnTime:4,tierNote:"7 flames + longer burn"},3:{count:10,spread:.066,burn:8,burnTime:4.8,tierNote:"10-flame inferno"}}},
-  backroller:{id:"backroller",name:"Back Roller",icon:"↶",category:"Ground",damage:58,radius:36,rollTime:3.6,backRoll:true,color:"#ffbd6d",description:"After landing it deliberately rolls back against its incoming direction.",tierNote:"Standard reverse roller",tierUpgrades:{2:{rollTime:4.4,rollSpeed:72,tierNote:"Longer, faster reverse roll"},3:{rollTime:5.2,rollSpeed:86,impactTrail:true,tierNote:"Reverse groller that chips terrain"}}},
+  backroller:{id:"backroller",name:"Back Roller",icon:"↶",category:"Ground",damage:58,radius:36,rollTime:3.6,rollSpeed:108,backRoll:true,color:"#ffbd6d",description:"After landing it quickly rolls back against its incoming direction.",tierNote:"Standard reverse roller",tierUpgrades:{2:{rollTime:4.4,rollSpeed:118,tierNote:"Longer, faster reverse roll"},3:{rollTime:5.2,rollSpeed:128,impactTrail:true,tierNote:"Reverse groller that chips terrain"}}},
   breakerwave:{id:"breakerwave",name:"Breaker Wave",icon:"⋔",category:"Impact Split",damage:17,radius:18,fragments:2,breakerSpeed:150,color:"#f7b6e2",description:"On impact, daughter shells break away horizontally along opposite arcs.",tierNote:"2 breakers",tierUpgrades:{2:{fragments:4,breakerSpeed:165,tierNote:"4-way double breaker"},3:{fragments:6,breakerSpeed:180,recursiveBreaker:true,tierNote:"6-way super breaker"}}},
   twinkler:{id:"twinkler",name:"Twinkler",icon:"✧",category:"Firework",damage:14,radius:17,fragments:6,splitTime:.92,color:"#ffec8b",description:"A compact firework blooms into radial spark shots in mid-air.",tierNote:"6 sparks",tierUpgrades:{2:{fragments:9,splitTime:.84,tierNote:"9-spark Sparkler"},3:{fragments:13,splitTime:.76,sparkBounce:1,tierNote:"13 Crackler sparks that bounce"}}},
   sniper:{id:"sniper",name:"Vector Sniper",icon:"⌖",category:"Precision",damage:96,radius:7,color:"#edf7ff",description:"Tiny hitbox, high direct-hit damage. Higher tiers add follow-up precision shots.",tierNote:"Single precision round",tierUpgrades:{2:{count:2,subShotSpread:.014,damage:86,tierNote:"Twin sub-sniper rounds"},3:{count:3,subShotSpread:.018,damage:78,smartSnipe:.22,tierNote:"3 smart-sniper rounds with slight correction"}}},
@@ -188,12 +188,12 @@ const V4_TIER_OVERRIDES={
     3:{damage:22,radius:19,tunnelTime:.78,excavationCount:8,excavationSpread:.075,visualScale:.82,tierNote:"Excavation · 8 drilling charges"}
   },
   roller:{
-    2:{damage:82,radius:49,rollTime:2.9,rollSpeed:52,visualScale:1.28,tierNote:"Heavy Roller · larger but shorter travel"},
-    3:{damage:48,radius:25,rollTime:4.8,rollSpeed:59,growsWithRoll:true,growDamageMax:118,visualScale:.72,tierNote:"Groller · grows and gains damage while rolling"}
+    2:{damage:82,radius:49,rollTime:2.9,rollSpeed:112,visualScale:1.28,tierNote:"Heavy Roller · larger, fast surface travel"},
+    3:{damage:48,radius:25,rollTime:4.8,rollSpeed:124,growsWithRoll:true,growDamageMax:118,visualScale:.72,tierNote:"Groller · grows and gains damage while rolling"}
   },
   backroller:{
-    2:{damage:72,radius:44,rollTime:3.8,rollSpeed:68,visualScale:1.26,tierNote:"Heavy Back-Roller"},
-    3:{damage:48,radius:25,rollTime:5.2,rollSpeed:78,growsWithRoll:true,growDamageMax:112,visualScale:.72,tierNote:"Back-Groller · grows while rolling backward"}
+    2:{damage:72,radius:44,rollTime:3.8,rollSpeed:118,visualScale:1.26,tierNote:"Heavy Back-Roller"},
+    3:{damage:48,radius:25,rollTime:5.2,rollSpeed:132,growsWithRoll:true,growDamageMax:112,visualScale:.72,tierNote:"Back-Groller · grows while rolling backward"}
   },
   skymarker:{
     2:{bombs:8,damage:26,radius:25,spreadX:120,visualScale:1.10,tierNote:"Heli strike · 8 drops"},
@@ -281,7 +281,8 @@ export const DIFFICULTIES={
 export const MODES={
   duel:{label:"Duel",tanks:2,teams:false,description:"You versus one AI tank."},
   ffa:{label:"4-Tank FFA",tanks:4,teams:false,description:"Free-for-all chaos with three AI opponents."},
-  teams:{label:"2v2 Teams",tanks:4,teams:true,description:"You and an AI ally versus two enemies."}
+  teams:{label:"2v2 Teams",tanks:4,teams:true,description:"You and an AI ally versus two enemies."},
+  training:{label:"Training Range",tanks:5,teams:false,description:"Infinite arsenal, stationary dummies and no enemy turns."}
 };
 export const ARENAS=[
   {id:"rolling",name:"Rolling Ridge",roughness:.42,hills:5,base:.67,wind:1.0,sky:["#17213a","#5c496d"]},

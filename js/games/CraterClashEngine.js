@@ -1,9 +1,15 @@
 import {WEAPONS,WEAPON_IDS,DIFFICULTIES,MODES,ARENAS,TANK_COLORS,MATCH_DEFAULTS} from "./CraterClashData.js";
-import {getWeaponTierStats,rollWeaponTier,getRogueEnemyScale,rogueAllowedWeaponIds} from "./CraterClashProgression.js";
+import {getWeaponTierStats,getWeaponTierCap,rollWeaponTier,getRogueEnemyScale,rogueAllowedWeaponIds} from "./CraterClashProgression.js";
 export const GRAVITY=150;
 export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const rand=(a,b)=>a+Math.random()*(b-a);
 export const rint=(a,b)=>Math.floor(rand(a,b+1));
+// Keeps the UI at 0–100% power, but gives the upper half considerably more launch energy.
+// At 100 power this is ~34% faster than the previous V6 maximum.
+export function launchSpeedFromPower(power){
+  const p=clamp(Number(power)||0,0,100);
+  return 85+p*3.05+Math.max(0,p-45)*2.40;
+}
 
 export function createTerrain(width,height,arenaIndex=0){
   const arena=ARENAS[arenaIndex]||ARENAS[0];
@@ -73,15 +79,24 @@ function makeInventory(count=13,{maxTier=4,luck=0,botBonus=0,allowedIds=null}={}
   }
   return chosen;
 }
+function makeTrainingInventory(){
+  const out=[{id:"pulse",tier:1,ammo:999}];
+  for(const id of WEAPON_IDS){
+    if(id==="pulse")continue;
+    for(let tier=1;tier<=getWeaponTierCap(id);tier++)out.push({id,tier,ammo:999});
+  }
+  return out;
+}
 function tankGround(s,t){return terrainY(s,t.x)-11;}
 
 function spawnSkillSet(s,initial=false){
+  // roundsLeft is measured in PLAYER turns: this function is called whenever play wraps back to the player.
+  if(!initial){
+    for(const o of s.skillObjects)if(Number.isFinite(o.roundsLeft))o.roundsLeft--;
+    s.skillObjects=s.skillObjects.filter(o=>!Number.isFinite(o.roundsLeft)||o.roundsLeft>0);
+  }
   const chance=densityChance(s.settings.skillObjects);
   if(chance<=0)return;
-  if(!initial){
-    for(const o of s.skillObjects)o.roundsLeft--;
-    s.skillObjects=s.skillObjects.filter(o=>o.roundsLeft>0);
-  }
   if(!initial&&Math.random()>chance)return;
   const max=s.settings.skillObjects==="high"?3:2;
   const count=1+(Math.random()<chance*.38&&s.skillObjects.length<max?1:0);
@@ -92,7 +107,7 @@ function spawnSkillSet(s,initial=false){
       s.skillObjects.push({id:s.nextId++,kind:"multiplier",x,y:rand(s.height*.22,Math.max(s.height*.26,ground-75)),r:20,value:2,roundsLeft:2});
     }else if(roll<.68){
       const x=rand(s.width*.22,s.width*.78),ground=terrainY(s,x);
-      s.skillObjects.push({id:s.nextId++,kind:"bumper",x,y:rand(s.height*.24,Math.max(s.height*.28,ground-65)),len:rand(80,135),angle:rand(-.65,.65),roundsLeft:3});
+      s.skillObjects.push({id:s.nextId++,kind:"bumper",x,y:rand(s.height*.24,Math.max(s.height*.28,ground-65)),len:rand(80,135),angle:rand(-.65,.65),roundsLeft:2});
     }else{
       if(max-s.skillObjects.length<2){
         const x=rand(s.width*.23,s.width*.77),ground=terrainY(s,x);
@@ -102,42 +117,52 @@ function spawnSkillSet(s,initial=false){
         let x1=rand(s.width*.18,s.width*.42),x2=rand(s.width*.58,s.width*.84);
         let y1=rand(s.height*.24,Math.max(s.height*.28,terrainY(s,x1)-80));
         let y2=rand(s.height*.24,Math.max(s.height*.28,terrainY(s,x2)-80));
-        s.skillObjects.push({id:s.nextId++,kind:"portal",pair,x:x1,y:y1,r:21,roundsLeft:3,color:"#7be7ff"});
-        s.skillObjects.push({id:s.nextId++,kind:"portal",pair,x:x2,y:y2,r:21,roundsLeft:3,color:"#d487ff"});
+        s.skillObjects.push({id:s.nextId++,kind:"portal",pair,x:x1,y:y1,r:21,roundsLeft:2,color:"#7be7ff"});
+        s.skillObjects.push({id:s.nextId++,kind:"portal",pair,x:x2,y:y2,r:21,roundsLeft:2,color:"#d487ff"});
       }
     }
   }
 }
 
 function maybeSpawnCrate(s){
-  if(s.crate||Math.random()>densityChance(s.settings.crates))return;
-  s.crate={x:rand(s.width*.18,s.width*.82),y:-25,vy:0,alive:true,quality:"airdrop"};
+  const chance=densityChance(s.settings.crates);
+  if(chance<=0||Math.random()>chance)return;
+  // Roughly 40% of loot opportunities are suspended in the air like a skill object.
+  if(Math.random()<.40){
+    if(s.skillObjects.some(o=>o.kind==="loot"))return;
+    const x=rand(s.width*.20,s.width*.80),ground=terrainY(s,x);
+    s.skillObjects.push({id:s.nextId++,kind:"loot",x,y:rand(s.height*.20,Math.max(s.height*.25,ground-95)),r:18,roundsLeft:2,color:"#ffd76a"});
+    return;
+  }
+  if(s.crate)return;
+  s.crate={x:rand(s.width*.18,s.width*.82),y:-25,vy:0,alive:true,grounded:false,quality:"airdrop"};
 }
 
 export function createState({width,height,mode="ffa",difficulty="normal",arenaIndex=0,settings={},rogueRun=null}={}){
   const arena=ARENAS[arenaIndex]||ARENAS[0],m=MODES[mode],baseDiff=DIFFICULTIES[difficulty]||DIFFICULTIES.normal;
   const cfg=normalizeSettings(settings),rogueScale=rogueRun?getRogueEnemyScale(rogueRun):null;
-  let tankCount=mode==="duel"?2:Math.max(2,Math.min(8,Number(cfg.playerCount)||m.tanks||4));
+  const training=mode==="training";
+  let tankCount=training?5:mode==="duel"?2:Math.max(2,Math.min(8,Number(cfg.playerCount)||m.tanks||4));
   if(mode==="teams"&&tankCount%2)tankCount++;
   const diff=rogueRun?{...baseDiff,aiSamples:rogueScale.samples,aimError:rogueScale.aimError,powerError:rogueScale.powerError}:baseDiff;
   const windMult=windSettingMultiplier(cfg.wind);
   const s={
-    width,height,mode,difficulty,diff,arenaIndex,arena,settings:cfg,rogueRun,rogueScale,
+    width,height,mode,difficulty,diff,arenaIndex,arena,settings:cfg,rogueRun,rogueScale,training,
     terrain:createTerrain(width,height,arenaIndex),
     wind:windMult?rand(-32,32)*arena.wind*windMult:0,windMult,gravity:GRAVITY*(arena.gravity||1),
     tanks:[],projectiles:[],fx:[],fields:[],fires:[],skillObjects:[],
     current:0,round:1,turnTime:Number(cfg.turnTime)||28,turnTimer:Number(cfg.turnTime)||28,phase:"aim",shotInProgress:false,nextTurnDelay:0,
     gameOver:false,winner:null,message:"YOUR TURN",messageTimer:1.8,cameraShake:0,
     selectedWeapon:"pulse",selectedTier:1,playerAngle:Math.PI*.25,playerPower:58,nextId:1,crate:null,
-    lastShotTraces:[],traceCurrent:[],skillHits:0,damageNumbers:[],damageSummary:null,activeShotSummary:null
+    lastShotTraces:[],traceCurrent:[],skillHits:0,damageNumbers:[],damageSummary:null,activeShotSummary:null,playerShotsFired:0,nextRestockAt:8,restockPending:false,restockCount:0
   };
   const margin=width*.075,xs=[];
   for(let i=0;i<tankCount;i++)xs.push(margin+(width-margin*2)*(i/Math.max(1,tankCount-1)));
   for(let i=1;i<xs.length-1;i++)xs[i]+=rand(-width*.018,width*.018);
 
-  const standardShared=rogueRun?null:makeInventory(cfg.weaponCount,{maxTier:4,luck:0});
+  const standardShared=rogueRun||training?null:makeInventory(cfg.weaponCount,{maxTier:4,luck:0});
   for(let i=0;i<tankCount;i++){
-    const team=mode==="teams"?(i<tankCount/2?0:1):i,isPlayer=i===0,x=clamp(xs[i],25,width-25);
+    const team=mode==="teams"?(i<tankCount/2?0:1):i,isPlayer=i===0,isDummy=training&&!isPlayer,x=clamp(xs[i],25,width-25);
     const angle=i<tankCount/2?Math.PI*.25:Math.PI*.75;
     let maxHp=Number(cfg.hp)||100,maxFuel=Number(cfg.fuel)||100,grip=.70,critChance=.03,critMultiplier=1.5,luck=0,maxTier=4,startArmor=0,weaponCount=cfg.weaponCount,damageBonus=1,overchargeRate=1,airdropWeapons=1,crateArmorBonus=0;
     let inv;
@@ -153,18 +178,21 @@ export function createState({width,height,mode="ffa",difficulty="normal",arenaIn
         const allowed=rogueAllowedWeaponIds(rogueScale.weaponPoolLevel);
         inv=makeInventory(weaponCount,{maxTier,luck,botBonus:rogueScale.tierBonus,allowedIds:allowed});
       }
+    }else if(training){
+      if(isPlayer){maxHp=500;maxFuel=9999;startArmor=100;maxTier=4;inv=makeTrainingInventory();}
+      else{maxHp=600;maxFuel=0;startArmor=75;maxTier=4;inv=[{id:"pulse",tier:1,ammo:999}];}
     }else inv=standardShared.map(v=>({...v}));
     const fuelEfficiency=rogueRun&&isPlayer?rogueRun.stats.fuelEfficiency:1;
     s.tanks.push({
-      id:s.nextId++,name:isPlayer?"YOU":mode==="teams"&&team===0?`ALLY ${i}`:`BOT ${i}`,isPlayer,team,x,y:s.terrain[Math.round(x)]-11,
-      hp:maxHp,maxHp,armor:startArmor,alive:true,color:TANK_COLORS[i%TANK_COLORS.length],angle,power:58,
+      id:s.nextId++,name:isPlayer?"YOU":isDummy?`DUMMY ${i}`:mode==="teams"&&team===0?`ALLY ${i}`:`BOT ${i}`,isPlayer,isDummy,team,x,y:s.terrain[Math.round(x)]-11,
+      hp:maxHp,maxHp,armor:startArmor,trainingArmor:startArmor,alive:true,color:TANK_COLORS[i%TANK_COLORS.length],angle,power:58,
       inventory:inv,selected:"pulse",selectedTier:1,overcharge:0,overchargeReady:false,kills:0,damage:0,
       maxFuel,fuel:maxFuel,grip,fuelEfficiency,critChance,critMultiplier,luck,maxTier,damageBonus,overchargeRate,airdropWeapons,crateArmorBonus,
       allowedWeaponIds:rogueRun?(isPlayer?rogueAllowedWeaponIds(rogueRun.stats.weaponPoolLevel):rogueAllowedWeaponIds(rogueScale.weaponPoolLevel)):WEAPON_IDS.filter(id=>id!=="pulse")
     });
   }
   s.playerAngle=s.tanks[0].angle;
-  spawnSkillSet(s,true);
+  if(!training)spawnSkillSet(s,true);
   return s;
 }
 export const currentTank=s=>s.tanks[s.current]||null;
@@ -181,7 +209,8 @@ function consume(t,id,tier){if(id==="pulse")return;const x=t.inventory.find(v=>v
 
 export function addWeaponReward(s,t,{airdrop=false}={}){
   const used=new Set();
-  const slot=rollSpecialSlot({maxTier:t.maxTier,luck:t.luck,airdrop,botBonus:0,usedIds:used,allowedIds:t.allowedWeaponIds});
+  // Premium loot deliberately ignores Rogue-run arsenal/tier unlocks. It is the exciting exception.
+  const slot=rollSpecialSlot({maxTier:airdrop?4:t.maxTier,luck:t.luck,airdrop,botBonus:0,usedIds:used,allowedIds:airdrop?null:t.allowedWeaponIds});
   const same=t.inventory.find(v=>v.id===slot.id&&v.tier===slot.tier);
   if(same)same.ammo++;
   else{
@@ -206,7 +235,7 @@ export function moveTank(s,t,dir,distance=5){
 }
 
 function projectileBase(s,t,angle,power,weaponId,tier=1,extra={}){
-  const speed=(85+power*3.05)*(extra.launchSpeedMult||1);
+  const speed=launchSpeedFromPower(power)*(extra.launchSpeedMult||1);
   return {id:s.nextId++,owner:t.id,weaponId,tier,x:t.x+Math.cos(angle)*18,y:t.y-8-Math.sin(angle)*18,
     vx:Math.cos(angle)*speed,vy:-Math.sin(angle)*speed,age:0,alive:true,radius:4,bounces:0,wallBounces:0,
     trace:[],traceTimer:0,portalCooldown:0,bumperCooldown:0,critShot:false,x2Active:false,...extra};
@@ -216,6 +245,10 @@ export function fire(s,t,angle,power,weaponId=t.selected,weaponTier=t.selectedTi
   if(!t?.alive||s.shotInProgress)return false;
   const slot=t.inventory.find(x=>x.id===weaponId&&x.tier===weaponTier&&x.ammo>0);if(!slot)return false;
   consume(t,weaponId,weaponTier);t.angle=angle;t.power=power;
+  if(t.isPlayer&&!s.training){
+    s.playerShotsFired++;
+    if(s.playerShotsFired>=s.nextRestockAt){s.restockPending=true;s.nextRestockAt+=8;}
+  }
   const d=weaponDef(weaponId,weaponTier);
   const over=t.overchargeReady?1.28:1,crit=Math.random()<(t.critChance||0)?(t.critMultiplier||1.5):1,mult=over*crit*(t.damageBonus||1);
   if(t.overchargeReady){t.overchargeReady=false;t.overcharge=0;s.message="OVERCHARGED SHOT";s.messageTimer=1.1;}
@@ -234,7 +267,7 @@ export function fire(s,t,angle,power,weaponId=t.selected,weaponTier=t.selectedTi
       add(angle+(i-mid)*(d.formationSpread||.017),clamp(power+(row-(totalRows-1)/2)*4,10,100),{age:-row*.035,radius:2.5,fleetShot:true});
     }});
   }else if(weaponId==="flame"){
-    const count=d.count||12,mid=(count-1)/2;for(let i=0;i<count;i++)add(angle+(i-mid)*(d.spread||.10),Math.max(18,power*.74),{radius:2.5,flameShot:true,maxAge:1.8});
+    const count=d.count||12,mid=(count-1)/2;for(let i=0;i<count;i++)add(angle+(i-mid)*(d.spread||.10),Math.max(18,power*.82),{radius:2.5,flameShot:true,maxAge:6.2});
   }else if(weaponId==="fireworks"){
     if(d.pyrotechnics)add(angle,power,{kind:"pyroShell",radius:5});
     else{const count=d.rockets||3,mid=(count-1)/2;for(let i=0;i<count;i++)add(angle+(i-mid)*(d.rocketSpread||.075),power,{kind:"fireworkRocket",radius:4,sparksPerRocket:d.sparksPerRocket||12});}
@@ -268,7 +301,7 @@ export function fire(s,t,angle,power,weaponId=t.selected,weaponTier=t.selectedTi
     for(let i=0;i<count;i++)add(angle+(i-mid)*(d.excavationSpread||.07),power-rand(0,5),{radius:3});
   }else if(weaponId==="infernojet"){
     const count=d.count||5,mid=(count-1)/2;
-    for(let i=0;i<count;i++)add(angle+(i-mid)*(d.spread||.07),Math.max(18,power*.68),{maxAge:1.35,burnData:{damage:d.burn||5,time:d.burnTime||3,r:24}});
+    for(let i=0;i<count;i++)add(angle+(i-mid)*(d.spread||.07),Math.max(18,power*.78),{maxAge:6.0,burnData:{damage:d.burn||5,time:d.burnTime||3,r:24}});
   }else if(weaponId==="hunter"||weaponId==="droneswarm"){
     for(let i=0;i<d.count;i++)add(angle+rand(-.10,.10),power-rand(0,8),{homingDelay:(weaponId==="hunter"?.38:.25)+i*.055,homingStrength:d.homing});
   }else if(weaponId==="sniper"){
@@ -343,7 +376,15 @@ function damageTank(s,t,amount,owner,meta={}){
       s.activeShotSummary.totalDamage+=applied;s.activeShotSummary.hitCount++;if(x2)s.activeShotSummary.hadX2=true;
     }
   }
-  if(t.hp<=0){t.hp=0;t.alive=false;if(owner&&owner.id!==t.id)owner.kills++;s.fx.push({kind:"tankPop",x:t.x,y:t.y,life:.75,max:.75,color:t.color});}
+  if(t.hp<=0){
+    t.hp=0;
+    if(s.training&&t.isDummy){
+      t.knockedOut=true;
+      s.fx.push({kind:"tankPop",x:t.x,y:t.y,life:.60,max:.60,color:t.color});
+    }else{
+      t.alive=false;if(owner&&owner.id!==t.id)owner.kills++;s.fx.push({kind:"tankPop",x:t.x,y:t.y,life:.75,max:.75,color:t.color});
+    }
+  }
   return applied;
 }
 function finalizeShotSummary(s){
@@ -764,6 +805,8 @@ function handleSkillObjects(s,p){
     if(o.kind==="multiplier"&&Math.hypot(p.x-o.x,p.y-o.y)<o.r+(p.radius||4)){
       p.damageMult=(p.damageMult||1)*o.value;p.x2Active=true;o.dead=true;s.skillHits++;if(s.activeShotSummary&&s.activeShotSummary.ownerId===p.owner)s.activeShotSummary.hadX2=true;
       s.fx.push({kind:"multiplier",x:o.x,y:o.y,life:.55,max:.55,color:"#ffe66c"});s.message="×2 DAMAGE!";s.messageTimer=1;
+    }else if(o.kind==="loot"&&Math.hypot(p.x-o.x,p.y-o.y)<o.r+(p.radius||4)){
+      o.dead=true;grantAirdropReward(s,ownerOf(s,p),o.x,o.y,{floating:true});
     }else if(o.kind==="portal"&&p.portalCooldown<=0&&Math.hypot(p.x-o.x,p.y-o.y)<o.r+(p.radius||4)){
       const other=s.skillObjects.find(q=>q.kind==="portal"&&q.pair===o.pair&&q.id!==o.id);
       if(other){
@@ -879,6 +922,7 @@ function settleTanks(s,dt){
   }
 }
 function evaluateWin(s){
+  if(s.training)return;
   const alive=s.tanks.filter(t=>t.alive);
   if(s.mode==="teams"){
     const teams=[...new Set(alive.map(t=>t.team))];if(teams.length<=1){s.gameOver=true;s.winner=teams.length?`Team ${teams[0]+1}`:"Nobody";}
@@ -887,11 +931,43 @@ function evaluateWin(s){
 function nextAliveIndex(s,start){
   let i=start;for(let n=0;n<s.tanks.length;n++){i=(i+1)%s.tanks.length;if(s.tanks[i].alive)return i;}return start;
 }
+function performRestock(s){
+  if(!s.restockPending||s.training)return false;
+  s.restockPending=false;s.restockCount++;
+  const amount=5;
+  for(const t of s.tanks){
+    if(!t.alive)continue;
+    for(let i=0;i<amount;i++)addWeaponReward(s,t,{airdrop:false});
+  }
+  s.message=`WEAPON RESTOCK #${s.restockCount} · +${amount} SPECIALS`;s.messageTimer=2.1;
+  s.fx.push({kind:"restock",x:s.width/2,y:118,life:1.2,max:1.2,color:"#75e7ff"});
+  return true;
+}
+function restoreTrainingDummies(s){
+  for(const t of s.tanks){
+    if(!t.isDummy)continue;
+    t.alive=true;t.knockedOut=false;t.hp=t.maxHp;t.armor=t.trainingArmor||0;t.y=tankGround(s,t);
+  }
+}
+export function resetTrainingRange(s){
+  if(!s?.training)return false;
+  s.terrain=createTerrain(s.width,s.height,s.arenaIndex);
+  const margin=s.width*.075;
+  for(let i=0;i<s.tanks.length;i++){
+    const t=s.tanks[i];t.x=margin+(s.width-margin*2)*(i/Math.max(1,s.tanks.length-1));t.y=tankGround(s,t);t.alive=true;t.knockedOut=false;t.hp=t.maxHp;t.armor=t.trainingArmor||0;t.fuel=t.maxFuel;
+  }
+  s.projectiles=[];s.fields=[];s.fires=[];s.fx=[];s.crate=null;s.skillObjects=[];s.traceCurrent=[];s.lastShotTraces=[];s.phase="aim";s.shotInProgress=false;s.nextTurnDelay=0;s.current=0;s.turnTimer=s.turnTime;s.message="TRAINING RANGE RESET";s.messageTimer=1.4;
+  return true;
+}
 function advanceTurn(s){
   evaluateWin(s);if(s.gameOver)return;
   finalizeShotSummary(s);
-  const old=s.current;
   s.lastShotTraces=s.settings.tracer?s.traceCurrent.map(path=>path.slice()):[];s.traceCurrent=[];
+  if(s.training){
+    restoreTrainingDummies(s);s.round++;s.current=0;s.turnTimer=s.turnTime;s.phase="aim";s.nextTurnDelay=0;const p=s.tanks[0];if(p){p.fuel=p.maxFuel;s.selectedWeapon=p.selected;s.selectedTier=p.selectedTier;s.playerAngle=p.angle;s.playerPower=p.power;}s.message="TRAINING · FIRE WHEN READY";s.messageTimer=.8;return;
+  }
+  const restocked=performRestock(s);
+  const old=s.current;
   s.current=nextAliveIndex(s,s.current);
   const wrapped=s.current<=old;
   if(wrapped){
@@ -903,22 +979,28 @@ function advanceTurn(s){
   else s.wind=clamp(s.wind+rand(-16,16)*s.windMult,-55*s.arena.wind*s.windMult,55*s.arena.wind*s.windMult);
   s.turnTimer=s.turnTime;s.phase="aim";s.nextTurnDelay=0;
   const t=currentTank(s);if(t)t.fuel=t.maxFuel;
-  s.message=t?.isPlayer?"YOUR TURN":`${t?.name} AIMING`;s.messageTimer=1.1;
+  if(!restocked){s.message=t?.isPlayer?"YOUR TURN":`${t?.name} AIMING`;s.messageTimer=1.1;}
   if(t?.isPlayer){s.selectedWeapon=t.selected;s.selectedTier=t.selectedTier;s.playerAngle=t.angle;s.playerPower=t.power;}
 }
+function grantAirdropReward(s,owner,x,y,{floating=false}={}){
+  if(!owner)return [];
+  const rewards=[],rewardCount=Math.max(1,owner.airdropWeapons||1);
+  for(let i=0;i<rewardCount;i++)rewards.push(addWeaponReward(s,owner,{airdrop:true}));
+  const armor=(floating?10:15)+(owner.crateArmorBonus||0);owner.armor=Math.min(150,owner.armor+armor);
+  const first=rewards[0];
+  s.message=`${floating?"AIR LOOT":"AIRDROP"}: ${WEAPONS[first.id].name} T${first.tier}${rewards.length>1?` + ${rewards.length-1} WEAPON`:""} + ${armor} ARMOR`;s.messageTimer=2.0;
+  s.fx.push({kind:"cratePop",x,y,life:.55,max:.55,color:floating?"#8ff3ff":"#ffd86a"});
+  return rewards;
+}
 function updateCrate(s,dt){
-  if(!s.crate?.alive)return;const c=s.crate;c.vy+=s.gravity*.7*dt;c.y+=c.vy*dt;
-  if(c.y>=terrainY(s,c.x)-9){c.y=terrainY(s,c.x)-9;c.vy=0;}
+  if(!s.crate?.alive)return;const c=s.crate;
+  if(!c.grounded){c.vy+=s.gravity*.7*dt;c.y+=c.vy*dt;if(c.y>=terrainY(s,c.x)-9){c.y=terrainY(s,c.x)-9;c.vy=0;c.grounded=true;}}
   for(const p of s.projectiles){
-    if(p.alive&&Math.hypot(p.x-c.x,p.y-c.y)<15){
-      c.alive=false;const owner=ownerOf(s,p);
-      if(owner){
-        const rewards=[];const rewardCount=Math.max(1,owner.airdropWeapons||1);for(let i=0;i<rewardCount;i++)rewards.push(addWeaponReward(s,owner,{airdrop:true}));
-        const armor=15+(owner.crateArmorBonus||0);owner.armor=Math.min(120,owner.armor+armor);
-        const first=rewards[0];s.message=`AIRDROP: ${WEAPONS[first.id].name} T${first.tier}${rewards.length>1?` + ${rewards.length-1} WEAPON`:""} + ${armor} ARMOR`;s.messageTimer=2.0;
-      }
-      p.alive=false;s.fx.push({kind:"cratePop",x:c.x,y:c.y,life:.55,max:.55,color:"#ffd86a"});break;
-    }
+    if(p.alive&&Math.hypot(p.x-c.x,p.y-c.y)<15){c.alive=false;grantAirdropReward(s,ownerOf(s,p),c.x,c.y);p.alive=false;break;}
+  }
+  // Once on the ground, a tank can simply drive over the crate to collect it.
+  if(c.alive&&c.grounded){
+    for(const t of s.tanks){if(t.alive&&Math.hypot(t.x-c.x,t.y-c.y)<27){c.alive=false;grantAirdropReward(s,t,c.x,c.y);break;}}
   }
   if(!c.alive)s.crate=null;
 }
@@ -939,13 +1021,13 @@ export function updateState(s,dt){
     s.turnTimer-=dt;
     if(s.turnTimer<=0){const t=currentTank(s);if(t){if(t.isPlayer)fire(s,t,s.playerAngle,s.playerPower,t.selected);else performBotShot(s,t);}}
   }
-  const no=s.projectiles.length===0,transient=s.fields.some(f=>["gravity","voidwell","groundwave","echo","timebomb","faultPop","burnTarget","lightningStrike","stickyMine","snake"].includes(f.kind));
+  const no=s.projectiles.length===0,transient=s.fires.length>0||s.fields.some(f=>["gravity","voidwell","groundwave","echo","timebomb","faultPop","burnTarget","lightningStrike","stickyMine","snake"].includes(f.kind));
   if(s.phase==="shot"&&no&&!transient&&!s.shotInProgress){s.nextTurnDelay-=dt;if(s.nextTurnDelay<=0)advanceTurn(s);}
   else if(s.phase==="shot"&&no&&!transient&&s.shotInProgress)scheduleTurnEnd(s,.8);
 }
 
 function simulateLanding(s,t,angle,power){
-  const d=weaponDef(t.selected,t.selectedTier||1),speed=85+power*3.05;let x=t.x+Math.cos(angle)*18,y=t.y-8-Math.sin(angle)*18,vx=Math.cos(angle)*speed,vy=-Math.sin(angle)*speed;
+  const d=weaponDef(t.selected,t.selectedTier||1),speed=launchSpeedFromPower(power);let x=t.x+Math.cos(angle)*18,y=t.y-8-Math.sin(angle)*18,vx=Math.cos(angle)*speed,vy=-Math.sin(angle)*speed;
   const dt=.035;
   for(let i=0;i<260;i++){vx+=s.wind*dt;vy+=s.gravity*(d.gravity||1)*dt;x+=vx*dt;y+=vy*dt;if(x<0||x>=s.width||y>s.height)return{x:clamp(x,0,s.width),y:s.height};if(y>=terrainY(s,x))return{x,y};}
   return{x,y};

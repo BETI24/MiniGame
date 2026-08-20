@@ -4,9 +4,9 @@
 // be recognized while moving, not just by their inventory card.
 
 const SHAPE_BY_ID={
-  pulse:"shell",core:"hex",tristar:"orb",shardbloom:"seed",ricochet:"diamond",roller:"wheel",burrow:"drill",
+  pulse:"shell",core:"hex",tristar:"star",shardbloom:"seed",ricochet:"diamond",roller:"wheel",burrow:"drill",
   skymarker:"flare",meteorchoir:"meteor",prismsplit:"prism",raillance:"needle",groundwave:"wave",hunter:"dart",
-  gravityseed:"gravity",rampart:"seed",sinker:"drill",starburst:"star",emberrain:"flame",arcchain:"electric",
+  gravityseed:"gravity",rampart:"seed",sinker:"drill",starburst:"needle",emberrain:"flame",arcchain:"electric",
   moonfall:"moon",kernelpop:"kernel",deaddrop:"block",faultline:"rock",corkscrew:"spiral",droneswarm:"drone",
   sawblade:"saw",echobomb:"ring",mirror:"mirror",viper:"snake",pinpoint:"needle",megaflux:"core",
   scatterrise:"sprout",timeskip:"clock",orbvolley:"orb",hyperbounce:"diamond",clustergrenade:"grenade",
@@ -14,10 +14,13 @@ const SHAPE_BY_ID={
   quakecharge:"rock",bulger:"seed",fountain:"drop",flower:"petal",horizon:"wave",jumper:"spring",acidrain:"acid",
   areastrike:"flare",hoverorb:"hover",boomerang:"boomerang",beehive:"hex",voidwell:"void",bumperbombs:"bumper",
   cactus:"spike",carpetbomb:"flare",gunship:"bullet",clover:"clover",discoball:"disco",ghostbomb:"ghost",
-  guppies:"fish",palmburst:"leaf",rapidfire:"bullet",asteroidbelt:"meteor",
+  guppies:"fish",palmburst:"seed",rapidfire:"bullet",asteroidbelt:"meteor",
   airstrike:"flare",snake:"snakehead",counter3000:"counter",deadweight:"weight",flame:"flame",bolt:"boltflare",
   tadpoles:"tadpole",fireworks:"rocket",fleet:"fleet",bounder:"bounder",uzi:"bullet",stickybomb:"sticky",
-  spider:"spider",bfg1000:"bfg",recruiter:"recruitflare"
+  spider:"spider",bfg1000:"bfg",recruiter:"recruitflare",
+  digger:"diggerball",breaker:"breaker",zipper:"zipper",ringer:"ring",spiker:"spike",pinata:"pinata",
+  miniv:"vshot",napalm:"flame",sunburst:"sun",synclets:"sync",seagull:"gull",shrapnel:"shrapnel",
+  batteringram:"ram",rampage:"ragebolt",snowball:"snowball",fighterjet:"jet",breakermadness:"madbreaker",fury:"fury"
 };
 
 const TRAIL_BY_ID={
@@ -28,7 +31,10 @@ const TRAIL_BY_ID={
   burrow:"dust",sinker:"dust",quakecharge:"dust",clustergrenade:"fuse",rapidfire:"tracer",gunship:"tracer",
   airstrike:"flareSmoke",snake:"slime",counter3000:"tracer",deadweight:"smart",flame:"embers",bolt:"electricTrail",
   tadpoles:"slime",fireworks:"rainbowSpark",fleet:"formation",bounder:"smart",uzi:"tracer",stickybomb:"redSmoke",
-  spider:"thread",bfg1000:"plasma",recruiter:"greenSmoke"
+  spider:"thread",bfg1000:"plasma",recruiter:"greenSmoke",
+  digger:"orangePulse",breaker:"fracture",zipper:"electricTrail",ringer:"halo",spiker:"dust",pinata:"rainbowSpark",
+  miniv:"neon",napalm:"embers",sunburst:"solar",synclets:"syncgreen",seagull:"wing",shrapnel:"metal",
+  batteringram:"ramStreak",rampage:"rage",snowball:"snow",fighterjet:"jetSmoke",breakermadness:"pinkFracture",fury:"embers"
 };
 
 const IMPACT_BY_CATEGORY={
@@ -38,7 +44,10 @@ const IMPACT_BY_CATEGORY={
   "Impact Split":"star",Firework:"firework",Seismic:"ground",Radial:"radial",Burst:"tracer","Impact Effect":"sprout",
   "Terrain Beam":"ground",Flare:"marker",Crawler:"ground",Volley:"tracer","Smart Drop":"pin","Flame Spray":"fire",
   "Lightning Flare":"electric","Bouncy Swarm":"splash",Fireworks:"firework",Formation:"burst","Smart Bounce":"spark",
-  "Straight Burst":"tracer",Sticky:"echo",Web:"radial","Distance Heavy":"shock","Crossfire Flare":"marker"
+  "Straight Burst":"tracer",Sticky:"echo",Web:"radial","Distance Heavy":"shock","Crossfire Flare":"marker",
+  Jumping:"ground","Ground Sweep":"electric",Ring:"ring","Terrain Spikes":"ground","Airburst Fire":"fire",
+  Solar:"radial","Air Pause":"spark","Air Drop":"burst","Fragment Burst":"burst","Apex Drop":"shock",
+  "Sine Barrage":"electric","Growing Bounce":"ring","Multistage Impact":"star","Impact Barrage":"fire","Global Seismic":"terrain"
 };
 
 export function weaponVisual(def,tier=1){

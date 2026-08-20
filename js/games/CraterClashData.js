@@ -259,13 +259,312 @@ const V4_TIER_NAMES={
 };
 for(const [id,names] of Object.entries(V4_TIER_NAMES))for(const [tier,name] of Object.entries(names)){if(WEAPONS[id]?.tierUpgrades?.[tier])WEAPONS[id].tierUpgrades[tier].name=name;}
 
+// V7 playtest rebalance / mechanical redesign pass.
+// Explicit values below intentionally replace the generic tier scaling where a family needs
+// reliable total damage, a different firing pattern, or a distinct tier identity.
+const V7_WEAPON_REWORK={
+  tristar:{base:{damage:18,radius:18,fragments:3,count:1,airburstHeight:105,airburstMinAge:.30,starPattern:"tri",description:"A single star core flies the aimed arc, then opens close to the ground into three heavy star points."},tiers:{
+    2:{name:"Penta-Star",damage:16,radius:17,fragments:5,airburstHeight:112,visualScale:1.12,tierNote:"Near-ground five-point star bloom"},
+    3:{name:"Nova-Star",damage:14,radius:16,fragments:7,airburstHeight:120,starCore:true,visualScale:1.24,tierNote:"Seven-point nova + heavy center star"}
+  }},
+  shardbloom:{base:{airburstHeight:112,airburstMinAge:.30,splitTime:99,description:"The seed stays intact through the high arc and only opens near the terrain into falling shards."},tiers:{
+    2:{fragments:9,damage:17,radius:20,airburstHeight:120,visualScale:1.12,tierNote:"9-shard near-ground bloom"},
+    3:{fragments:12,damage:15,radius:18,airburstHeight:128,shardHeavy:true,visualScale:1.22,tierNote:"12 shards + reinforced center shard"}
+  }},
+  prismsplit:{base:{airburstHeight:118,airburstMinAge:.30,splitTime:99},tiers:{
+    2:{fragments:4,damage:19,radius:17,airburstHeight:122,splitTime:99,visualScale:1.08,tierNote:"Near-ground double split · 4 prisms"},
+    3:{fragments:8,damage:13,radius:14,airburstHeight:128,splitTime:99,visualScale:1.00,tierNote:"Near-ground super split · 8 prisms"},
+    4:{fragments:2,damage:16,radius:12,airburstHeight:132,splitTime:99,splitChain:3,visualScale:1.12,tierNote:"Near-ground prism chain · 1→2→4→8"}
+  }},
+  starburst:{base:{damage:19,radius:17,fragments:5,airburstHeight:120,airburstMinAge:.30,splitTime:99,starRain:true,description:"A star core waits until it is close to the terrain, then throws five downward star-lances instead of a generic radial burst."},tiers:{
+    2:{name:"Constellation",damage:17,radius:16,fragments:7,airburstHeight:130,starRain:true,visualScale:1.14,tierNote:"7 descending star-lances"},
+    3:{name:"Supernova",damage:15,radius:15,fragments:9,airburstHeight:138,starRain:true,starCore:true,visualScale:1.28,tierNote:"9 star-lances + central nova core"}
+  }},
+  emberrain:{base:{damage:16,radius:20,fragments:6,burn:2,burnTime:3.4,airburstHeight:125,airburstMinAge:.30,splitTime:99},tiers:{
+    2:{damage:15,radius:19,fragments:8,burn:2,burnTime:3.8,airburstHeight:132,visualScale:1.12,tierNote:"8 embers · 2 damage fire ticks"},
+    3:{damage:14,radius:18,fragments:11,burn:2,burnTime:4.2,airburstHeight:140,visualScale:1.22,tierNote:"11 embers · wider fire rain"}
+  }},
+  kernelpop:{base:{damage:12,radius:15,fragments:10,bounces:1,airburstHeight:105,airburstMinAge:.30,splitTime:99},tiers:{
+    2:{name:"Kernel Burst",damage:11,radius:14,fragments:14,bounces:1,airburstHeight:112,visualScale:1.08,tierNote:"14 near-ground bouncing kernels"},
+    3:{name:"Popcorn Storm",damage:10,radius:13,fragments:18,bounces:1,airburstHeight:118,visualScale:1.15,tierNote:"18-kernel near-ground storm"},
+    4:{name:"Chain Pop",damage:8.5,radius:11,fragments:12,bounces:1,airburstHeight:122,kernelChain:true,visualScale:1.23,tierNote:"12 kernels · first landing pops each into two micro-kernels"}
+  }},
+  twinkler:{base:{damage:14,radius:14,fragments:6,airburstHeight:125,airburstMinAge:.30,splitTime:99,twinkleRain:true,description:"Near the ground the core freezes into a glitter ring; staggered twinkles then spear vertically into the terrain."},tiers:{
+    2:{name:"Sparkler",damage:13,radius:14,fragments:9,airburstHeight:132,twinkleRain:true,visualScale:1.12,tierNote:"9 staggered vertical twinkles"},
+    3:{name:"Crackler",damage:12,radius:13,fragments:13,airburstHeight:140,twinkleRain:true,twinkleCross:true,visualScale:1.23,tierNote:"13 twinkles + cross-flash finale"}
+  }},
+  fireworks:{base:{airburstHeight:145,airburstMinAge:.30,description:"Rockets stay intact until descending close to the terrain, then burst into damaging fireworks."},tiers:{
+    2:{name:"Grand Finale",rockets:5,sparksPerRocket:12,airburstHeight:155,visualScale:1.12,tierNote:"5 delayed low-altitude fireworks · 60 sparks"},
+    3:{name:"Pyrotechnics",pyrotechnics:true,damage:7,radius:19,pyroSparks:24,pyroRockets:5,pyroRocketSparks:9,airburstHeight:160,visualScale:1.24,tierNote:"Low-altitude starburst + five secondary rockets"}
+  }},
+  gravityseed:{base:{damage:58,fieldRadius:125,fieldTime:2.6},tiers:{
+    2:{damage:69,fieldRadius:170,fieldTime:3.25,visualScale:1.30,tierNote:"Heavy gravity core · larger pull field"},
+    3:{damage:82,fieldRadius:205,fieldTime:3.55,visualScale:1.40,tierNote:"Singularity seed · wider pull and stronger collapse"}
+  }},
+  rampart:{base:{damage:14,radius:64,raise:52,description:"Raises a useful but controlled mound and deals light impact damage so the shot is never purely charitable to an enemy."},tiers:{
+    2:{name:"Rampart Wall",damage:18,radius:70,raise:61,visualScale:1.18,tierNote:"Wider wall · modest terrain lift + 18 impact damage"},
+    3:{name:"Fortress Seed",damage:23,radius:78,raise:68,doubleRampart:true,visualScale:1.28,tierNote:"Twin low ramparts + stronger impact"}
+  }},
+  roller:{base:{damage:50,radius:36,rollTime:3.1,rollSpeed:118},tiers:{
+    2:{name:"Heavy Roller",damage:66,radius:43,rollTime:3.0,rollSpeed:128,visualScale:1.24,tierNote:"Heavy roller · 66 damage"},
+    3:{name:"G-Roller",damage:72,radius:28,rollTime:4.2,rollSpeed:138,growsWithRoll:true,growDamageMax:102,visualScale:.86,tierNote:"Starts above T2 at 72 and grows up to 102 while rolling"}
+  }},
+  burrow:{base:{damage:70,radius:42,tunnelTime:.78,tunnelDepth:38,description:"Drills below the impact and erupts back upward, giving reliable damage without digging an enemy a giant safety crater."},tiers:{
+    2:{name:"Mega Burrow",damage:88,radius:48,tunnelTime:.92,tunnelDepth:48,burrowShock:true,visualScale:1.28,tierNote:"Deeper mega drill + upward shock burst"},
+    3:{name:"Excavation Array",damage:22,radius:22,tunnelTime:.62,tunnelDepth:30,excavationCount:5,excavationSpread:.048,excavationLink:true,visualScale:.92,tierNote:"5 linked drill charges that erupt in sequence"}
+  }},
+  ricochet:{base:{damage:52,radius:35,bounces:2,bouncePower:.62},tiers:{
+    2:{name:"Triple Ricochet",damage:59,radius:36,bounces:3,bouncePower:.62,visualScale:1.10,tierNote:"3 controlled bounces"},
+    3:{name:"Anchor Ricochet",damage:67,radius:37,bounces:4,bouncePower:.56,wallReflect:true,maxHorizontalSpeed:175,visualScale:1.18,tierNote:"4 lower bounces + side-wall reflection so it stays in arena"}
+  }},
+  arcchain:{base:{damage:34,radius:22,chain:2,chainRange:165,arcMode:"fork",description:"A direct arc anchors on the first target and forks to nearby enemies. Each tier changes the electrical pattern."},tiers:{
+    2:{name:"Arc Relay",damage:31,radius:23,chain:4,chainRange:205,arcMode:"relay",relayPulse:15,visualScale:1.16,tierNote:"4-target relay + small pulse around every chained target"},
+    3:{name:"Tesla Web",damage:27,radius:25,chain:6,chainRange:235,arcMode:"web",webReturn:true,webReturnDamage:28,visualScale:1.28,tierNote:"6-target web that returns a final bolt to the first target"}
+  }},
+  moonfall:{base:{damage:34,radius:31,bombs:4,moonFx:1},tiers:{
+    2:{name:"Lunar Ring",damage:31,radius:30,bombs:6,moonFx:2,visualScale:1.18,tierNote:"6 satellites + double orbital ring"},
+    3:{name:"Eclipse Fall",damage:28,radius:29,bombs:9,moonFx:3,lunarCore:true,visualScale:1.32,tierNote:"9 satellites + eclipse core impact"}
+  }},
+  faultline:{base:{damage:18,radius:22,lineRadius:240,faultPops:5,faultPattern:"forward",description:"Opens a visible chain of underground eruptions rather than nine identical hidden damage checks."},tiers:{
+    2:{name:"Forked Fault",damage:19,radius:23,lineRadius:330,faultPops:7,faultPattern:"fork",faultCore:30,visualScale:1.16,tierNote:"7 forked eruptions + central rupture"},
+    3:{name:"Continental Rift",damage:18,radius:24,lineRadius:430,faultPops:9,faultPattern:"rift",faultCore:38,faultEnds:28,visualScale:1.30,tierNote:"9 alternating rifts + heavy core and endpoint shocks"}
+  }},
+  corkscrew:{base:{damage:58,radius:34,corkTunnel:110,corkSpeed:125,corkDepth:24,description:"The spiral is functional: after first terrain contact it drills sideways underground, then erupts at the end of the corkscrew tunnel."},tiers:{
+    2:{name:"Double Corkscrew",damage:68,radius:38,corkTunnel:155,corkSpeed:138,corkDepth:30,corkPulses:1,visualScale:1.16,tierNote:"Longer underground screw + mid-tunnel pulse"},
+    3:{name:"Auger Spiral",damage:78,radius:43,corkTunnel:205,corkSpeed:150,corkDepth:34,corkPulses:2,visualScale:1.28,tierNote:"Long auger tunnel + two damaging drill pulses"}
+  }},
+  sawblade:{base:{damage:14,radius:12,rollTime:4.3,rollSpeed:150,multiHit:true,sawMinSpeed:115,sawHitCooldown:.46},tiers:{
+    2:{name:"Buzz Saw",damage:17,radius:13,rollTime:4.6,rollSpeed:165,sawMinSpeed:125,sawHitCooldown:.43,visualScale:1.14,tierNote:"Faster saw with safer hit spacing"},
+    3:{name:"Ripper Wheel",damage:20,radius:14,rollTime:4.8,rollSpeed:180,sawMinSpeed:140,sawHitCooldown:.40,visualScale:1.24,tierNote:"Fast heavy saw; never stalls on a target"}
+  }},
+  echobomb:{base:{damage:38,radius:34,echoDamage:26,echoRadius:44,echoes:1,echoGap:.72},tiers:{
+    2:{name:"Double Echo",damage:40,radius:35,echoDamage:25,echoRadius:54,echoes:2,echoGap:.55,visualScale:1.14,tierNote:"Impact + two expanding echoes"},
+    3:{name:"Resonance Bomb",damage:42,radius:36,echoDamage:24,echoRadius:64,echoes:3,echoGap:.42,echoGrow:8,visualScale:1.28,tierNote:"Impact + three rapid expanding resonance waves"}
+  }},
+  mirror:{base:{damage:42,radius:28,mirrorShots:1,mirrorSpread:.18,description:"The first impact creates a mirror gate and fires a reflected shell back out instead of simply exploding."},tiers:{
+    2:{name:"Double Mirror",damage:38,radius:27,mirrorShots:2,mirrorSpread:.25,visualScale:1.15,tierNote:"First impact reflects two symmetric shells"},
+    3:{name:"Mirror Prism",damage:34,radius:25,mirrorShots:3,mirrorSpread:.32,mirrorFinal:true,visualScale:1.28,tierNote:"Three reflected shells + mirror-gate finale"}
+  }},
+  viper:{base:{damage:15,radius:18,viperSteps:8,viperStep:.18,viperTravel:34,viperSeek:1.0,description:"On impact the shell becomes a fast venom signal that slithers along terrain toward an enemy and bites in pulses; it is no longer a roller."},tiers:{
+    2:{name:"Viper Rush",damage:17,radius:19,viperSteps:10,viperStep:.16,viperTravel:39,viperSeek:1.25,visualScale:1.14,tierNote:"10 faster seeking venom bites"},
+    3:{name:"Cobra Line",damage:19,radius:20,viperSteps:12,viperStep:.145,viperTravel:43,viperSeek:1.55,viperFinisher:28,visualScale:1.26,tierNote:"12 bites + heavy finishing strike"}
+  }},
+  megaflux:{base:{name:"Mega Flux",damage:76,radius:58,description:"A dense plasma bomb. Tier I is deliberately strong but no longer a pocket nuke."},tiers:{
+    2:{name:"Mega Flux XL",damage:98,radius:70,visualScale:1.30,tierNote:"Larger plasma shock core"},
+    3:{name:"Nuclear Flux",damage:124,radius:82,nukeAftershock:24,nukeDelay:.42,visualScale:1.52,tierNote:"Nuclear-class blast + delayed outer shockwave"}
+  }},
+  scatterrise:{base:{damage:15,radius:17,fragments:8,scatterMode:"spray"},tiers:{
+    2:{name:"Scatter Columns",damage:14,radius:16,fragments:9,scatterMode:"columns",visualScale:1.12,tierNote:"Three vertical columns of rising fragments"},
+    3:{name:"Scatter Crown",damage:13,radius:15,fragments:11,scatterMode:"crown",scatterCore:30,visualScale:1.24,tierNote:"Wide crown arcs + heavy center return shell"}
+  }},
+  timeskip:{base:{damage:34,radius:30,timeEchoes:2,timeGap:.34,timeTraceBack:.38,description:"On impact the projectile rewinds through its own recent path: temporal echoes detonate backward along the trajectory."},tiers:{
+    2:{name:"Time Rewind",damage:32,radius:31,timeEchoes:3,timeGap:.28,timeTraceBack:.55,visualScale:1.15,tierNote:"3 reverse-path temporal detonations"},
+    3:{name:"Time Collapse",damage:30,radius:32,timeEchoes:4,timeGap:.22,timeTraceBack:.72,timeFinal:38,visualScale:1.28,tierNote:"4 rewind detonations + final time-collapse pulse"}
+  }},
+  orbvolley:{base:{damage:15,radius:18,count:3,spread:.055,salvos:1,salvoGap:.18,description:"Orbs are fired in visible salvos so higher tiers have a better chance to walk multiple hits across a target."},tiers:{
+    2:{name:"Five-Orb",count:5,damage:12,radius:17,spread:.042,salvos:2,salvoGap:.16,visualScale:1.03,tierNote:"5 orbs in two salvos"},
+    3:{name:"Eleven-Orb",count:11,damage:8.5,radius:15,spread:.032,salvos:3,salvoGap:.14,visualScale:.96,tierNote:"11 orbs in three tight salvos"},
+    4:{name:"TwentyFive-Orb",count:25,damage:5.8,radius:12,spread:.024,salvos:5,salvoGap:.12,visualScale:.82,tierNote:"25 orbs in five sweeping salvos"}
+  }},
+  clustergrenade:{base:{damage:30,radius:23,bounces:1,fragments:3,fragmentDamage:14,clusterSpread:.90},tiers:{
+    2:{name:"Tri Cluster",damage:28,radius:22,bounces:1,fragments:5,fragmentDamage:13,clusterSpread:1.0,visualScale:1.10,tierNote:"Single bounce → 5 mini-grenades"},
+    3:{name:"Multi Cluster",damage:27,radius:21,bounces:1,fragments:7,fragmentDamage:12,clusterSpread:1.12,visualScale:1.18,tierNote:"Single bounce → 7 mini-grenades"},
+    4:{name:"Grenade Storm",damage:12,radius:18,bounces:0,fragments:0,bombs:10,spreadX:145,grenadeStorm:true,stormHeavy:true,stormHeavyDamage:28,visualScale:1.30,tierNote:"Marker drops 9 grenades + one heavy center nade"}
+  }},
+  aquastream:{base:{damage:4.5,radius:9,count:20,burstGap:.038,streamSpread:.024},tiers:{
+    2:{name:"Aqua Creek",count:20,damage:5.4,radius:10,burstGap:.035,streamSpread:.024,visualScale:.82,tierNote:"20 stronger droplets"},
+    3:{name:"Aqua River",count:20,damage:7.0,radius:11,burstGap:.032,streamSpread:.032,visualScale:.88,tierNote:"20 heavy river droplets"},
+    4:{name:"Tsunami Matrix",count:40,damage:4.8,radius:9,burstGap:.020,streamSpread:.015,burstGroups:4,wavePowerVariance:8,visualScale:.72,tierNote:"40 droplets in four tight wave salvos"}
+  }},
+  infernojet:{base:{damage:12,radius:16,count:6,spread:.060,burn:2,burnTime:3.0},tiers:{
+    2:{name:"Blaze",count:8,damage:13,radius:16,burn:2,burnTime:3.5,spread:.057,visualScale:1.08,tierNote:"8 flames · 2-damage pools"},
+    3:{name:"Inferno",count:11,damage:12,radius:16,burn:2,burnTime:4.0,spread:.052,visualScale:1.18,tierNote:"11 dense flames · 2-damage pools"}
+  }},
+  acidrain:{base:{damage:11,radius:19,bombs:6,spreadX:85,acid:2,acidTime:3.2},tiers:{
+    2:{bombs:9,damage:11,radius:19,spreadX:105,acid:2,acidTime:3.8,tierNote:"9 drops · 2-damage acid pools"},
+    3:{bombs:12,damage:10,radius:18,spreadX:125,acid:2,acidTime:4.2,tierNote:"12 drops · wider 2-damage pools"}
+  }},
+  sniper:{base:{damage:96,radius:7,count:1,subShotSpread:0,smartSnipe:0},tiers:{
+    2:{name:"Sub Vector",count:1,damage:116,radius:6,subShotSpread:0,smartSnipe:0,visualScale:1.12,tierNote:"One heavier precision round"},
+    3:{name:"Smart Vector",count:3,damage:42,radius:5,subShotSpread:.006,smartSnipe:0,visualScale:.88,tierNote:"3 sequential precision rounds using the exact previewed speed"}
+  }},
+  quakecharge:{base:{damage:11,radius:0,globalQuake:true,repairStrength:.12,repairDamage:11,description:"A seismic reset wave lightly damages every enemy while pulling the arena terrain back toward its original shape."},tiers:{
+    2:{name:"Mega Quake",damage:18,radius:0,globalQuake:true,repairStrength:.24,repairDamage:18,visualScale:1.30,tierNote:"Stronger global damage + twice the terrain restoration"}
+  }},
+  fountain:{base:{damage:15,radius:16,fragments:4,fountainSpeed:165},tiers:{
+    2:{fragments:6,damage:15,fountainSpeed:180,visualScale:1.12,tierNote:"6 high fountain droplets"},
+    3:{name:"Geyser Core",fragments:8,damage:14,fountainSpeed:195,fountainCore:true,fountainCoreDamage:42,fountainCoreRadius:26,visualScale:1.26,tierNote:"8 droplets + a heavy center droplet that rises and falls straight back"}
+  }},
+  flower:{base:{damage:11,radius:14,fragments:6,petalSpeed:130,fragmentGrace:.16},tiers:{
+    2:{name:"Neon Bouquet",fragments:12,damage:9,radius:12,petalSpeed:145,fragmentGrace:.16,visualScale:1.22,tierNote:"12-petal bloom with spawn grace"}
+  }},
+  horizon:{base:{damage:34,radius:0,horizonRange:310,horizonSpeed:250,horizonWave:true,description:"Impact launches two visible ground-energy fronts. A tank is damaged once when a wavefront actually reaches it."},tiers:{
+    2:{name:"Neon Sweeper",damage:44,radius:0,horizonRange:520,horizonSpeed:310,horizonWave:true,horizonReturn:true,visualScale:1.26,tierNote:"Longer faster sweep + one return pass"}
+  }},
+  areastrike:{base:{damage:30,radius:27,bombs:3,spreadX:48,precisionStrike:true},tiers:{
+    2:{bombs:5,damage:28,radius:26,spreadX:62,precisionStrike:true,tierNote:"5 evenly spaced precision bombs"},
+    3:{bombs:7,damage:26,radius:25,spreadX:78,precisionStrike:true,centerBomb:true,tierNote:"7 precision bombs + heavy center"}
+  }},
+  hoverorb:{base:{damage:64,radius:38,hoverStrike:true,hoverDrops:1,hoverDelay:.75,hoverSpread:0,description:"The marker creates a suspended orb above the impact zone; it locks a nearby enemy and then drops vertically."},tiers:{
+    2:{name:"Heavy Hover Orb",damage:48,radius:34,hoverStrike:true,hoverDrops:3,hoverDelay:.85,hoverSpread:48,visualScale:1.35,tierNote:"Three suspended orbs lock and drop around the target"}
+  }},
+  boomerang:{base:{damage:58,radius:34,returnTime:.82,returnForce:1.18,returnSpeedCap:145,noSelfHit:true},tiers:{
+    2:{name:"Big Boomerang",damage:74,radius:39,returnTime:.72,returnForce:1.24,returnSpeedCap:155,noSelfHit:true,visualScale:1.32,tierNote:"Larger controlled return arc; cannot hit its shooter"}
+  }},
+  beehive:{base:{damage:10,radius:11,fragments:5,homing:1.55,fragmentGrace:.18,hiveShellHoming:false},tiers:{
+    2:{fragments:7,damage:10,homing:1.8,fragmentGrace:.18,tierNote:"7 bees; hive itself stays ballistic"},
+    3:{fragments:10,damage:9.5,homing:2.05,beeLife:3.4,fragmentGrace:.18,tierNote:"10 relentless bees; hive remains unguided"}
+  }},
+  cactus:{base:{damage:10,radius:11,fragments:8,spikeSpeed:160,airburstHeight:92,airburstMinAge:.30,cactusAirburst:true,fragmentGrace:.14,description:"The cactus opens in the air just before impact and rains spikes into the ground."},tiers:{
+    2:{name:"Cactus Strike",damage:9,radius:10,fragments:7,spikeSpeed:172,cactusStrike:true,cactusPods:3,cactusPodSpread:72,airburstHeight:96,fragmentGrace:.14,visualScale:1.22,tierNote:"Marker calls 3 cactus pods; each airbursts into spikes"}
+  }},
+  carpetbomb:{base:{damage:10.5,radius:28,bombs:15,spreadX:250,flareBounces:2,noTerrainDamage:true,angledStrike:true},tiers:{
+    2:{name:"Carpet Fire",bombs:20,damage:10.5,radius:30,spreadX:300,noTerrainDamage:true,angledStrike:true,visualScale:1.08,tierNote:"20 bombs · +50% projectile damage"},
+    3:{name:"Incendiary Bombs",bombs:20,damage:7,radius:30,spreadX:300,noTerrainDamage:true,angledStrike:true,burn:2,burnTime:2.2,visualScale:1.16,tierNote:"Original T3 damage · 2-damage fire pools"},
+    4:{name:"Rolling Barrage",bombs:24,damage:8.5,radius:27,spreadX:330,noTerrainDamage:true,angledStrike:true,carpetWaves:2,carpetHeavy:2,visualScale:1.28,tierNote:"Two crossing carpet waves + two heavy bunker busters"}
+  }},
+  gunship:{base:{damage:7,radius:8,gunshipRun:true,gunshipBullets:10,gunshipCannons:2,gunshipSpan:220,description:"A visible gunship crosses the sky and mixes a tight autocannon strafe with heavier cannon shells."},tiers:{
+    2:{name:"Heavy Gunship",damage:7.5,radius:8,gunshipRun:true,gunshipBullets:14,gunshipCannons:3,gunshipSpan:250,gunshipCannonDamage:24,visualScale:1.14,tierNote:"14 autocannon shots + 3 cannon shells"},
+    3:{name:"AC Gunship",damage:8,radius:8,gunshipRun:true,gunshipBullets:18,gunshipCannons:4,gunshipSpan:280,gunshipCannonDamage:28,gunshipMissileDamage:48,gunshipMissile:true,visualScale:1.26,tierNote:"18 autocannon shots + 4 cannons + guided final missile"}
+  }},
+  discoball:{base:{damage:12,radius:12,discoHang:true,discoShots:8,discoSpan:210,discoDelay:.45,description:"The marker hangs a mirror ball from the ceiling. It then fires glitter projectiles down across the marked ground."},tiers:{
+    2:{name:"Groovy Ball",damage:13,radius:13,discoHang:true,discoShots:13,discoSpan:280,discoDelay:.38,discoCross:true,visualScale:1.34,tierNote:"13 falling glitter shots + cross-laser finale"}
+  }},
+  ghostbomb:{base:{damage:58,radius:38,ghostSeek:true,ghostTravel:105,ghostDepth:24,description:"After entering terrain the ghost travels underground toward the nearest enemy and erupts beneath it."},tiers:{
+    2:{name:"Haunting Bomb",damage:68,radius:43,ghostSeek:true,ghostTravel:135,ghostDepth:28,visualScale:1.15,tierNote:"Faster, longer underground seek"},
+    3:{name:"Poltergeist",damage:62,radius:39,ghostSeek:true,ghostTravel:160,ghostDepth:30,ghostTwins:2,ghostPulse:true,visualScale:1.28,tierNote:"Two underground ghosts seek nearby enemies + exit pulse"}
+  }},
+  guppies:{base:{damage:9.5,radius:10,fragments:6,homing:1.05,fragmentGrace:.20,hiveShellHoming:false},tiers:{
+    2:{fragments:9,damage:9,homing:1.25,fragmentGrace:.20,tierNote:"9 guppies; parent shell stays ballistic"},
+    3:{fragments:13,damage:8.5,homing:1.45,fragmentGrace:.20,tierNote:"13 guppies with safe spawn grace"}
+  }},
+  palmburst:{base:{damage:11,radius:14,palmTree:true,palmDrops:5,palmSpan:135,palmDelay:.34,description:"Impact grows a temporary energy palm; cocoon-like fruit rises from the crown and drops back in curved lanes."},tiers:{
+    2:{name:"Royal Palm",damage:11,radius:14,palmTree:true,palmDrops:7,palmSpan:165,palmDelay:.30,visualScale:1.16,tierNote:"7 falling palm-fruit lanes"},
+    3:{name:"Palm Barrage",damage:10.5,radius:13,palmTree:true,palmDrops:10,palmSpan:200,palmDelay:.26,palmHeavy:true,visualScale:1.28,tierNote:"10 fruit drops + heavy center coconut"}
+  }},
+  rapidfire:{base:{damage:6.75,radius:8,count:10,burstGap:.030,streamSpread:.050},tiers:{
+    2:{name:"Scattergun",count:14,damage:9,radius:8,burstGap:.026,streamSpread:.060,visualScale:.72,tierNote:"14-round cone · +50% damage"},
+    3:{name:"Burst Array",count:18,damage:7.8,radius:6,burstGap:.050,burstGroups:3,streamSpread:.042,visualScale:.68,tierNote:"3 bursts of 6 · +50% damage"},
+    4:{name:"Gatling Array",count:40,damage:5.1,radius:5,burstGap:.014,streamSpread:.072,gatling:true,visualScale:.58,tierNote:"40-round gatling spray · +50% damage"}
+  }},
+  airstrike:{base:{damage:22,radius:24,bombs:3,spreadX:38,flareBounces:2,flatBlast:true},tiers:{
+    2:{name:"Helicopter Strike",bombs:8,damage:18,radius:18,spreadX:60,flatBlast:true,visualScale:1.08,tierNote:"8 tight helicopter drops · flat in-radius damage"},
+    3:{name:"AC-130",damage:7,radius:8,ac130:true,gunshipBullets:12,gunshipCannons:3,gunshipCannonDamage:25,gunshipMissileDamage:42,gunshipMissile:true,spreadX:110,visualScale:1.18,tierNote:"AC-130 pass: autocannon + cannon shells + missile"},
+    4:{name:"Artillery",bombs:3,damage:38,radius:54,spreadX:54,artilleryOrder:true,artilleryShrapnel:4,flatBlast:true,terrainScale:1.15,visualScale:1.30,tierNote:"3 staggered 38-damage shells + shrapnel bursts"}
+  }},
+  counter3000:{base:{damage:10.4,radius:7,counterVolleys:3},tiers:{
+    2:{name:"Counter 4000",damage:8.6,counterVolleys:4,visualScale:1.06,tierNote:"10 shots · doubled projectile damage"},
+    3:{name:"Counter 5000",damage:7.0,counterVolleys:5,visualScale:1.10,tierNote:"15 shots · doubled projectile damage"},
+    4:{name:"Counter 6000",damage:6.0,counterVolleys:6,visualScale:1.16,tierNote:"21 shots · doubled projectile damage"}
+  }},
+  flame:{base:{damage:1.5,radius:0,count:12,streamSpread:.035,burstGap:.035,burnTicks:3,burnTickDamage:1.5,flameStream:true,description:"Flames now fly as a tight sequential stream like Aqua Stream instead of an instant fan."},tiers:{
+    2:{name:"Blaze",count:15,damage:2.4,streamSpread:.033,burstGap:.031,burnTicks:2,burnTickDamage:2,flameStream:true,visualScale:1.08,tierNote:"15-shot flame stream · two burn ticks"},
+    3:{name:"Inferno",count:18,damage:2.4,streamSpread:.030,burstGap:.027,burnTicks:3,burnTickDamage:2,flameStream:true,visualScale:1.18,tierNote:"18-shot dense flame stream · three burn ticks"}
+  }},
+  bolt:{base:{damage:30,radius:18,bolts:1},tiers:{
+    2:{name:"Lightning",damage:28,bolts:3,boltSpread:20,visualScale:1.10,tierNote:"3 × 28 lightning strikes"},
+    3:{name:"2012",damage:24,bolts:3,boltSpread:22,comets:3,cometDamage:20,cometRadius:24,apocalypseFire:7,fireDamage:2,visualScale:1.24,tierNote:"3 × 24 bolts + 3 comets + 2-damage fire"}
+  }},
+  tadpoles:{base:{damage:5,radius:12,count:12,tadHops:2,tadHopSpeed:72,streamSpread:.034,burstGap:.036,tadStream:true,description:"Tadpoles are fired in a flowing stream. On landing they make short random hops and damage a small area at every landing."},tiers:{
+    2:{name:"Frogs",count:15,damage:6.5,radius:15,tadHops:2,tadHopSpeed:78,streamSpread:.032,burstGap:.032,tadStream:true,visualScale:1.24,tierNote:"15 larger stream-fired frogs · 2 hops"},
+    3:{name:"Bullfrog",count:12,damage:7,radius:15,tadHops:3,tadHopSpeed:82,streamSpread:.030,burstGap:.030,tadStream:true,bullfrogBig:true,bigDamage:18,bigRadius:25,visualScale:1.18,tierNote:"11 frogs + heavy bullfrog · 3 short hops"}
+  }},
+  fleet:{base:{damage:7.2,radius:15,fleetRows:[11]},tiers:{
+    2:{name:"Heavy Fleet",damage:7.5,fleetRows:[11,9],visualScale:1.08,tierNote:"20 triangles · 2.5× old damage"},
+    3:{name:"Super Fleet",damage:6.9,fleetRows:[11,9,7],visualScale:1.14,tierNote:"27 triangles · 3× old damage"},
+    4:{name:"Squadron",damage:6.9,fleetRows:[11,9,7,5],visualScale:1.20,tierNote:"32-shot formation · 3× old damage"}
+  }},
+  uzi:{base:{damage:5.2,radius:0,count:10,straightSpread:.009,straightSpeed:950,description:"A tight straight bullet burst: no gravity, no wind, only a small muzzle spread that matches the straight preview."},tiers:{
+    2:{name:"MP5",damage:5.0,count:13,straightSpread:.008,straightSpeed:980,visualScale:1.04,tierNote:"13-round tight straight burst"},
+    3:{name:"P90",damage:4.4,count:19,straightSpread:.007,straightSpeed:1010,visualScale:1.07,tierNote:"19-round high-rate straight burst with controlled spread"}
+  }},
+  bounder:{base:{damage:35,radius:28,count:1,bounderLaunch:250,bounderDropSpeed:260,description:"On first ground contact it leaps high, then locks a nearby enemy and drops vertically onto them."},tiers:{
+    2:{name:"Double Bounder",damage:24,count:2,spread:.035,bounderLaunch:270,bounderDropSpeed:280,visualScale:1.08,tierNote:"2 independent leap-and-drop bounders"},
+    3:{name:"Triple Bounder",damage:19,count:3,spread:.045,bounderLaunch:290,bounderDropSpeed:300,visualScale:1.14,tierNote:"3 high-jump aimlocked bounders"}
+  }}
+};
+for(const [id,re] of Object.entries(V7_WEAPON_REWORK)){
+  const w=WEAPONS[id];if(!w)continue;
+  Object.assign(w,re.base||{});
+  if(re.tiers)w.tierUpgrades={...(w.tierUpgrades||{}),...re.tiers};
+}
+
+// V8 Legacy Arsenal — source-guided families inspired by the public ShellShock Live weapon descriptions.
+// Visuals and code are original vector/browser implementations; the family behavior is intentionally recognizable.
+Object.assign(WEAPONS,{
+  digger:{id:"digger",name:"Digger",icon:"◉",category:"Jumping",damage:12,radius:25,color:"#ff9d3d",diggerHits:5,diggerJump:225,diggerTerrainRadius:11,
+    description:"An orange jumping core repeatedly slams the exact impact point, damaging and digging the terrain deeper with every landing.",tierNote:"5 vertical blasts · 12 damage each",
+    tierUpgrades:{2:{name:"Mega-Digger",damage:18,radius:30,diggerHits:4,diggerJump:240,diggerTerrainRadius:13,visualScale:1.34,tierNote:"Larger core · 4 vertical blasts · 18 each"},3:{name:"Excavation",damage:6,radius:20,diggerHits:4,diggerJump:185,diggerTerrainRadius:8,excavationCount:12,excavationSpread:.040,visualScale:.78,tierNote:"12 diggers · 4 ground blasts each · 6 damage"}}},
+  breaker:{id:"breaker",name:"Breaker",icon:"⋔",category:"Impact Split",damage:20,radius:30,color:"#46f06e",breakerPieces:2,breakerJump:198,
+    description:"The shell lands, cracks open and launches high-bouncing breaker pieces that explode when they return to the terrain.",tierNote:"2 breaker pieces · 20 damage each",
+    tierUpgrades:{2:{name:"Double-Breaker",damage:18,radius:25,breakerPieces:4,breakerJump:214,breakerArc:.50,visualScale:1.12,tierNote:"4 bright-green high arcs · 18 each"},3:{name:"Super-Breaker",damage:15,radius:22,breakerPieces:9,breakerJump:225,breakerArc:.58,visualScale:1.18,tierNote:"9 luminous breaker arcs · 15 each"},4:{name:"BreakerChain",damage:18,radius:20,breakerPieces:2,breakerChainDepth:3,breakerJump:205,breakerArc:.48,visualScale:1.24,tierNote:"Multistage 2 → 4 → 8 luminous breaker chain · 18 each"}}},
+  zipper:{id:"zipper",name:"Zipper",icon:"⇆",category:"Ground Sweep",damage:4,radius:0,color:"#5ed8ff",zipperCount:1,zipperRange:.05,zipperTraversals:8,zipperSpeed:340,
+    description:"On impact an energy bead locks to the terrain contour and rapidly zips left and right across the same strip eight times.",tierNote:"1 blue zipper · ±5% arena width · 8 traversals · 4 per touch",
+    tierUpgrades:{2:{name:"Double Zipper",damage:2,zipperCount:2,zipperRange:.05,zipperTraversals:8,zipperSpeed:360,visualScale:1.08,tierNote:"2 opposite zippers · 8 traversals · 2 per touch"},3:{name:"Zipper Quad",damage:2,zipperCount:4,zipperRange:.05,zipperLargeRange:.08,zipperTraversals:8,zipperSpeed:380,visualScale:1.15,tierNote:"2 blue ±5% + 2 large yellow ±8% · 2 per touch"}}},
+  ringer:{id:"ringer",name:"Ringer",icon:"◎",category:"Ring",damage:40,radius:0,color:"#72e8dc",ringRadius:55,ringThickness:10,noSelfHit:true,noTerrainDamage:true,
+    description:"Impact creates a hollow damage ring: the center is safe and damage exists only around the circumference.",tierNote:"40 damage circumference · small ring",
+    tierUpgrades:{2:{name:"Heavy Ringer",damage:50,ringRadius:98,ringThickness:12,visualScale:1.28,tierNote:"50 damage · much larger circumference"},3:{name:"Olympic Ringer",damage:15,ringRadius:72,ringThickness:9,olympicRings:5,visualScale:1.17,tierNote:"5 overlapping mid-size rings · 15 damage each"}}},
+  spiker:{id:"spiker",name:"Spiker",icon:"╽",category:"Terrain Spikes",damage:20,radius:25,color:"#cbd3da",spikeBeams:5,spikeSpacing:34,spikeDelay:.075,spikeSpeed:205,
+    description:"After a ground impact, gray guide beams march along the terrain; once placed, spikes launch perpendicular to each local slope.",tierNote:"Initial impact + 5 spikes · 20 each",
+    tierUpgrades:{2:{name:"Super Spiker",damage:20,radius:25,spikeBeams:9,spikeSpacing:29,spikeDelay:.060,spikeSpeed:215,visualScale:1.16,tierNote:"Initial impact + 9 spikes · 20 each"}}},
+  pinata:{id:"pinata",name:"Pinata",icon:"▧",category:"Flare",damage:6,radius:15,color:"#ff72d7",pinatas:1,pinataShots:16,flareBounces:2,pinataSpan:155,
+    description:"A flare calls down a hanging pinata that bursts into a colorful randomized shower of projectiles.",tierNote:"1 pinata · 16 colorful projectiles · 6 each",
+    tierUpgrades:{2:{name:"Fiesta",damage:5,radius:15,pinatas:3,pinataShots:10,flareBounces:2,pinataSpan:115,visualScale:1.18,tierNote:"3 flares must land · then 3 pinatas burst together · 10 shots each"}}},
+  miniv:{id:"miniv",name:"Mini-V",icon:"V",category:"Impact Effect",damage:15,radius:30,color:"#8bd6ff",vShots:6,vSpeed:175,vWidth:.42,
+    description:"Ground impact kicks a V-shaped fan upward: half drift left and half drift right before falling back down.",tierNote:"6 upward V shots · 15 each",
+    tierUpgrades:{2:{name:"Flying-V",damage:15,radius:30,vShots:10,vSpeed:215,vWidth:.52,visualScale:1.12,tierNote:"10 higher-reaching V shots · 15 each"}}},
+  napalm:{id:"napalm",name:"Napalm",icon:"♨",category:"Airburst Fire",damage:4,radius:15,color:"#ff693f",napalmShots:11,napalmMin:3,napalmMax:5,napalmDouble:true,airburstHeight:105,airburstMinAge:.30,noTerrainDamage:true,
+    description:"A flaming shell bursts close to the ground into an eleven-pellet shotgun fan. The first two tiers leave no persistent fire.",tierNote:"11 flame pellets · (3–5)×2 damage range",
+    tierUpgrades:{2:{name:"Heavy Napalm",damage:6,radius:17,napalmShots:11,napalmMin:5,napalmMax:7,napalmDouble:true,airburstHeight:112,visualScale:1.25,tierNote:"11 larger flame pellets · (5–7)×2"},3:{name:"FireStorm",damage:8,radius:30,fireStorm:true,fireStormMeteors:20,fireStormFireDamage:2,fireStormRockContacts:8,flareBounces:2,visualScale:1.28,tierNote:"Flare · 20 meteors + 2-damage fire + two delayed bounsplode rocks"}}},
+  sunburst:{id:"sunburst",name:"Sunburst",icon:"☀",category:"Solar",damage:8,radius:0,color:"#ffd85f",sunRays:24,sunRayMin:3,sunRayMax:8,sunRayRange:120,sunRayRangePct:.62,noTerrainDamage:true,
+    description:"Impact releases 24 rays every 15 degrees. They race outward, reverse, and return to the impact origin.",tierNote:"24 outward-and-return rays · 3–8 distance damage",
+    tierUpgrades:{2:{name:"Solar Flare",damage:8,sunRays:24,sunRayRange:130,sunRayRangePct:.66,solarSparks:24,solarSparkDamage:30,visualScale:1.22,tierNote:"24 returning rays + 24 long-range edge-bouncing sparks · 30 each"}}},
+  synclets:{id:"synclets",name:"Synclets",icon:"∴",category:"Air Pause",damage:10,radius:0,color:"#79ef8e",syncCount:12,syncSpread:.095,syncHeight:88,syncDamageMin:4,syncDamageMax:10,noTerrainDamage:true,
+    description:"A green spray freezes just above the ground. Only when every surviving Synclet is in position do all of them resume together.",tierNote:"12 synchronized projectiles · 4–10 distance damage",
+    tierUpgrades:{2:{name:"Super-Synclets",syncCount:16,syncSpread:.108,syncHeight:96,syncDamageMin:4,syncDamageMax:10,visualScale:1.12,tierNote:"16 synchronized projectiles · larger coordinated strike"}}},
+  seagull:{id:"seagull",name:"Baby Seagull",icon:"⌁",category:"Air Drop",damage:20,radius:40,color:"#f2f4ef",poopMin:6,poopMax:15,poopInterval:1,poopRadius:20,seagullWind:2,seagullWallBounce:true,
+    description:"The bird follows a ballistic flight, bounces off arena edges and drops a distance-scaled projectile every second.",tierNote:"20 bird impact · poop 6–15 each · double wind",
+    tierUpgrades:{2:{name:"Seagull",damage:24,poopMin:7,poopMax:18,poopInterval:1,visualScale:1.20,tierNote:"Larger bird · 24 impact · poop 7–18"},3:{name:"Mama Seagull",damage:28,poopMin:8,poopMax:21,poopInterval:1,visualScale:1.42,tierNote:"Huge bird · 28 impact · poop 8–21"}}},
+  shrapnel:{id:"shrapnel",name:"Shrapnel",icon:"✣",category:"Fragment Burst",damage:6,radius:12,color:"#d8dee5",shrapnelCount:30,shrapnelDamage:6,shrapnelImpact:10,shrapnelSpeed:205,
+    description:"The grenade pops for light impact damage and instantly sprays fast metal fragments in every direction.",tierNote:"10 impact + 30 fragments · 6 each",
+    tierUpgrades:{2:{name:"Shredders",shrapnelCount:40,shrapnelDamage:6,shrapnelImpact:10,shrapnelSpeed:220,visualScale:1.14,tierNote:"10 impact + 40 fragments · 6 each"}}},
+  batteringram:{id:"batteringram",name:"Battering Ram",icon:"➠",category:"Apex Drop",damage:50,radius:25,color:"#a67be8",ramMin:22,ramMax:50,ramApexGravity:4.9,ramCount:1,
+    description:"A purple ram follows the aimed arc until its apex, then gravity becomes roughly five times stronger and it dives sharply.",tierNote:"1 ram · 22–50 distance damage",
+    tierUpgrades:{2:{name:"Double Ram",ramMin:14,ramMax:35,ramCount:1,ramBounces:1,ramApexGravity:4.9,visualScale:1.12,tierNote:"14–35 damage per impact · jumps once for a second hit"},3:{name:"Ram-Squad",ramMin:6,ramMax:15,ramCount:5,ramBounces:0,ramApexGravity:4.9,visualScale:.90,tierNote:"5 rapid rams with slight power variation · 6–15 each"},4:{name:"Double Ram-Squad",ramMin:4,ramMax:10,ramCount:5,ramBounces:1,ramApexGravity:4.9,visualScale:.92,tierNote:"5 rapid Double Rams · each hits twice · 4–10 per impact"}}},
+  rampage:{id:"rampage",name:"Rampage",icon:"≋",category:"Sine Barrage",damage:15,radius:0,color:"#ff784f",rampageCount:4,rampageSpeed:315,rampageAmplitude:58,rampageWaves:2.2,noTerrainDamage:true,
+    description:"Ignores power. Angle only chooses left or right, launching wide sine-wave projectiles across the arena that do not hit allies while traveling.",tierNote:"4 sine-wave projectiles · 15 damage each",
+    tierUpgrades:{2:{name:"Riot",rampageCount:6,rampageSpeed:325,rampageAmplitude:62,rampageWaves:2.4,visualScale:1.08,tierNote:"6 sine-wave projectiles · 15 each"}}},
+  snowball:{id:"snowball",name:"Snowball",icon:"●",category:"Growing Bounce",damage:5,radius:0,color:"#eaf8ff",snowDamage:[5,15,30,45,60,75,90,105],snowBounces:7,snowBouncePower:.72,noTerrainDamage:true,
+    description:"A tiny snowball grows every time it hits the terrain. Each bounce raises both size and contact damage until the oversized ball finally bursts.",tierNote:"Damage ladder 5→15→30→45→60→75→90→105",
+    tierUpgrades:{2:{name:"Snowstorm",snowStorm:true,snowballs:3,snowDamage:[5,20,40,60,80],snowBounces:4,snowBouncePower:.73,flareBounces:2,visualScale:1.10,tierNote:"Flare summons 3 growing snowballs · 5→20→40→60→80"}}},
+  fighterjet:{id:"fighterjet",name:"Fighter Jet",icon:"✈",category:"Smart",damage:40,radius:40,color:"#9fc8dd",jetMin:16,jetMax:40,jetRockets:4,rocketDamage:10,jetApexRockets:true,
+    description:"The jet is fired like a normal projectile. At its apex it releases four heat-seeking rockets one-by-one toward the nearest enemy.",tierNote:"Jet 16–40 distance damage + 4×10 rockets",
+    tierUpgrades:{2:{name:"Heavy Jet",jetMin:20,jetMax:50,jetRockets:4,rocketDamage:14,radius:48,visualScale:1.28,tierNote:"Jet 20–50 + 4×14 rockets · larger body"}}},
+  breakermadness:{id:"breakermadness",name:"BreakerMadness",icon:"⋇",category:"Multistage Impact",damage:6,radius:20,color:"#ff9bdc",madnessDepth:5,madnessJump:175,madnessSpread:.16,
+    description:"A compact BreakerChain keeps breaking through 2→4→8→16→32 pieces. Every generation grows larger and jumps higher inside a tight area.",tierNote:"2→4→8→16→32 · 32 final breakers · 6 damage each",
+    tierUpgrades:{2:{name:"BreakerMania",damage:4,madnessDepth:6,madnessJump:182,madnessSpread:.145,visualScale:1.10,tierNote:"2→4→8→16→32→64 · 64 final breakers · 4 each"}}},
+  fury:{id:"fury",name:"Fury",icon:"♨",category:"Impact Barrage",damage:5,radius:18,color:"#ff7048",furyOrange:25,furyBlue:0,furyOrangeDamage:5,furyBlueDamage:10,furyHeight:170,
+    description:"The shell must hit terrain. A fury core rises straight up from that point and rains a dense barrage of tiny explosive fireballs back down.",tierNote:"25 orange fireballs · 5 damage each · no fire pools",
+    tierUpgrades:{2:{name:"Rage",furyOrange:20,furyBlue:5,furyOrangeDamage:5,furyBlueDamage:10,furyHeight:210,visualScale:1.22,tierNote:"20 orange ×5 + 5 larger blue ×10 from a higher second core"}}}
+});
+
+// Rework two existing families to match their classic behavior rather than the older Crater-Clash interpretations.
+Object.assign(WEAPONS.quakecharge,{name:"Earthquake",icon:"≈",category:"Global Seismic",damage:10,radius:0,globalQuake:true,repairStrength:.16,repairDamage:10,noSelfHit:true,
+  description:"Instantly damages every enemy and moderately equalizes the terrain toward the arena's original shape.",tierNote:"10 damage to every enemy + moderate terrain shift",
+  tierUpgrades:{2:{name:"Mega-Quake",damage:15,repairDamage:15,repairStrength:.24,visualScale:1.24,tierNote:"15 damage to every enemy + stronger terrain shift"}}});
+Object.assign(WEAPONS.sniper,{name:"Sniper",icon:"⌖",category:"Precision",damage:100,radius:3,color:"#f5fbff",sniperMin:40,sniperMax:100,noTerrainDamage:true,count:1,
+  description:"Tiny-radius precision shell whose damage scales with horizontal distance from the shooter.",tierNote:"40–100 horizontal distance-scaled damage",
+  tierUpgrades:{2:{name:"Sub-Sniper",sniperMin:48,sniperMax:120,damage:120,radius:3,terrainPierce:true,visualScale:1.10,tierNote:"48–120 distance damage · can travel through terrain"},3:{name:"Smart Snipe",damage:100,radius:3,smartTrackers:10,sniperMin:40,sniperMax:100,trackerAngleSpread:.075,trackerPowerSpread:16,visualScale:.88,tierNote:"10 harmless tracker shots; every tracker hit repeats that exact trajectory as a live sniper"}}});
+
 export const WEAPON_TIER_CAPS={
   // Pulse Shell remains the infinite baseline. Signature families below can reach Tier IV.
   pulse:1,core:4,orbvolley:4,hyperbounce:4,clustergrenade:4,aquastream:4,
   prismsplit:4,breakerwave:4,rapidfire:4,skymarker:4,
   airstrike:4,counter3000:4,fleet:4,stickybomb:4,spider:4,
-  snake:3,flame:3,bolt:3,tadpoles:3,fireworks:3,bounder:3,uzi:3,carpetbomb:3,recruiter:3,
-  deadweight:2,bfg1000:2,
+  breaker:4,batteringram:4,
+  snake:3,flame:3,bolt:3,tadpoles:3,fireworks:3,bounder:3,uzi:3,carpetbomb:4,recruiter:3,kernelpop:4,
+  digger:3,zipper:3,ringer:3,seagull:3,napalm:3,sniper:3,
+  deadweight:2,bfg1000:2,spiker:2,pinata:2,miniv:2,sunburst:2,synclets:2,shrapnel:2,rampage:2,snowball:2,fighterjet:2,breakermadness:2,fury:2,
   // Two-tier families, intentionally shorter and more specialized.
   cactus:2,bulger:2,flower:2,horizon:2,hoverorb:2,boomerang:2,discoball:2,
   quakecharge:2,deaddrop:2,gravityseed:2,
@@ -279,18 +578,25 @@ export const DIFFICULTIES={
   hard:{label:"Hard",aiSamples:240,aimError:.018,powerError:1.6,hp:100}
 };
 export const MODES={
-  duel:{label:"Duel",tanks:2,teams:false,description:"You versus one AI tank."},
-  ffa:{label:"4-Tank FFA",tanks:4,teams:false,description:"Free-for-all chaos with three AI opponents."},
-  teams:{label:"2v2 Teams",tanks:4,teams:true,description:"You and an AI ally versus two enemies."},
-  training:{label:"Training Range",tanks:5,teams:false,description:"Infinite arsenal, stationary dummies and no enemy turns."}
+  duel:{label:"Duel",icon:"◈",accent:"#67e8ff",tanks:2,teams:false,description:"A clean artillery duel against one AI tank.",rule:"Eliminate the opposing tank. Compact, readable and ideal for learning trajectories."},
+  ffa:{label:"Free For All",icon:"✦",accent:"#ff6f91",tanks:4,teams:false,description:"Every tank for itself in a living crater field.",rule:"Last tank standing wins. Spawn positions are randomized and weapon restocks keep the match moving."},
+  teams:{label:"2v2 Teams",icon:"⬢",accent:"#71e598",tanks:4,teams:true,description:"Two coordinated sides fight for control of the terrain.",rule:"Allies cannot damage each other. Teams spawn on opposite halves with randomized positions."},
+  assassin:{label:"Assassin",icon:"⌖",accent:"#d18cff",tanks:4,teams:false,description:"Hunt only your assigned target while another player hunts you.",rule:"You can only damage your current target. The target ring never creates mutual pairs until only two tanks remain. A lethal explosion can immediately carry into your newly assigned target."},
+  juggernaut:{label:"Juggernaut",icon:"♛",accent:"#ffb84f",tanks:4,teams:true,description:"One oversized arsenal against every other tank on the field.",rule:"The Juggernaut fights everyone. Its HP scales with the number of hunters and it begins with 1.5× the normal starting arsenal."},
+  training:{label:"Training Range",icon:"⚙",accent:"#68dfff",tanks:5,teams:false,description:"Infinite arsenal, stationary dummies and no enemy turns.",rule:"Test every weapon tier with telemetry, persistent tracers and instant dummy restoration."}
 };
 export const ARENAS=[
-  {id:"rolling",name:"Rolling Ridge",roughness:.42,hills:5,base:.67,wind:1.0,sky:["#17213a","#5c496d"]},
-  {id:"canyon",name:"Neon Canyon",roughness:.60,hills:8,base:.73,wind:1.15,sky:["#10192b","#633d57"]},
-  {id:"moon",name:"Low-G Basin",roughness:.33,hills:4,base:.70,wind:.75,gravity:.77,sky:["#07111e","#25315a"]},
-  {id:"storm",name:"Ion Storm",roughness:.52,hills:7,base:.69,wind:1.45,sky:["#0c2030","#334965"]}
+  {id:"rolling",name:"Rolling Ridge",roughness:.42,hills:5,base:.67,wind:1.0,profile:"rolling",landform:1.00,smoothPasses:4,sky:["#10172c","#294c48"],terrain:["#62da73","#27664d","#173d35"],glow:"#77f29d"},
+  {id:"canyon",name:"Neon Canyon",roughness:.60,hills:8,base:.73,wind:1.15,profile:"canyon",landform:1.08,smoothPasses:4,sky:["#19131d","#4b242f"],terrain:["#ff7d73","#a34d54","#512937"],glow:"#ff8b76"},
+  {id:"moon",name:"Low-G Basin",roughness:.33,hills:4,base:.70,wind:.75,gravity:.77,profile:"basin",landform:.94,smoothPasses:5,sky:["#081229","#1d3768"],terrain:["#65dbff","#2b81b0","#174d73"],glow:"#78e9ff"},
+  {id:"storm",name:"Ion Storm",roughness:.52,hills:7,base:.69,wind:1.45,profile:"storm",landform:1.02,smoothPasses:4,sky:["#0a1627","#25496a"],terrain:["#6ccfe2","#397a98","#234e70"],glow:"#8ee8ff"},
+  {id:"flats",name:"Crater Flats",roughness:.18,hills:3,base:.72,wind:.85,profile:"flats",landform:.78,smoothPasses:6,sky:["#262514","#615b20"],terrain:["#f0d94b","#b3962f","#665523"],glow:"#fff16c"},
+  {id:"caldera",name:"Caldera Bowl",roughness:.30,hills:4,base:.66,wind:1.05,profile:"caldera",landform:1.15,smoothPasses:5,sky:["#24101d","#5c2737"],terrain:["#ff6a79","#b63f57","#652b43"],glow:"#ff8292"},
+  {id:"twinpeaks",name:"Twin Peaks",roughness:.38,hills:4,base:.70,wind:1.10,profile:"twinpeaks",landform:1.20,smoothPasses:4,sky:["#0d1729","#294967"],terrain:["#64d3ea","#348aaa","#205a7d"],glow:"#79eaff"},
+  {id:"dunes",name:"Dune Sea",roughness:.25,hills:3,base:.70,wind:1.30,profile:"dunes",landform:1.04,smoothPasses:6,sky:["#282219","#71542d"],terrain:["#f0bf55","#b67838","#684527"],glow:"#ffd36b"},
+  {id:"shattered",name:"Shattered Ridge",roughness:.72,hills:10,base:.71,wind:1.20,profile:"shattered",landform:1.15,smoothPasses:3,sky:["#18101f","#4e325f"],terrain:["#9f78e8","#594594","#342d63"],glow:"#bd94ff"}
 ];
-export const TANK_COLORS=["#5fe3ff","#ff718d","#ffd45d","#9c7cff","#62dc8e","#ff9d59"];
+export const TANK_COLORS=["#5df58a","#ff5f67","#ffd45d","#9c7cff","#62d9e8","#ff9d59","#d37cff","#73e0a7"];
 
 export const WEAPON_TIER_INFO={
   1:{label:"I",name:"Standard",damage:1,radius:1,visualScale:1},
@@ -301,6 +607,13 @@ export const WEAPON_TIER_INFO={
 
 // Standard loot still strongly favors early tiers. Airdrops are the premium source of T3/T4 rolls.
 export const STANDARD_TIER_WEIGHTS={1:.60,2:.25,3:.11,4:.04};
+export const STANDARD_TIER_WEIGHTS_BY_QUALITY={
+  1:{1:.60,2:.25,3:.11,4:.04},
+  2:{1:.48,2:.30,3:.16,4:.06},
+  3:{1:.35,2:.32,3:.22,4:.11},
+  4:{1:.22,2:.28,3:.30,4:.20}
+};
+export const WEAPON_QUALITY_LABELS={1:"Standard",2:"Improved",3:"High",4:"Elite"};
 export const AIRDROP_TIER_WEIGHTS={1:.12,2:.30,3:.38,4:.20};
 
 export const MATCH_DEFAULTS={
@@ -312,7 +625,10 @@ export const MATCH_DEFAULTS={
   weaponCount:12,
   skillObjects:"normal",
   crates:"normal",
-  tracer:true
+  tracer:true,
+  weaponQuality:1,
+  terrainMobility:"standard",
+  juggernautRole:"player"
 };
 
 export const MATCH_SETTING_OPTIONS={
@@ -323,5 +639,8 @@ export const MATCH_SETTING_OPTIONS={
   weaponCount:[8,12,16,20],
   wind:["off","low","normal","extreme"],
   skillObjects:["off","low","normal","high"],
-  crates:["off","low","normal","high"]
+  crates:["off","low","normal","high"],
+  weaponQuality:[1,2,3,4],
+  terrainMobility:["standard","improved","climber","allterrain"],
+  juggernautRole:["player","bot"]
 };

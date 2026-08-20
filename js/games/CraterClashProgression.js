@@ -1,5 +1,5 @@
 import {
-  WEAPONS, WEAPON_TIER_INFO, WEAPON_TIER_CAPS, STANDARD_TIER_WEIGHTS, AIRDROP_TIER_WEIGHTS
+  WEAPONS, WEAPON_TIER_INFO, WEAPON_TIER_CAPS, STANDARD_TIER_WEIGHTS, STANDARD_TIER_WEIGHTS_BY_QUALITY, AIRDROP_TIER_WEIGHTS
 } from "./CraterClashData.js";
 
 export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -10,15 +10,18 @@ export const ROGUE_WEAPON_POOLS={
   1:[
     "core","tristar","orbvolley","shardbloom","ricochet","hyperbounce","roller","backroller","burrow",
     "prismsplit","groundwave","hunter","rampart","sinker","emberrain","clustergrenade","aquastream","infernojet",
-    "breakerwave","twinkler","jumper","flower","rapidfire","cactus","airstrike","snake","flame","tadpoles","fireworks","counter3000"
+    "breakerwave","twinkler","jumper","flower","rapidfire","cactus","airstrike","snake","flame","tadpoles","fireworks","counter3000",
+    "digger","breaker","zipper","miniv"
   ],
   2:[
     "skymarker","meteorchoir","raillance","gravityseed","starburst","arcchain","moonfall","echobomb","mirror","viper",
     "scatterrise","timeskip","droneswarm","sniper","quakecharge","bulger","fountain","horizon","acidrain","areastrike",
-    "hoverorb","boomerang","beehive","bumperbombs","clover","discoball","ghostbomb","guppies","palmburst","deadweight","bolt","bounder","uzi","stickybomb","fleet"
+    "hoverorb","boomerang","beehive","bumperbombs","clover","discoball","ghostbomb","guppies","palmburst","deadweight","bolt","bounder","uzi","stickybomb","fleet",
+    "ringer","spiker","pinata","napalm","sunburst","synclets","seagull","shrapnel"
   ],
   3:[
-    "kernelpop","deaddrop","faultline","pinpoint","megaflux","voidwell","carpetbomb","gunship","asteroidbelt","spider","bfg1000","recruiter"
+    "kernelpop","deaddrop","faultline","pinpoint","megaflux","voidwell","carpetbomb","gunship","asteroidbelt","spider","bfg1000","recruiter",
+    "batteringram","rampage","snowball","fighterjet","breakermadness","fury"
   ]
 };
 
@@ -85,8 +88,13 @@ function normalizeWeights(weights,maxTier,luck=0,weaponId=null){
   return {1:w[1]/total,2:w[2]/total,3:w[3]/total,4:w[4]/total};
 }
 
-export function rollWeaponTier({airdrop=false,maxTier=4,luck=0,botBonus=0,weaponId=null}={}){
-  const weights=normalizeWeights(airdrop?AIRDROP_TIER_WEIGHTS:STANDARD_TIER_WEIGHTS,maxTier,luck+botBonus,weaponId);
+export function rollWeaponTier({airdrop=false,maxTier=4,luck=0,botBonus=0,weaponId=null,quality=1}={}){
+  const q=clamp(Math.round(Number(quality)||1),1,4);
+  const base=airdrop?AIRDROP_TIER_WEIGHTS:(STANDARD_TIER_WEIGHTS_BY_QUALITY[q]||STANDARD_TIER_WEIGHTS);
+  // Higher lobby-quality settings also nudge premium airdrops upward, but much less strongly
+  // than they change normal starting/restock rolls.
+  const qualityLuck=airdrop?(q-1)*.055:0;
+  const weights=normalizeWeights(base,maxTier,luck+botBonus+qualityLuck,weaponId);
   let r=Math.random();
   for(const tier of [1,2,3,4]){r-=weights[tier];if(r<=0)return tier;}
   return Math.min(maxTier||4,weaponId?getWeaponTierCap(weaponId):4);
@@ -96,7 +104,7 @@ export function createRogueRun(){
   return {
     stage:1,wins:0,currency:0,totalCurrencyEarned:0,
     stats:{
-      maxHp:105,maxFuel:90,grip:.66,fuelEfficiency:1,
+      maxHp:105,maxFuel:90,grip:.76,fuelEfficiency:1,
       critChance:.03,critMultiplier:1.5,luck:0,startArmor:0,
       weaponCount:8,weaponPoolLevel:1,maxTier:1,damageBonus:1,
       overchargeRate:1,airdropWeapons:1,salvageBonus:0,crateArmorBonus:0
@@ -147,9 +155,9 @@ export const ROGUE_SKILL_TREES=[
     description:"Fuel, efficiency and slope-climbing upgrades.",
     nodes:[
       {id:"mob_fuel",name:"Extended Fuel Cells",baseCost:95,max:5,description:"+14 fuel per turn."},
-      {id:"mob_grip",name:"Climbing Tracks",baseCost:145,max:5,requires:{id:"mob_fuel",rank:1},description:"+0.045 hill grip."},
+      {id:"mob_grip",name:"Climbing Tracks",baseCost:145,max:5,requires:{id:"mob_fuel",rank:1},description:"+0.065 slope grip per rank. Later ranks can cross genuinely steep crater walls."},
       {id:"mob_eff",name:"Efficient Engine",baseCost:210,max:4,requires:{id:"mob_fuel",rank:2},description:"Movement uses 7% less fuel."},
-      {id:"mob_mastery",name:"Endless Track Mastery",baseCost:360,max:Infinity,requires:{id:"mob_grip",rank:4},repeatable:true,description:"Repeatable: +6 fuel, +0.008 grip and 1% efficiency."}
+      {id:"mob_mastery",name:"Endless Track Mastery",baseCost:360,max:Infinity,requires:{id:"mob_grip",rank:4},repeatable:true,description:"Repeatable: +6 fuel, +0.012 slope grip and 1% efficiency."}
     ]
   },
   {
@@ -211,9 +219,9 @@ function applyPurchaseEffect(run,id,newRank){
     case "hull_bulkhead":s.maxHp=Math.round(s.maxHp*1.08);break;
     case "hull_mastery":s.maxHp+=8;s.startArmor+=2;break;
     case "mob_fuel":s.maxFuel+=14;break;
-    case "mob_grip":s.grip=Math.min(1.12,s.grip+.045);break;
+    case "mob_grip":s.grip=Math.min(1.24,s.grip+.065);break;
     case "mob_eff":s.fuelEfficiency=Math.max(.55,s.fuelEfficiency*.93);break;
-    case "mob_mastery":s.maxFuel+=6;s.grip=Math.min(1.15,s.grip+.008);s.fuelEfficiency=Math.max(.50,s.fuelEfficiency*.99);break;
+    case "mob_mastery":s.maxFuel+=6;s.grip=Math.min(1.30,s.grip+.012);s.fuelEfficiency=Math.max(.50,s.fuelEfficiency*.99);break;
     case "gun_crit":s.critChance=Math.min(.45,s.critChance+.025);break;
     case "gun_critdmg":s.critMultiplier=Math.min(2.25,s.critMultiplier+.10);break;
     case "gun_damage":s.damageBonus*=1.04;break;

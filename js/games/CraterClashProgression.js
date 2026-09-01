@@ -11,17 +11,17 @@ export const ROGUE_WEAPON_POOLS={
     "core","tristar","orbvolley","shardbloom","ricochet","hyperbounce","roller","backroller","burrow",
     "prismsplit","groundwave","hunter","rampart","sinker","emberrain","clustergrenade","aquastream","infernojet",
     "breakerwave","twinkler","jumper","flower","rapidfire","cactus","airstrike","snake","flame","tadpoles","fireworks","counter3000",
-    "digger","breaker","zipper","miniv"
+    "digger","breaker","zipper","miniv","waterballoon","dualroller","pendulum","domino","repulsor","sandcastle","yoyo","billiards","chessknight","cyclone","proximitymine","cryogel","tetris"
   ],
   2:[
     "skymarker","meteorchoir","raillance","gravityseed","starburst","arcchain","moonfall","echobomb","mirror","viper",
     "scatterrise","timeskip","droneswarm","sniper","quakecharge","bulger","fountain","horizon","acidrain","areastrike",
     "hoverorb","boomerang","beehive","bumperbombs","clover","discoball","ghostbomb","guppies","palmburst","deadweight","bolt","bounder","uzi","stickybomb","fleet",
-    "ringer","spiker","pinata","napalm","sunburst","synclets","seagull","shrapnel"
+    "ringer","spiker","pinata","napalm","sunburst","synclets","seagull","shrapnel","quicksand","teslagate","satellite","wormhole","prismcage","skyhook","compressor","pinball","lighthouse","meteorsling","razorhalo","crystalbloom","guillotine","dicecore","launchpad","magnetron","emp","leech"
   ],
   3:[
     "kernelpop","deaddrop","faultline","pinpoint","megaflux","voidwell","carpetbomb","gunship","asteroidbelt","spider","bfg1000","recruiter",
-    "batteringram","rampage","snowball","fighterjet","breakermadness","fury"
+    "batteringram","rampage","snowball","fighterjet","breakermadness","fury","imploder","molecule","swapbomb","phantomcopy","sentryseed","rocketcarousel","kaleidoscope","eclipse"
   ]
 };
 
@@ -102,7 +102,7 @@ export function rollWeaponTier({airdrop=false,maxTier=4,luck=0,botBonus=0,weapon
 
 export function createRogueRun(){
   return {
-    stage:1,wins:0,currency:0,totalCurrencyEarned:0,
+    stage:1,wins:0,currency:0,totalCurrencyEarned:0,lastArenaIndex:-1,
     stats:{
       maxHp:105,maxFuel:90,grip:.76,fuelEfficiency:1,
       critChance:.03,critMultiplier:1.5,luck:0,startArmor:0,

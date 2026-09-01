@@ -1,5 +1,5 @@
 import {WEAPONS,WEAPON_IDS,DIFFICULTIES,MODES,ARENAS,MATCH_DEFAULTS,STANDARD_TIER_WEIGHTS_BY_QUALITY,WEAPON_QUALITY_LABELS} from "./CraterClashData.js";
-import {createState,updateState,currentTank,fire,selectWeapon,clamp,performBotShot,moveTank,resetTrainingRange,getTrainingTelemetry,resetTrainingTelemetry,getAssassinTarget,getAssassinHunter} from "./CraterClashEngine.js";
+import {createState,updateState,currentTank,fire,selectWeapon,clamp,performBotShot,moveTank,resetTrainingRange,drainTelemetryEvents,getAssassinTarget,getAssassinHunter} from "./CraterClashEngine.js";
 import {getWeaponTierStats,getWeaponTierCap,createRogueRun,getRogueEnemyScale,rogueStageLabel,rewardRogueVictory,getRogueShopCatalog,buyRogueUpgrade} from "./CraterClashProgression.js";
 import {render} from "./CraterClashRender.js";
 
@@ -7,7 +7,7 @@ export default {
   manifest:{
     id:"crater-clash",
     name:"Crater Clash",
-    description:"Neon turn-based artillery with 98 weapon families, six battle types, persistent shot tracers, rebound walls, richer procedural terrain, telemetry and an animated arsenal encyclopedia.",
+    description:"Neon turn-based artillery with 137 weapon families, six battle types, persistent shot tracers, rebound walls, richer procedural terrain, telemetry and an animated arsenal encyclopedia.",
     icon:"💥",
     tags:["Artillery","Strategy","Turn Based","Physics","Roguelite"]
   },
@@ -16,8 +16,12 @@ export default {
     let destroyed=false,raf=0,last=performance.now(),state=null,W=1,H=1,dpr=1,running=false,botThinkDelay=.7,lastTurnId=null,lastInventorySig="";
     let menuMode="standard",mode="ffa",difficulty="normal",arenaIndex=0,trainingArena=0,rogueRun=null;
     let encyWeapon="pulse",encyTier=1,encyPreviewState=null,encyPreviewTimer=0,encyFilter="",encyRaf=0,encyLast=0;
+    let weaponSearch="",weaponCategory="",balanceSearch="",balanceSort="samples";
     const settings={...MATCH_DEFAULTS};
+    const TOTAL_VARIANTS=WEAPON_IDS.reduce((n,id)=>n+getWeaponTierCap(id),0);
     const moveKeys={left:false,right:false};
+    const TELEMETRY_KEY="crater-clash-balance-v2";
+    let balanceStore=loadBalanceStore(),balanceSaveTimer=0;
 
     const style=document.createElement("style");
     style.textContent=`
@@ -61,7 +65,7 @@ export default {
       @media(max-width:600px){.cc-opts,.cc-trees{grid-template-columns:1fr}.cc-setting-grid{grid-template-columns:1fr 1fr}.cc-bottom{grid-template-columns:132px minmax(0,1fr)}.cc-weapon{flex-basis:76px}.cc-menu{padding:14px}}
 
       /* V10 neon command-deck main menu */
-      .cc.menu{background:
+      .cc-overlay.menu{background:
         radial-gradient(circle at 15% 14%,rgba(47,221,255,.13),transparent 26%),
         radial-gradient(circle at 82% 22%,rgba(184,84,255,.13),transparent 29%),
         radial-gradient(circle at 55% 86%,rgba(255,77,122,.09),transparent 33%),
@@ -90,13 +94,33 @@ export default {
       .cc-main-menu .cc-start{height:48px;letter-spacing:.05em;background:linear-gradient(100deg,#58e5ff,#7f87ff 54%,#da68f3);box-shadow:0 12px 35px #36bfff20}.cc-main-menu .cc-start:hover{filter:brightness(1.08)}
       @media(max-width:1050px){.cc-mode-grid{grid-template-columns:repeat(3,1fr)}.cc-settings-wrap{grid-template-columns:1fr}.cc-side-settings{grid-template-columns:1fr 1fr}.cc-hero{grid-template-columns:1fr 240px}.cc-radar{width:150px;height:150px}}
       @media(max-width:760px){.cc-hero{grid-template-columns:1fr;padding:20px}.cc-hero-visual{display:none}.cc-main-content{padding:0 14px 18px}.cc-main-menu .cc-tabs{margin:0 -14px 14px;padding:0 14px}.cc-mode-grid{grid-template-columns:1fr 1fr}.cc-arena-grid{grid-template-columns:1fr 1fr!important}.cc-mode-rulebox{grid-template-columns:1fr}.cc-settings-wrap .cc-setting-grid{grid-template-columns:1fr 1fr}.cc-side-settings{grid-template-columns:1fr}}
+
+      /* V11 clarity / responsive desktop UI */
+      .cc-controls.hide{display:none}.cc-controls{pointer-events:none;top:88px;font-size:.62rem;line-height:1.65;padding:10px 12px;border-color:#68dcff22;background:#06111bea}.cc-controls b{color:#dff8ff;font-size:.58rem;letter-spacing:.10em}
+      .cc-utility{top:88px}.cc-util{font-size:.58rem;padding:8px 10px;background:#07141fe8}.cc-util.leave-match{border-color:#ff7c8a2e;color:#f0a8ae}.cc-util.leave-match:hover{border-color:#ff7585;color:#fff}
+      .cc-bottom{width:min(1240px,calc(100% - 28px));grid-template-columns:230px minmax(0,1fr);gap:9px}.cc-armament{padding:8px;min-width:0}.cc-info{min-height:42px;padding:2px 5px 7px}.cc-info h3{font-size:.78rem}.cc-info p{font-size:.55rem;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cc-info .cc-charge{display:none}
+      .cc-quickbar{display:grid;grid-template-columns:minmax(0,1fr) 126px;gap:6px;align-items:stretch}.cc-weapons{min-height:65px;padding:0;overflow:hidden;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}.cc-weapon{min-width:0;min-height:65px;flex:none;padding:6px}.cc-wname{font-size:.57rem}.cc-wcat{font-size:.46rem}.cc-open-arsenal{border:1px solid #68ddff32;border-radius:9px;background:linear-gradient(145deg,#0c2635,#151b34);color:#d9f8ff;cursor:pointer;font:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}.cc-open-arsenal:hover{border-color:#69e5ff;box-shadow:0 0 20px #46d7ff18}.cc-open-arsenal b{font-size:.59rem}.cc-open-arsenal .weapon-count{font-size:1rem;font-weight:1000;color:#7ce7ff}.cc-open-arsenal small{font-size:.43rem;color:#738b99;font-weight:950}
+      .cc.cc-compact .cc-bottom{grid-template-columns:185px minmax(0,1fr)}.cc.cc-compact .cc-armament{padding:5px}.cc.cc-compact .cc-info{display:block;min-height:32px;padding:1px 3px 4px}.cc.cc-compact .cc-info p{display:none}.cc.cc-compact .cc-weapons{grid-template-columns:repeat(5,minmax(0,1fr));min-height:55px}.cc.cc-compact .cc-weapon{min-height:55px;min-width:0}.cc.cc-compact .cc-quickbar{grid-template-columns:minmax(0,1fr) 106px}.cc.cc-short .cc-info{display:none}.cc.cc-short .cc-weapons{grid-template-columns:repeat(5,minmax(0,1fr));min-height:48px}.cc.cc-short .cc-weapon{min-height:48px}.cc.cc-short .cc-open-arsenal b{font-size:.49rem}.cc.cc-short .cc-open-arsenal .weapon-count{font-size:.78rem}
+
+      .cc-arsenal-menu{width:min(1180px,100%)}.cc-arsenal-head{display:grid;grid-template-columns:minmax(260px,1fr) 220px auto;gap:8px;align-items:center;margin:14px 0 12px}.cc-arsenal-head input,.cc-arsenal-head select,.cc-tel-toolbar input,.cc-tel-toolbar select{width:100%;padding:10px 11px;border:1px solid #ffffff16;border-radius:8px;background:#091722;color:#eef6fb;font:inherit;font-size:.66rem}.arsenal-summary{color:#77909d;font-size:.56rem;font-weight:900;text-align:right}.cc-arsenal-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;max-height:min(62vh,620px);overflow:auto;padding-right:3px}.cc-arsenal-card{position:relative;min-height:112px;padding:12px;border:1px solid #ffffff12;border-radius:11px;background:linear-gradient(145deg,#102131,#0a1520);color:#dbe8ed;text-align:left;cursor:pointer}.cc-arsenal-card:hover:not(:disabled){transform:translateY(-1px);border-color:#6de2ff77;background:#122b3d}.cc-arsenal-card.on{border-color:#70e7ff;box-shadow:inset 0 0 0 1px #70e7ff44,0 0 22px #4cdcff18}.cc-arsenal-card:disabled{opacity:.34;cursor:not-allowed}.cc-arsenal-card .ico{font-size:1.25rem}.cc-arsenal-card b{display:block;margin-top:8px;font-size:.72rem}.cc-arsenal-card p{margin:4px 0 0;color:#718895;font-size:.53rem;line-height:1.35}.cc-arsenal-card .meta{position:absolute;right:9px;top:9px;text-align:right;color:#ffd86d;font-size:.55rem;font-weight:1000}.cc-arsenal-card .meta small{display:block;color:#8be9ff;font-size:.47rem;margin-top:2px}
+
+      .cc-main-menu{width:min(1420px,100%)}.cc-hero{grid-template-columns:minmax(0,1.45fr) minmax(260px,.55fr);padding:30px 36px 24px}.cc-hero .cc-desc{font-size:.86rem;line-height:1.62;max-width:820px}.cc-live{font-size:.60rem}.cc-hero-stat{padding:8px 12px}.cc-hero-stat b{font-size:.86rem}.cc-hero-stat span{font-size:.53rem}.cc-hero-actions button{font-size:.64rem;padding:10px 14px}.cc-main-content{padding:0 32px 30px}.cc-main-menu .cc-tabs{margin:0 -32px 22px;padding:0 32px}.cc-main-menu .cc-tab{font-size:.78rem;padding:15px 10px}.cc-sec{font-size:.66rem;margin:18px 0 8px;letter-spacing:.06em}.cc-mode-grid{gap:10px}.cc-mode-grid .cc-opt{min-height:150px;padding:15px}.cc-mode-grid .cc-opt b{font-size:.78rem}.cc-mode-grid .cc-opt span{font-size:.59rem;line-height:1.48}.cc-mode-icon{width:39px;height:39px;font-size:1.18rem}.cc-mode-rulebox{padding:13px 15px;grid-template-columns:180px 1fr}.cc-mode-rulebox small{font-size:.52rem}.cc-mode-rulebox b{font-size:.74rem}.cc-mode-rulebox p{font-size:.62rem}.cc-arena-grid .cc-opt{min-height:84px;padding-left:53px}.cc-arena-grid .cc-opt b{font-size:.72rem}.cc-arena-grid .cc-opt span{font-size:.56rem}.cc-setting{padding:10px 11px}.cc-setting label{font-size:.56rem}.cc-setting select{font-size:.68rem;padding:8px}.cc-side-card{padding:12px}.cc-side-card b{font-size:.66rem}.cc-side-card p{font-size:.56rem}.cc-note{font-size:.61rem;padding:11px 13px}.cc-quick-config{display:grid;grid-template-columns:1fr 210px;gap:12px;align-items:center;margin-top:12px;padding:11px 13px;border:1px solid #ffffff0f;border-radius:10px;background:#091722b8}.cc-quick-config>b,.cc-quick-config div>b{display:block;font-size:.68rem;color:#d9edf4}.cc-quick-config div>span{display:block;margin-top:3px;color:#728995;font-size:.55rem}.cc-quick-config .cc-setting{padding:7px 9px}
+      .cc-advanced{margin-top:18px;border:1px solid #ffffff11;border-radius:12px;background:#07131da8;overflow:hidden}.cc-advanced summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;cursor:pointer;background:linear-gradient(90deg,#0b1e2b,#11172a)}.cc-advanced summary::-webkit-details-marker{display:none}.cc-advanced summary b{display:block;font-size:.68rem;color:#d9edf4;letter-spacing:.04em}.cc-advanced summary span:not(.cc-chevron){display:block;color:#718896;font-size:.54rem;margin-top:3px}.cc-chevron{font-size:1.2rem;color:#75e7ff;transition:.18s transform}.cc-advanced[open] .cc-chevron{transform:rotate(180deg)}.cc-advanced-body{padding:5px 13px 13px}.cc-advanced .cc-settings-wrap{margin-top:8px}
+
+      .cc-ency-menu{width:min(1420px,100%)}.cc-ency-layout{grid-template-columns:280px minmax(0,1fr);gap:12px;min-height:620px}.cc-ency-list{max-height:690px}.cc-ency-entry{padding:10px}.cc-ency-entry b{font-size:.66rem}.cc-ency-entry span{font-size:.52rem}.cc-ency-detail{padding:15px}.cc canvas.cc-ency-preview{width:100%;height:min(46vh,430px);min-height:350px;margin:12px 0}.cc-ency-head input,.cc-ency-head select{font-size:.66rem;padding:10px}.cc-tierpick button{font-size:.60rem}.cc-spec span{font-size:.50rem}.cc-spec b{font-size:.67rem}.cc-tiercard{font-size:.54rem}.cc-tiercard b{font-size:.62rem}
+
+      .cc-tel-menu{width:min(1280px,100%)}.cc-tel-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) 210px auto auto;gap:7px;align-items:center;margin:14px 0 10px}.cc-tel-toolbar button{padding:10px 12px;border:1px solid #ffffff14;border-radius:8px;background:#102532;color:#fff;font:inherit;font-size:.58rem;font-weight:950;cursor:pointer}.cc-tel-toolbar .danger{border-color:#ff718735;color:#ffb6c0;background:#2a1119}.cc-tel-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:9px 0 12px}.cc-tel-summary>div{padding:10px;border-radius:9px;background:#0a1824;border:1px solid #ffffff0e}.cc-tel-summary span{display:block;color:#718895;font-size:.50rem;text-transform:uppercase}.cc-tel-summary b{display:block;margin-top:3px;font-size:.86rem;color:#e7f7fb}.cc-tel-content{overflow:auto;max-height:min(58vh,610px)}.cc-tel-table{font-size:.58rem;white-space:nowrap}.cc-tel-table th,.cc-tel-table td{padding:8px}.cc-tel-table th{position:sticky;top:0;background:#091722;z-index:1}
+
+      .cc.cc-compact .cc-main-menu{width:min(1180px,100%)}.cc.cc-compact .cc-hero{grid-template-columns:1fr 210px;padding:20px 24px 18px;gap:16px}.cc.cc-compact .cc-hero-visual{height:145px}.cc.cc-compact .cc-radar{width:132px;height:132px}.cc.cc-compact .cc-hero .cc-title{font-size:3.7rem}.cc.cc-compact .cc-hero .cc-desc{font-size:.72rem}.cc.cc-compact .cc-main-content{padding:0 20px 20px}.cc.cc-compact .cc-main-menu .cc-tabs{margin:0 -20px 14px;padding:0 20px}.cc.cc-compact .cc-mode-grid{grid-template-columns:repeat(3,1fr)}.cc.cc-compact .cc-mode-grid .cc-opt{min-height:118px;padding:10px}.cc.cc-compact .cc-mode-grid .cc-opt b{font-size:.67rem}.cc.cc-compact .cc-mode-grid .cc-opt span{font-size:.50rem}.cc.cc-compact .cc-arena-grid{grid-template-columns:repeat(3,1fr)!important}.cc.cc-compact .cc-arena-grid .cc-opt{min-height:68px}.cc.cc-compact .cc-sec{margin:11px 0 5px}.cc.cc-compact .cc-advanced{margin-top:11px}.cc.cc-compact .cc-advanced summary{padding:9px 12px}.cc.cc-compact canvas.cc-ency-preview{min-height:300px;height:min(42vh,350px)}.cc.cc-compact .cc-ency-layout{min-height:500px;grid-template-columns:235px minmax(0,1fr)}.cc.cc-compact .cc-arsenal-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.cc.cc-compact .cc-tel-summary{grid-template-columns:repeat(4,1fr)}
+      .cc.cc-short .cc-hero{padding:13px 18px 10px}.cc.cc-short .cc-hero-visual{display:none}.cc.cc-short .cc-hero{grid-template-columns:1fr}.cc.cc-short .cc-hero .cc-title{font-size:2.8rem;margin:3px 0}.cc.cc-short .cc-hero .cc-desc{display:none}.cc.cc-short .cc-hero-stats{margin-top:7px}.cc.cc-short .cc-hero-stat{padding:4px 8px}.cc.cc-short .cc-hero-actions{margin-top:7px}.cc.cc-short .cc-main-menu .cc-tabs{margin-bottom:8px}.cc.cc-short .cc-mode-grid .cc-opt{min-height:86px}.cc.cc-short .cc-mode-icon{width:27px;height:27px;margin-bottom:4px}.cc.cc-short .cc-mode-grid .cc-opt span:not(.cc-mode-tag){display:none}.cc.cc-short .cc-mode-rulebox{padding:7px 10px}.cc.cc-short .cc-arena-grid .cc-opt{min-height:55px}.cc.cc-short canvas.cc-ency-preview{min-height:260px;height:280px}.cc.cc-short .cc-arsenal-card{min-height:86px}.cc.cc-short .cc-tel-summary{display:none}
+      @media(max-width:1180px){.cc-arsenal-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.cc-tel-toolbar{grid-template-columns:1fr 180px auto}.cc-tel-toolbar .danger{grid-column:1/-1}.cc-ency-layout{grid-template-columns:240px minmax(0,1fr)}}
     `;
 
     const root=document.createElement("div");root.className="cc";
     root.innerHTML=`
       <canvas></canvas>
-      <div class="cc-controls">A / D = Drive · ← / → = Angle · ↑ / ↓ = Power<br>Q / E = Weapon · SPACE = Fire · Mouse = Aim + Fire · Training: R = Reset</div>
-      <div class="cc-utility"><button class="cc-util codex">ARSENAL CODEX</button><button class="cc-util telemetry">BALANCE DATA</button></div>
+      <div class="cc-controls hide"><b>CONTROLS</b><br>A / D · drive &nbsp; ← / → · angle &nbsp; ↑ / ↓ · power<br>Q / E · cycle weapon &nbsp; TAB · arsenal &nbsp; SPACE · fire &nbsp; Mouse · aim + fire<span class="training-help"><br>Training: R · rebuild range</span></div>
+      <div class="cc-utility"><button class="cc-util leave-match">MENU</button><button class="cc-util help-toggle">CONTROLS</button><button class="cc-util codex">CODEX</button><button class="cc-util telemetry">BALANCE LAB</button></div>
       <div class="cc-bottom">
         <div class="cc-panel cc-aim">
           <div class="cc-aim-row"><label>Angle</label><input class="angle" type="range" min="5" max="175" step="1"><b class="angle-v">45°</b></div>
@@ -104,8 +128,10 @@ export default {
           <div class="cc-fuel"><div></div></div><div class="cc-fueltext">FUEL 100 / 100</div>
           <button class="cc-fire">FIRE</button>
         </div>
-        <div class="cc-panel cc-weapons"></div>
-        <div class="cc-panel cc-info"></div>
+        <div class="cc-panel cc-armament">
+          <div class="cc-info"></div>
+          <div class="cc-quickbar"><div class="cc-weapons"></div><button class="cc-open-arsenal"><b>ALL WEAPONS</b><span class="weapon-count">0</span><small>TAB</small></button></div>
+        </div>
       </div>
       <div class="cc-overlay menu"><div class="cc-menu cc-main-menu">
         <section class="cc-hero">
@@ -114,12 +140,12 @@ export default {
             <div class="cc-title">CRATER<br>CLASH</div>
             <div class="cc-desc">A neon artillery sandbox built around destructive terrain, readable trajectories and a giant evolving arsenal. Pick a ruleset, tune the battlefield, then turn geometry into damage.</div>
             <div class="cc-hero-stats">
-              <div class="cc-hero-stat"><b>98</b><span>Weapon families</span></div>
-              <div class="cc-hero-stat"><b>287</b><span>Tier variants</span></div>
+              <div class="cc-hero-stat"><b>${WEAPON_IDS.length}</b><span>Weapon families</span></div>
+              <div class="cc-hero-stat"><b>${TOTAL_VARIANTS}</b><span>Tier variants</span></div>
               <div class="cc-hero-stat"><b>${ARENAS.length}</b><span>Procedural arenas</span></div>
               <div class="cc-hero-stat"><b>5</b><span>Standard modes</span></div>
             </div>
-            <div class="cc-hero-actions"><button class="menu-codex">OPEN ARSENAL CODEX</button></div>
+            <div class="cc-hero-actions"><button class="menu-codex">ARSENAL CODEX</button><button class="menu-balance">BALANCE LAB</button></div>
           </div>
           <div class="cc-hero-visual"><div class="cc-radar"><div class="cc-radar-sweep"></div><div class="cc-radar-tank one"></div><div class="cc-radar-tank two"></div></div></div>
         </section>
@@ -135,11 +161,13 @@ export default {
 
             <div class="cc-sec">Opposition</div>
             <div class="cc-opts diffopts">${Object.entries(DIFFICULTIES).map(([k,d])=>`<button class="cc-opt ${k==="normal"?"sel":""}" data-d="${k}"><b>${d.label}</b><span>${k==="easy"?"Forgiving aim and wider errors.":k==="hard"?"Tight ballistic search and stronger positioning.":"Balanced artillery opponents."}</span></button>`).join("")}</div>
+            <div class="cc-quick-config"><div><b>Match Size</b><span>Duel is always 2 tanks; Teams automatically uses even team sizes.</span></div><div class="cc-setting"><label>Tanks</label><select data-set="playerCount"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div></div>
 
-            <div class="cc-sec">Match Configuration</div>
+            <details class="cc-advanced">
+              <summary><div><b>ADVANCED MATCH SETTINGS</b><span>HP, turn time, fuel, loot, wind and traversal</span></div><span class="cc-chevron">⌄</span></summary>
+              <div class="cc-advanced-body">
             <div class="cc-settings-wrap">
               <div class="cc-setting-grid">
-                <div class="cc-setting"><label>Tanks</label><select data-set="playerCount"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></div>
                 <div class="cc-setting"><label>HP</label><select data-set="hp"><option selected>100</option><option>150</option><option>200</option><option>300</option></select></div>
                 <div class="cc-setting"><label>Turn Time</label><select data-set="turnTime"><option>15</option><option selected>30</option><option>45</option><option>60</option></select></div>
                 <div class="cc-setting"><label>Fuel / Turn</label><select data-set="fuel"><option>70</option><option selected>100</option><option>140</option><option value="9999">Unlimited</option></select></div>
@@ -158,6 +186,8 @@ export default {
               </aside>
             </div>
             <div class="cc-note"><b>Restock:</b> every 8 player shots grants five new special weapons and partially restores the terrain. <b>Juggernaut:</b> requires at least three tanks; HP = hunters × base HP × 1.5 and starting arsenal = 1.5× normal. <b>Assassin:</b> only your current target can take your damage.</div>
+              </div>
+            </details>
             <button class="cc-start start-standard">DEPLOY TO ARENA</button>
           </div>
         <div class="rogue-panel" style="display:none">
@@ -181,7 +211,8 @@ export default {
         </div>
       </div></div>
       <div class="cc-overlay encyclopedia hide"><div class="cc-menu cc-ency-menu"><button class="cc-close ency-close">✕</button><div class="cc-k">Weapon Laboratory Reference</div><div class="cc-title" style="font-size:2.8rem">ARSENAL CODEX</div><div class="cc-desc">Search all weapon families, compare every valid evolution tier and watch the actual game engine fire the selected variant in a looping miniature training range.</div><div class="cc-ency-head"><input class="ency-search" placeholder="Search weapon or category…"><select class="ency-category"><option value="">All categories</option></select></div><div class="cc-ency-layout"><div class="cc-ency-list"></div><div class="cc-ency-detail"></div></div></div></div>
-      <div class="cc-overlay telemetry-overlay hide"><div class="cc-menu cc-tel-menu"><button class="cc-close tel-close">✕</button><div class="cc-k">Training Range Analytics</div><div class="cc-title" style="font-size:2.8rem">BALANCE DATA</div><div class="cc-desc">Session telemetry is recorded only from player shots in Training Range. Hit Rate is the percentage of shots that dealt at least one point of enemy damage.</div><div class="cc-tel-actions"><button class="tel-refresh">REFRESH</button><button class="tel-reset">RESET SESSION DATA</button></div><div class="cc-tel-content"></div></div></div>
+      <div class="cc-overlay arsenal-picker hide"><div class="cc-menu cc-arsenal-menu"><button class="cc-close arsenal-close">✕</button><div class="cc-k">Current Loadout</div><div class="cc-title" style="font-size:2.7rem">WEAPON ARSENAL</div><div class="cc-desc">Find a weapon without scrolling through the entire loadout. Search, filter by category, or keep using Q / E for fast cycling.</div><div class="cc-arsenal-head"><input class="arsenal-search" placeholder="Search your loadout…"><select class="arsenal-category"><option value="">All categories</option></select><span class="arsenal-summary"></span></div><div class="cc-arsenal-grid"></div></div></div>
+      <div class="cc-overlay telemetry-overlay hide"><div class="cc-menu cc-tel-menu"><button class="cc-close tel-close">✕</button><div class="cc-k">Persistent Weapon Analytics</div><div class="cc-title" style="font-size:2.8rem">BALANCE LAB</div><div class="cc-desc">Aggregated telemetry is collected from player and bot shots in every mode and stored locally in this browser. Intent-adjusted hit rate excludes wild shots that never meaningfully approached an enemy; Clean Avg uses only unmodified shots without Critical, ×2, Overcharge or Rogue damage bonuses.</div><div class="cc-tel-toolbar"><input class="tel-search" placeholder="Search weapon…"><select class="tel-sort"><option value="samples">Sort: Samples</option><option value="engaged">Sort: Intent Hit Rate</option><option value="damage">Sort: Avg Damage</option><option value="clean">Sort: Clean Avg</option></select><button class="tel-refresh">REFRESH</button><button class="tel-reset danger">CLEAR ALL DATA</button></div><div class="cc-tel-summary"></div><div class="cc-tel-content"></div></div></div>
       <div class="cc-overlay end hide"><div class="cc-menu"><div class="cc-k">Match Complete</div><div class="cc-title result-title">VICTORY</div><div class="cc-desc result-desc"></div><div class="cc-result-grid"><div><span>Winner</span><b class="rw"></b></div><div><span>Rounds</span><b class="rr"></b></div><div><span>Damage</span><b class="rd"></b></div><div><span>Kills</span><b class="rk"></b></div></div><button class="cc-start restart">BACK TO MENU</button></div></div>
       <div class="cc-overlay upgrade hide"><div class="cc-menu">
         <div class="cc-k upgrade-k">Rogue Salvage Bay</div><div class="cc-title" style="font-size:3.35rem">UPGRADE<br>SHOP</div>
@@ -193,19 +224,43 @@ export default {
     container.append(style,root);
 
     const canvas=root.querySelector("canvas"),ctx=canvas.getContext("2d"),weaponsEl=root.querySelector(".cc-weapons"),infoEl=root.querySelector(".cc-info");
-    const angleInput=root.querySelector(".angle"),powerInput=root.querySelector(".power"),fireBtn=root.querySelector(".cc-fire"),menu=root.querySelector(".menu"),end=root.querySelector(".end"),upgrade=root.querySelector(".upgrade"),ency=root.querySelector(".encyclopedia"),telemetryOverlay=root.querySelector(".telemetry-overlay");
-    const angleV=root.querySelector(".angle-v"),powerV=root.querySelector(".power-v"),fuelBar=root.querySelector(".cc-fuel>div"),fuelText=root.querySelector(".cc-fueltext");
+    const angleInput=root.querySelector(".angle"),powerInput=root.querySelector(".power"),fireBtn=root.querySelector(".cc-fire"),menu=root.querySelector(".menu"),end=root.querySelector(".end"),upgrade=root.querySelector(".upgrade"),ency=root.querySelector(".encyclopedia"),arsenalPicker=root.querySelector(".arsenal-picker"),telemetryOverlay=root.querySelector(".telemetry-overlay");
+    const angleV=root.querySelector(".angle-v"),powerV=root.querySelector(".power-v"),fuelBar=root.querySelector(".cc-fuel>div"),fuelText=root.querySelector(".cc-fueltext"),controlsEl=root.querySelector(".cc-controls"),weaponCountEl=root.querySelector(".weapon-count");
 
     function resize(){
       const r=root.getBoundingClientRect();
       root.classList.toggle("cc-compact",r.width<1180||r.height<760);
       root.classList.toggle("cc-short",r.height<640);
       W=Math.max(560,r.width);H=Math.max(420,r.height);dpr=Math.min(2,devicePixelRatio||1);
-      canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0);
+      // Keep a running match in its original logical coordinate system. The canvas can then
+      // resize responsively without desynchronizing terrain, mouse aiming and projectile physics.
+      const logicalW=running&&state?state.width:W,logicalH=running&&state?state.height:H;
+      canvas.width=Math.round(logicalW*dpr);canvas.height=Math.round(logicalH*dpr);canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0);
     }
     resize();const ro=new ResizeObserver(resize);ro.observe(root);
     const playerTank=()=>state?.tanks?.[0]||null;
     const playerTurn=()=>running&&state&&!state.gameOver&&currentTank(state)?.isPlayer&&state.phase==="aim";
+    const modalPaused=()=>!ency.classList.contains("hide")||!arsenalPicker.classList.contains("hide")||!telemetryOverlay.classList.contains("hide");
+
+    function emptyBalanceStore(){return {version:2,updatedAt:0,entries:{}};}
+    function loadBalanceStore(){
+      try{const raw=localStorage.getItem(TELEMETRY_KEY);if(!raw)return emptyBalanceStore();const parsed=JSON.parse(raw);return parsed?.version===2&&parsed.entries?parsed:emptyBalanceStore();}catch{return emptyBalanceStore();}
+    }
+    function flushBalanceStore(){
+      if(balanceSaveTimer){clearTimeout(balanceSaveTimer);balanceSaveTimer=0;}
+      balanceStore.updatedAt=Date.now();
+      try{localStorage.setItem(TELEMETRY_KEY,JSON.stringify(balanceStore));}catch{}
+    }
+    function queueBalanceSave(){if(balanceSaveTimer)return;balanceSaveTimer=setTimeout(()=>{balanceSaveTimer=0;flushBalanceStore();},1200);}
+    function mergeBalanceEvent(q){
+      const key=`${q.weaponId}:${q.tier}`,e=balanceStore.entries[key]||(balanceStore.entries[key]={weaponId:q.weaponId,tier:q.tier,shots:0,playerShots:0,botShots:0,hitShots:0,engagedShots:0,nearMisses:0,farMisses:0,wildMisses:0,totalDamage:0,maxDamage:0,totalHitEvents:0,cleanShots:0,cleanDamage:0,critShots:0,x2Shots:0,utilityShots:0,distanceSamples:0,totalBestDistance:0,lastDamage:0});
+      e.shots++;q.ownerIsPlayer?e.playerShots++:e.botShots++;if(q.hit)e.hitShots++;if(q.engaged)e.engagedShots++;if(q.near)e.nearMisses++;if(q.far)e.farMisses++;if(q.wild)e.wildMisses++;
+      e.totalDamage+=q.totalDamage||0;e.maxDamage=Math.max(e.maxDamage||0,q.totalDamage||0);e.totalHitEvents+=q.hitCount||0;e.lastDamage=q.totalDamage||0;
+      if(q.clean){e.cleanShots++;e.cleanDamage+=q.totalDamage||0;}if(q.crit)e.critShots++;if(q.hadX2)e.x2Shots++;if(q.utility)e.utilityShots++;
+      if(Number.isFinite(q.bestDistance)){e.distanceSamples++;e.totalBestDistance+=q.bestDistance;}e.lastMode=q.mode;e.updatedAt=Date.now();queueBalanceSave();
+    }
+    function collectBalanceEvents(){if(!state)return;for(const q of drainTelemetryEvents(state))mergeBalanceEvent(q);}
+    function clearBalanceStore(){balanceStore=emptyBalanceStore();flushBalanceStore();}
 
     function syncAimUI(){
       if(!state)return;const p=playerTank(),deg=state.playerAngle*180/Math.PI;
@@ -217,23 +272,35 @@ export default {
     function renderWeapons(){
       if(!state)return;const p=playerTank();
       lastInventorySig=p.inventory.map(x=>`${x.id}:${x.tier}:${x.ammo}`).join("|");
-      weaponsEl.innerHTML=p.inventory.map(slot=>{const d=getWeaponTierStats(slot.id,slot.tier);return `<button class="cc-weapon t${slot.tier} ${p.selected===slot.id&&p.selectedTier===slot.tier?"on":""} ${slot.ammo<=0?"empty":""}" data-id="${slot.id}" data-tier="${slot.tier}"><span class="cc-ammo">${slot.ammo>=99?"∞":"×"+slot.ammo}</span><div class="cc-wicon" style="color:${d.color}">${d.icon}</div><div class="cc-wname">${d.name}</div><div class="cc-wcat">${d.category}</div><span class="cc-tier">T${slot.tier}</span></button>`;}).join("");
+      const usable=p.inventory.filter(x=>x.ammo>0),visibleCount=root.classList.contains("cc-compact")?5:6;
+      let idx=usable.findIndex(x=>x.id===p.selected&&x.tier===p.selectedTier);if(idx<0)idx=0;
+      const start=Math.max(0,Math.min(Math.max(0,usable.length-visibleCount),idx-Math.floor(visibleCount/2))),shown=usable.slice(start,start+visibleCount);
+      if(weaponCountEl)weaponCountEl.textContent=usable.length;
+      weaponsEl.innerHTML=shown.map(slot=>{const d=getWeaponTierStats(slot.id,slot.tier);return `<button class="cc-weapon t${slot.tier} ${p.selected===slot.id&&p.selectedTier===slot.tier?"on":""}" data-id="${slot.id}" data-tier="${slot.tier}"><span class="cc-ammo">${slot.ammo>=99?"∞":"×"+slot.ammo}</span><div class="cc-wicon" style="color:${d.color}">${d.icon}</div><div class="cc-wname">${d.name}</div><div class="cc-wcat">${d.category}</div><span class="cc-tier">T${slot.tier}</span></button>`;}).join("");
       weaponsEl.querySelectorAll(".cc-weapon").forEach(btn=>{
         btn.onclick=()=>{if(playerTurn()&&selectWeapon(state,p,btn.dataset.id,Number(btn.dataset.tier))){renderWeapons();renderInfo();}};
-        btn.onmouseenter=()=>{const d=getWeaponTierStats(btn.dataset.id,Number(btn.dataset.tier));infoEl.innerHTML=`<h3 style="color:${d.color}">${d.icon} ${d.name} · T${d.tier}/${d.maxTier}</h3><p>${d.description}<br><br><b>${d.tierName}</b> · ${d.damage!=null?`Damage ${Math.round(d.damage)}`:"Utility"}${d.radius?` · Radius ${Math.round(d.radius)}`:""}</p>`;};
+        btn.onmouseenter=()=>{const d=getWeaponTierStats(btn.dataset.id,Number(btn.dataset.tier));infoEl.innerHTML=`<h3 style="color:${d.color}">${d.icon} ${d.name} · T${d.tier}</h3><p>${d.description} · ${d.damage!=null?`Damage ${Math.round(d.damage)}`:"Utility"}${d.radius?` · Radius ${Math.round(d.radius)}`:""}</p>`;};
+        btn.onmouseleave=renderInfo;
       });
+      if(!arsenalPicker.classList.contains("hide"))renderArsenalPicker();
     }
     function renderInfo(){
-      if(!state)return;const p=playerTank(),d=getWeaponTierStats(p.selected,p.selectedTier||1);
-      let modeLine="";
-      if(state.mode==="assassin"){
-        const target=getAssassinTarget(state,p),hunter=getAssassinHunter(state,p);
-        modeLine=`<br><b style="color:#ff7890">TARGET ${target?.name||"—"}</b> · Hunter: ${hunter?.name||"—"} · Assassin XP ${p.assassinXP||0}`;
-      }else if(state.mode==="juggernaut"){
-        modeLine=p.isJuggernaut?`<br><b style="color:#ffc75f">YOU ARE THE JUGGERNAUT</b> · ${p.inventory.length} starting slots`:`<br><b style="color:#ffc75f">HUNT THE JUGGERNAUT</b> · ${state.tanks.find(t=>t.isJuggernaut&&t.alive)?.name||"defeated"}`;
-      }
-      infoEl.innerHTML=`<h3 style="color:${d.color}">${d.icon} ${d.name} · T${d.tier}/${d.maxTier}</h3><p>${d.description}<br><b>${d.tierName}</b> · ${d.tierNote||"Functional upgrade"}${d.fragments?` · ${d.fragments} fragments`:d.bombs?` · ${d.bombs} strikes`:d.bounces?` · ${d.bounces} bounces`:""}${modeLine}</p><div class="cc-charge"><div style="width:${p.overcharge}%"></div></div><p>${p.overchargeReady?"OVERCHARGE READY · +28% damage":"Overcharge "+Math.round(p.overcharge)+"% · Crit "+Math.round((p.critChance||0)*100)+"%"}</p>`;
+      if(!state)return;const p=playerTank(),d=getWeaponTierStats(p.selected,p.selectedTier||1),mods=p.overchargeReady?"OVERCHARGE READY · +28%":"Overcharge "+Math.round(p.overcharge)+"%";
+      infoEl.innerHTML=`<h3 style="color:${d.color}">${d.icon} ${d.name} · T${d.tier}/${d.maxTier}</h3><p><b>${d.tierName}</b> · ${d.tierNote||"Functional upgrade"} · ${d.damage!=null?`Damage ${Math.round(d.damage)}`:"Utility"}${d.fragments?` · ${d.fragments} fragments`:d.bombs?` · ${d.bombs} strikes`:d.bounces?` · ${d.bounces} bounces`:""} · ${mods}</p>`;
     }
+    function renderArsenalPicker(){
+      if(!state)return;const p=playerTank(),grid=arsenalPicker.querySelector(".cc-arsenal-grid"),search=arsenalPicker.querySelector(".arsenal-search"),category=arsenalPicker.querySelector(".arsenal-category");
+      weaponSearch=search.value.trim().toLowerCase();weaponCategory=category.value;
+      const rows=p.inventory.filter(slot=>{const d=getWeaponTierStats(slot.id,slot.tier);return (!weaponSearch||d.name.toLowerCase().includes(weaponSearch)||d.category.toLowerCase().includes(weaponSearch)||slot.id.includes(weaponSearch))&&(!weaponCategory||d.category===weaponCategory);});
+      arsenalPicker.querySelector(".arsenal-summary").textContent=`${rows.length} shown · ${p.inventory.filter(x=>x.ammo>0).length} usable`;
+      grid.innerHTML=rows.map(slot=>{const d=getWeaponTierStats(slot.id,slot.tier),selected=p.selected===slot.id&&p.selectedTier===slot.tier;return `<button class="cc-arsenal-card ${selected?"on":""}" data-aw="${slot.id}" data-at="${slot.tier}" ${slot.ammo<=0?"disabled":""}><span class="meta">${slot.ammo>=99?"∞":"×"+slot.ammo}<small>T${slot.tier}/${d.maxTier}</small></span><span class="ico" style="color:${d.color}">${d.icon}</span><b>${d.name}</b><p>${d.category} · ${d.tierName}<br>${d.description}</p></button>`;}).join("")||`<div class="cc-tel-empty">No weapons match this filter.</div>`;
+      grid.querySelectorAll("[data-aw]").forEach(btn=>btn.onclick=()=>{if(playerTurn()&&selectWeapon(state,p,btn.dataset.aw,Number(btn.dataset.at))){renderWeapons();renderInfo();closeWeaponPicker();}});
+    }
+    function openWeaponPicker(){
+      if(!playerTurn())return;const p=playerTank(),cats=[...new Set(p.inventory.map(x=>getWeaponTierStats(x.id,x.tier).category))].sort(),sel=arsenalPicker.querySelector(".arsenal-category");
+      sel.innerHTML=`<option value="">All categories</option>${cats.map(c=>`<option ${c===weaponCategory?"selected":""}>${c}</option>`).join("")}`;arsenalPicker.querySelector(".arsenal-search").value=weaponSearch;arsenalPicker.classList.remove("hide");renderArsenalPicker();
+    }
+    function closeWeaponPicker(){arsenalPicker.classList.add("hide");}
     function firePlayer(){if(!playerTurn())return;const p=playerTank();if(fire(state,p,state.playerAngle,state.playerPower,p.selected,p.selectedTier)){renderWeapons();syncAimUI();renderInfo();}}
     angleInput.oninput=()=>setAngleFromDegrees(Number(angleInput.value));
     powerInput.oninput=()=>{if(!state)return;state.playerPower=Number(powerInput.value);const p=playerTank();if(p)p.power=state.playerPower;syncAimUI();};
@@ -241,7 +308,11 @@ export default {
 
     function cycleWeapon(dir){if(!playerTurn())return;const p=playerTank(),usable=p.inventory.filter(s=>s.ammo>0);if(!usable.length)return;let i=usable.findIndex(s=>s.id===p.selected&&s.tier===p.selectedTier);i=(i+dir+usable.length)%usable.length;selectWeapon(state,p,usable[i].id,usable[i].tier);renderWeapons();renderInfo();}
     function keyDown(e){
-      if(!state||!running)return;if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space"].includes(e.code))e.preventDefault();
+      if(!state||!running)return;
+      if(e.key==="Escape"){if(!arsenalPicker.classList.contains("hide")){closeWeaponPicker();return;}if(!ency.classList.contains("hide")){closeEncyclopedia();return;}if(!telemetryOverlay.classList.contains("hide")){telemetryOverlay.classList.add("hide");return;}}
+      if(e.code==="Tab"){e.preventDefault();if(!arsenalPicker.classList.contains("hide"))closeWeaponPicker();else openWeaponPicker();return;}
+      if(modalPaused())return;
+      if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space"].includes(e.code))e.preventDefault();
       if(e.code==="Space"){firePlayer();return;}if((e.key==="r"||e.key==="R")&&state.training){resetTrainingRange(state);renderWeapons();renderInfo();syncAimUI();return;}if(!playerTurn())return;
       if(e.key==="a"||e.key==="A")moveKeys.left=true;if(e.key==="d"||e.key==="D")moveKeys.right=true;
       if(e.key==="ArrowLeft")state.playerAngle=clamp(state.playerAngle+.025,.08,Math.PI-.08);if(e.key==="ArrowRight")state.playerAngle=clamp(state.playerAngle-.025,.08,Math.PI-.08);
@@ -252,8 +323,8 @@ export default {
     function keyUp(e){if(e.key==="a"||e.key==="A")moveKeys.left=false;if(e.key==="d"||e.key==="D")moveKeys.right=false;}
     window.addEventListener("keydown",keyDown);window.addEventListener("keyup",keyUp);
 
-    canvas.addEventListener("mousemove",e=>{if(!playerTurn())return;const r=canvas.getBoundingClientRect(),mx=(e.clientX-r.left)*state.width/r.width,my=(e.clientY-r.top)*state.height/r.height,p=playerTank();const ang=Math.atan2(p.y-my,mx-p.x);if(ang>0&&ang<Math.PI){state.playerAngle=ang;state.playerPower=clamp((Math.hypot(mx-p.x,my-p.y)-35)/3.2,10,100);p.angle=ang;p.power=state.playerPower;syncAimUI();}});
-    canvas.addEventListener("click",()=>{if(playerTurn())firePlayer();});
+    canvas.addEventListener("mousemove",e=>{if(!playerTurn()||modalPaused())return;const r=canvas.getBoundingClientRect(),mx=(e.clientX-r.left)*state.width/r.width,my=(e.clientY-r.top)*state.height/r.height,p=playerTank();const ang=Math.atan2(p.y-my,mx-p.x);if(ang>0&&ang<Math.PI){state.playerAngle=ang;state.playerPower=clamp((Math.hypot(mx-p.x,my-p.y)-35)/3.2,10,100);p.angle=ang;p.power=state.playerPower;syncAimUI();}});
+    canvas.addEventListener("click",()=>{if(playerTurn()&&!modalPaused())firePlayer();});
 
     function payloadEstimate(d){
       const n=Math.max(1,d.count||d.fragments||d.bombs||1);let value=(d.damage||0)*n;
@@ -262,13 +333,13 @@ export default {
     }
     function resetEncyPreview(){
       const c=ency.querySelector(".cc-ency-preview");if(!c)return;
-      const r=c.getBoundingClientRect(),pw=Math.max(620,Math.round(r.width||720)),ph=300;
+      const r=c.getBoundingClientRect(),pw=Math.max(760,Math.round(r.width||920)),ph=Math.max(430,Math.min(560,Math.round(pw*.52)));
       c.width=pw;c.height=ph;const pc=c.getContext("2d");
       encyPreviewState=createState({width:pw,height:ph,mode:"training",difficulty:"easy",arenaIndex:0,settings:{playerCount:5,hp:600,turnTime:9999,wind:"off",fuel:9999,weaponCount:20,skillObjects:"off",crates:"off",tracer:true,terrainMobility:"allterrain"}});
       const t=encyPreviewState.tanks[0];t.x=pw*.18;t.y=encyPreviewState.terrain[Math.round(t.x)]-11;
       const dummy=encyPreviewState.tanks[2]||encyPreviewState.tanks[1];if(dummy){dummy.x=pw*.70;dummy.y=encyPreviewState.terrain[Math.round(dummy.x)]-11;}
-      selectWeapon(encyPreviewState,t,encyWeapon,encyTier);t.selected=encyWeapon;t.selectedTier=encyTier;encyPreviewState.playerAngle=Math.PI*.28;encyPreviewState.playerPower=66;t.angle=encyPreviewState.playerAngle;t.power=66;
-      fire(encyPreviewState,t,encyPreviewState.playerAngle,66,encyWeapon,encyTier);encyPreviewTimer=0;
+      selectWeapon(encyPreviewState,t,encyWeapon,encyTier);t.selected=encyWeapon;t.selectedTier=encyTier;encyPreviewState.playerAngle=Math.PI*.25;encyPreviewState.playerPower=58;t.angle=encyPreviewState.playerAngle;t.power=58;
+      fire(encyPreviewState,t,encyPreviewState.playerAngle,58,encyWeapon,encyTier);encyPreviewTimer=0;
       render(pc,encyPreviewState,pw,ph);
     }
     function renderEncyList(){
@@ -294,20 +365,29 @@ export default {
     }
     function closeEncyclopedia(){ency.classList.add("hide");encyPreviewState=null;if(encyRaf){cancelAnimationFrame(encyRaf);encyRaf=0;}}
     function renderTelemetry(){
-      const box=telemetryOverlay.querySelector(".cc-tel-content");if(!state?.training){box.innerHTML=`<div class="cc-tel-empty">Enter Training Range to collect weapon telemetry.</div>`;return;}
-      const rows=getTrainingTelemetry(state).sort((a,b)=>b.avgDamage-a.avgDamage);
-      if(!rows.length){box.innerHTML=`<div class="cc-tel-empty">No training shots recorded yet. Fire any weapon to begin collecting balance data.</div>`;return;}
-      box.innerHTML=`<table class="cc-tel-table"><thead><tr><th>Weapon</th><th>Shots</th><th>Hit Rate</th><th>Avg Damage</th><th>Max Damage</th><th>Avg Events</th><th>Last</th></tr></thead><tbody>${rows.map(e=>{const d=getWeaponTierStats(e.weaponId,e.tier),hit=e.hitRate*100;return `<tr><td style="color:${d.color}">${d.name} · T${e.tier}</td><td>${e.shots}</td><td class="${hit>=60?"cc-tel-good":hit<25?"cc-tel-warn":""}">${hit.toFixed(0)}%</td><td>${e.avgDamage.toFixed(1)}</td><td>${e.maxDamage.toFixed(1)}</td><td>${e.avgEvents.toFixed(1)}</td><td>${e.lastDamage.toFixed(1)}</td></tr>`;}).join("")}</tbody></table>`;
+      collectBalanceEvents();
+      const box=telemetryOverlay.querySelector(".cc-tel-content"),summary=telemetryOverlay.querySelector(".cc-tel-summary"),search=telemetryOverlay.querySelector(".tel-search").value.trim().toLowerCase(),sort=telemetryOverlay.querySelector(".tel-sort").value;
+      balanceSearch=search;balanceSort=sort;
+      let rows=Object.values(balanceStore.entries||{}).map(e=>{
+        const shots=e.shots||0,hits=e.hitShots||0,engaged=e.engagedShots||0;
+        return {...e,avgDamage:shots?(e.totalDamage||0)/shots:0,avgHit:hits?(e.totalDamage||0)/hits:0,intentHitRate:engaged?hits/engaged:0,cleanAvg:e.cleanShots?(e.cleanDamage||0)/e.cleanShots:0,avgEvents:shots?(e.totalHitEvents||0)/shots:0,avgDistance:e.distanceSamples?(e.totalBestDistance||0)/e.distanceSamples:null};
+      }).filter(e=>{const d=getWeaponTierStats(e.weaponId,e.tier);return !search||d.name.toLowerCase().includes(search)||d.category.toLowerCase().includes(search)||e.weaponId.includes(search);});
+      const sorter=sort==="engaged"?(a,b)=>b.intentHitRate-a.intentHitRate||b.shots-a.shots:sort==="damage"?(a,b)=>b.avgDamage-a.avgDamage||b.shots-a.shots:sort==="clean"?(a,b)=>b.cleanAvg-a.cleanAvg||b.cleanShots-a.cleanShots:(a,b)=>b.shots-a.shots||b.avgDamage-a.avgDamage;rows.sort(sorter);
+      const all=Object.values(balanceStore.entries||{}),totalShots=all.reduce((n,e)=>n+(e.shots||0),0),playerShots=all.reduce((n,e)=>n+(e.playerShots||0),0),botShots=all.reduce((n,e)=>n+(e.botShots||0),0),engaged=all.reduce((n,e)=>n+(e.engagedShots||0),0),hits=all.reduce((n,e)=>n+(e.hitShots||0),0);
+      summary.innerHTML=`<div><span>Recorded shots</span><b>${totalShots}</b></div><div><span>Variants sampled</span><b>${all.length} / ${TOTAL_VARIANTS}</b></div><div><span>Player / Bot</span><b>${playerShots} / ${botShots}</b></div><div><span>Intent hit rate</span><b>${engaged?(hits/engaged*100).toFixed(1):"0.0"}%</b></div>`;
+      if(!rows.length){box.innerHTML=`<div class="cc-tel-empty">${totalShots?"No recorded weapons match this search.":"No telemetry yet. Play any standard mode, Rogue Run or Training Range; both player and bot shots are aggregated automatically."}</div>`;return;}
+      box.innerHTML=`<table class="cc-tel-table"><thead><tr><th>Weapon</th><th>Samples</th><th>P / B</th><th>Intent Hit</th><th>Avg All</th><th>Avg On Hit</th><th>Clean Avg</th><th>Near / Far / Wild</th><th>Avg Events</th><th>Max</th></tr></thead><tbody>${rows.map(e=>{const d=getWeaponTierStats(e.weaponId,e.tier),hit=e.intentHitRate*100,utility=e.utilityShots===e.shots&&e.shots>0;return `<tr><td style="color:${d.color}">${d.name} · T${e.tier}</td><td>${e.shots}</td><td>${e.playerShots||0} / ${e.botShots||0}</td><td class="${!utility&&hit>=60?"cc-tel-good":!utility&&hit<25?"cc-tel-warn":""}">${utility?"UTILITY":hit.toFixed(0)+"%"}</td><td>${e.avgDamage.toFixed(1)}</td><td>${e.hitShots?e.avgHit.toFixed(1):"—"}</td><td>${e.cleanShots?`${e.cleanAvg.toFixed(1)} (${e.cleanShots})`:"—"}</td><td>${e.nearMisses||0} / ${e.farMisses||0} / ${e.wildMisses||0}</td><td>${e.avgEvents.toFixed(1)}</td><td>${(e.maxDamage||0).toFixed(1)}</td></tr>`;}).join("")}</tbody></table>`;
     }
-    function openTelemetry(){telemetryOverlay.classList.remove("hide");renderTelemetry();}
+    function openTelemetry(){telemetryOverlay.querySelector(".tel-search").value=balanceSearch;telemetryOverlay.querySelector(".tel-sort").value=balanceSort;telemetryOverlay.classList.remove("hide");renderTelemetry();}
 
     function startMatch(opts){
-      state=createState({width:W,height:H,...opts});running=true;root.classList.toggle("training-live",!!state.training);lastTurnId=null;lastInventorySig="";menu.classList.add("hide");end.classList.add("hide");upgrade.classList.add("hide");syncAimUI();renderWeapons();renderInfo();last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);
+      state=createState({width:W,height:H,...opts});running=true;root.classList.toggle("training-live",!!state.training);lastTurnId=null;lastInventorySig="";menu.classList.add("hide");end.classList.add("hide");upgrade.classList.add("hide");arsenalPicker.classList.add("hide");telemetryOverlay.classList.add("hide");controlsEl.classList.add("hide");resize();syncAimUI();renderWeapons();renderInfo();last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);
     }
     function startStandard(){
       rogueRun=null;
       const cfg={...settings};
       if(mode==="juggernaut")cfg.playerCount=Math.max(3,Number(cfg.playerCount)||4);
+      if(mode==="teams"&&cfg.playerCount%2)cfg.playerCount=Math.min(8,cfg.playerCount+1);
       startMatch({mode,difficulty,arenaIndex,settings:cfg});
     }
     function startTraining(){
@@ -315,22 +395,28 @@ export default {
     }
     function startNewRogue(){rogueRun=createRogueRun();startRogueBattle();}
     function startRogueBattle(){
-      const stage=rogueRun.stage,arena=(stage-1)%ARENAS.length;
+      const stage=rogueRun.stage;let arena=Math.floor(Math.random()*ARENAS.length);
+      if(ARENAS.length>1&&arena===rogueRun.lastArenaIndex)arena=(arena+1+Math.floor(Math.random()*(ARENAS.length-1)))%ARENAS.length;rogueRun.lastArenaIndex=arena;
       startMatch({mode:"duel",difficulty:"normal",arenaIndex:arena,rogueRun,settings:{playerCount:2,hp:100,turnTime:30,wind:stage>=7?"extreme":"normal",fuel:rogueRun.stats.maxFuel,weaponCount:rogueRun.stats.weaponCount,skillObjects:stage>=4?"high":"normal",crates:"high",tracer:true}});
     }
 
     function loop(now){
-      if(destroyed||!state)return;const dt=Math.min(.033,(now-last)/1000);last=now;const t=currentTank(state);
-      if(playerTurn()){
-        const p=playerTank(),dir=(moveKeys.right?1:0)-(moveKeys.left?1:0);if(dir)moveTank(state,p,dir,dt*70);
+      if(destroyed||!state)return;const dt=Math.min(.033,(now-last)/1000);last=now;
+      if(!modalPaused()){
+        const t=currentTank(state);
+        if(playerTurn()){const p=playerTank(),dir=(moveKeys.right?1:0)-(moveKeys.left?1:0);if(dir)moveTank(state,p,dir,dt*70);}
+        if(t&&!t.isPlayer&&state.phase==="aim"){botThinkDelay-=dt;if(botThinkDelay<=0){botThinkDelay=.65+Math.random()*.55;performBotShot(state,t);}}else botThinkDelay=.7;
+        updateState(state,dt);collectBalanceEvents();
+        const nowTurn=currentTank(state)?.id;if(nowTurn!==lastTurnId){lastTurnId=nowTurn;renderWeapons();renderInfo();}
+        if(playerTurn())syncAimUI();
+        const pp=playerTank();if(pp){const sig=pp.inventory.map(x=>`${x.id}:${x.tier}:${x.ammo}`).join("|");if(sig!==lastInventorySig)renderWeapons();}
+        if(state.gameOver&&running){render(ctx,state,state.width,state.height);finish();return;}
       }
-      if(t&&!t.isPlayer&&state.phase==="aim"){botThinkDelay-=dt;if(botThinkDelay<=0){botThinkDelay=.65+Math.random()*.55;performBotShot(state,t);}}else botThinkDelay=.7;
-      updateState(state,dt);render(ctx,state,state.width,state.height);
-      const nowTurn=currentTank(state)?.id;if(nowTurn!==lastTurnId){lastTurnId=nowTurn;renderWeapons();renderInfo();}
-      if(playerTurn())syncAimUI();
-      const pp=playerTank();if(pp){const sig=pp.inventory.map(x=>`${x.id}:${x.tier}:${x.ammo}`).join("|");if(sig!==lastInventorySig)renderWeapons();}
-      if(Math.floor(now/260)%2===0)renderInfo();
-      if(state.gameOver&&running){finish();return;}raf=requestAnimationFrame(loop);
+      render(ctx,state,state.width,state.height);raf=requestAnimationFrame(loop);
+    }
+    function leaveToMenu(){
+      if(!running||!state)return;const label=state.training?"Exit Training Range and return to the menu?":"Forfeit this match and return to the menu?";if(!window.confirm(label))return;
+      collectBalanceEvents();flushBalanceStore();running=false;moveKeys.left=moveKeys.right=false;cancelAnimationFrame(raf);closeWeaponPicker();closeEncyclopedia();telemetryOverlay.classList.add("hide");controlsEl.classList.add("hide");end.classList.add("hide");upgrade.classList.add("hide");menu.classList.remove("hide");root.classList.remove("training-live");rogueRun=null;state=null;resize();
     }
 
     function playerWon(){
@@ -389,19 +475,24 @@ export default {
       const rt=root.querySelector(".cc-mode-rule-title"),rc=root.querySelector(".cc-mode-rule-copy"),jug=root.querySelector(".cc-jug-config");
       if(rt)rt.textContent=m.label;if(rc)rc.textContent=m.rule||m.description;if(jug)jug.classList.toggle("show",mode==="juggernaut");
       const tanks=root.querySelector('[data-set="playerCount"]');
-      if(mode==="juggernaut"&&Number(tanks?.value)<3){tanks.value="3";settings.playerCount=3;}
+      if(tanks){for(const o of tanks.options)o.disabled=mode==="teams"&&Number(o.value)%2===1;
+        if(mode==="teams"&&Number(tanks.value)%2){const next=Math.min(8,Number(tanks.value)+1);tanks.value=String(next);settings.playerCount=next;}
+        if(mode==="juggernaut"&&Number(tanks.value)<3){tanks.value="3";settings.playerCount=3;}
+      }
     }
     root.querySelectorAll("[data-mode]").forEach(btn=>btn.onclick=()=>{root.querySelectorAll("[data-mode]").forEach(x=>x.classList.remove("sel"));btn.classList.add("sel");mode=btn.dataset.mode;refreshModeConfig();});
     root.querySelectorAll("[data-arena]").forEach(btn=>btn.onclick=()=>{root.querySelectorAll("[data-arena]").forEach(x=>x.classList.remove("sel"));btn.classList.add("sel");arenaIndex=Number(btn.dataset.arena);});
     root.querySelectorAll("[data-d]").forEach(btn=>btn.onclick=()=>{root.querySelectorAll("[data-d]").forEach(x=>x.classList.remove("sel"));btn.classList.add("sel");difficulty=btn.dataset.d;});
-    root.querySelectorAll("[data-set]").forEach(sel=>sel.onchange=()=>{const k=sel.dataset.set,v=sel.value;settings[k]=["playerCount","hp","turnTime","fuel","weaponCount","weaponQuality"].includes(k)?Number(v):k==="tracer"?v==="true":v;});
-    root.querySelector(".codex").onclick=openEncyclopedia;root.querySelector(".menu-codex").onclick=openEncyclopedia;ency.querySelector(".ency-close").onclick=closeEncyclopedia;ency.querySelector(".ency-search").oninput=renderEncyList;ency.querySelector(".ency-category").onchange=renderEncyList;
-    root.querySelector(".telemetry").onclick=openTelemetry;telemetryOverlay.querySelector(".tel-close").onclick=()=>telemetryOverlay.classList.add("hide");telemetryOverlay.querySelector(".tel-refresh").onclick=renderTelemetry;telemetryOverlay.querySelector(".tel-reset").onclick=()=>{if(state?.training){resetTrainingTelemetry(state);renderTelemetry();}};
+    root.querySelectorAll("[data-set]").forEach(sel=>sel.onchange=()=>{const k=sel.dataset.set,v=sel.value;settings[k]=["playerCount","hp","turnTime","fuel","weaponCount","weaponQuality"].includes(k)?Number(v):k==="tracer"?v==="true":v;refreshModeConfig();});
+    root.querySelector(".codex").onclick=openEncyclopedia;root.querySelector(".menu-codex").onclick=openEncyclopedia;root.querySelector(".menu-balance").onclick=openTelemetry;ency.querySelector(".ency-close").onclick=closeEncyclopedia;ency.querySelector(".ency-search").oninput=renderEncyList;ency.querySelector(".ency-category").onchange=renderEncyList;
+    root.querySelector(".cc-open-arsenal").onclick=openWeaponPicker;arsenalPicker.querySelector(".arsenal-close").onclick=closeWeaponPicker;arsenalPicker.querySelector(".arsenal-search").oninput=renderArsenalPicker;arsenalPicker.querySelector(".arsenal-category").onchange=renderArsenalPicker;
+    root.querySelector(".leave-match").onclick=leaveToMenu;root.querySelector(".help-toggle").onclick=()=>controlsEl.classList.toggle("hide");
+    root.querySelector(".telemetry").onclick=openTelemetry;telemetryOverlay.querySelector(".tel-close").onclick=()=>telemetryOverlay.classList.add("hide");telemetryOverlay.querySelector(".tel-refresh").onclick=renderTelemetry;telemetryOverlay.querySelector(".tel-search").oninput=renderTelemetry;telemetryOverlay.querySelector(".tel-sort").onchange=renderTelemetry;telemetryOverlay.querySelector(".tel-reset").onclick=()=>{if(window.confirm("Clear all locally stored Crater Clash balance telemetry?")){clearBalanceStore();renderTelemetry();}};
     upgrade.querySelector(".cc-next").onclick=()=>{if(!rogueRun)return;rogueRun.stage++;upgrade.classList.add("hide");startRogueBattle();};
     root.querySelector(".training-arena").onchange=e=>trainingArena=Number(e.target.value)||0;
-    root.querySelector(".start-standard").onclick=startStandard;root.querySelector(".start-rogue").onclick=startNewRogue;root.querySelector(".start-training").onclick=startTraining;root.querySelector(".restart").onclick=()=>{end.classList.add("hide");menu.classList.remove("hide");root.classList.remove("training-live");rogueRun=null;};
+    root.querySelector(".start-standard").onclick=startStandard;root.querySelector(".start-rogue").onclick=startNewRogue;root.querySelector(".start-training").onclick=startTraining;root.querySelector(".restart").onclick=()=>{end.classList.add("hide");menu.classList.remove("hide");root.classList.remove("training-live");rogueRun=null;state=null;resize();};
     refreshModeConfig();
 
-    return {destroy:()=>{destroyed=true;cancelAnimationFrame(raf);if(encyRaf)cancelAnimationFrame(encyRaf);ro.disconnect();window.removeEventListener("keydown",keyDown);window.removeEventListener("keyup",keyUp);style.remove();}};
+    return {destroy:()=>{destroyed=true;collectBalanceEvents();flushBalanceStore();cancelAnimationFrame(raf);if(encyRaf)cancelAnimationFrame(encyRaf);if(balanceSaveTimer)clearTimeout(balanceSaveTimer);ro.disconnect();window.removeEventListener("keydown",keyDown);window.removeEventListener("keyup",keyUp);style.remove();}};
   }
 };

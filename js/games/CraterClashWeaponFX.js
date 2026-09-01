@@ -20,7 +20,9 @@ const SHAPE_BY_ID={
   spider:"spider",bfg1000:"bfg",recruiter:"recruitflare",
   digger:"diggerball",breaker:"breaker",zipper:"zipper",ringer:"ring",spiker:"spike",pinata:"pinata",
   miniv:"vshot",napalm:"flame",sunburst:"sun",synclets:"sync",seagull:"gull",shrapnel:"shrapnel",
-  batteringram:"ram",rampage:"ragebolt",snowball:"snowball",fighterjet:"jet",breakermadness:"madbreaker",fury:"fury"
+  batteringram:"ram",rampage:"ragebolt",snowball:"snowball",fighterjet:"jet",breakermadness:"madbreaker",fury:"fury",
+  waterballoon:"balloon",quicksand:"sand",dualroller:"dualroller",imploder:"imploder",
+  pendulum:"weightorb",teslagate:"electric",satellite:"satellite",wormhole:"portalcore",prismcage:"prism",domino:"domino",skyhook:"hook",sandcastle:"castle",compressor:"compressor",pinball:"bumper",molecule:"molecule",lighthouse:"beacon",repulsor:"ring",swapbomb:"swap",phantomcopy:"ghost",meteorsling:"rock",razorhalo:"saw",crystalbloom:"crystal",guillotine:"blade",yoyo:"yoyo"
 };
 
 const TRAIL_BY_ID={
@@ -34,7 +36,8 @@ const TRAIL_BY_ID={
   spider:"thread",bfg1000:"plasma",recruiter:"greenSmoke",
   digger:"orangePulse",breaker:"fracture",zipper:"electricTrail",ringer:"halo",spiker:"dust",pinata:"rainbowSpark",
   miniv:"neon",napalm:"embers",sunburst:"solar",synclets:"syncgreen",seagull:"wing",shrapnel:"metal",
-  batteringram:"ramStreak",rampage:"rage",snowball:"snow",fighterjet:"jetSmoke",breakermadness:"pinkFracture",fury:"embers"
+  batteringram:"ramStreak",rampage:"rage",snowball:"snow",fighterjet:"jetSmoke",breakermadness:"pinkFracture",fury:"embers",
+  waterballoon:"droplets",quicksand:"dust",dualroller:"rainbowSpark",imploder:"plasma",pendulum:"neon",teslagate:"electricTrail",satellite:"orbital",wormhole:"void",prismcage:"neon",domino:"spark",skyhook:"thin",sandcastle:"dust",compressor:"neon",pinball:"rainbowSpark",molecule:"plasma",lighthouse:"thin",repulsor:"plasma",swapbomb:"void",phantomcopy:"ghost",meteorsling:"smoke",razorhalo:"metal",crystalbloom:"spark",guillotine:"metal",yoyo:"neon"
 };
 
 const IMPACT_BY_CATEGORY={
@@ -47,7 +50,8 @@ const IMPACT_BY_CATEGORY={
   "Straight Burst":"tracer",Sticky:"echo",Web:"radial","Distance Heavy":"shock","Crossfire Flare":"marker",
   Jumping:"ground","Ground Sweep":"electric",Ring:"ring","Terrain Spikes":"ground","Airburst Fire":"fire",
   Solar:"radial","Air Pause":"spark","Air Drop":"burst","Fragment Burst":"burst","Apex Drop":"shock",
-  "Sine Barrage":"electric","Growing Bounce":"ring","Multistage Impact":"star","Impact Barrage":"fire","Global Seismic":"terrain"
+  "Sine Barrage":"electric","Growing Bounce":"ring","Multistage Impact":"star","Impact Barrage":"fire","Global Seismic":"terrain",
+  "Chaos Water":"splash","Underground Volley":"dust","Split Roller":"ground","Self Burst":"shock","Kinetic Field":"ring","Beam Trap":"electric","Orbit Dive":"orbital","Portal Split":"field","Beam Geometry":"beam","Chain Line":"ground","Displacement":"spark","Trap Terraform":"terrain","Closing Walls":"field","Kinetic Trick":"ring","Orbiting Projectile":"orbital","Rotating Beam":"beam","Shock Utility":"shock","Position Trick":"field","Cross-Dimension":"field","Ground Crossfire":"ground","Contracting Ring":"ring","Growth Shatter":"star","Falling Line":"beam","Tether Sweep":"ring"
 };
 
 export function weaponVisual(def,tier=1){

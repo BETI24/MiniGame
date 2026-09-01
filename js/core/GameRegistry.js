@@ -22,6 +22,14 @@ import QuickThinker from "../games/QuickThinker.js";
 import MyClank from "../games/MyClank.js";
 import SlotMachine from "../games/SlotMachine.js";
 import SurvivClone from "../games/SurvivClone.js";
+import NeonDossier from "../games/NeonDossier.js";
+import TypeForge from "../games/TypeForge.js";
+import GardenSiege from "../games/GardenSiege.js";
+import CraterClash from "../games/CraterClash.js";
+import VaultBreakerIdle from "../games/VaultBreakerIdle.js";
+import ReelEmpireIdle from "../games/ReelEmpireIdle.js";
+import AntColonyIdle from "../games/AntColonyIdle.js";
+import ParadiseAngler from "../games/ParadiseAngler.js";
 
 // Das ist der zentrale Ort für neue Plugins (Spiele).
 // Kein anderer Code muss bei einem neuen Spiel angepasst werden.
@@ -50,4 +58,12 @@ export const GameRegistry = [
   SlotMachine,
   SurvivClone,
   MyClank,
+  NeonDossier,
+  TypeForge,
+  GardenSiege,
+  CraterClash,
+  VaultBreakerIdle,
+  ReelEmpireIdle,
+  AntColonyIdle,
+  ParadiseAngler,
 ];

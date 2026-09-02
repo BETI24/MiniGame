@@ -11,17 +11,17 @@ export const ROGUE_WEAPON_POOLS={
     "core","tristar","orbvolley","shardbloom","ricochet","hyperbounce","roller","backroller","burrow",
     "prismsplit","groundwave","hunter","rampart","sinker","emberrain","clustergrenade","aquastream","infernojet",
     "breakerwave","twinkler","jumper","flower","rapidfire","cactus","airstrike","snake","flame","tadpoles","fireworks","counter3000",
-    "digger","breaker","zipper","miniv","waterballoon","dualroller","pendulum","domino","repulsor","sandcastle","yoyo","billiards","chessknight","cyclone","proximitymine","cryogel","tetris"
+    "digger","breaker","zipper","miniv","waterballoon","dualroller","pendulum","domino","repulsor","sandcastle","yoyo","dicecore","billiards","cryogel","tetris","plinko","conveyor","geostamp","helix","bridgebuilder","bulldozer"
   ],
   2:[
     "skymarker","meteorchoir","raillance","gravityseed","starburst","arcchain","moonfall","echobomb","mirror","viper",
     "scatterrise","timeskip","droneswarm","sniper","quakecharge","bulger","fountain","horizon","acidrain","areastrike",
     "hoverorb","boomerang","beehive","bumperbombs","clover","discoball","ghostbomb","guppies","palmburst","deadweight","bolt","bounder","uzi","stickybomb","fleet",
-    "ringer","spiker","pinata","napalm","sunburst","synclets","seagull","shrapnel","quicksand","teslagate","satellite","wormhole","prismcage","skyhook","compressor","pinball","lighthouse","meteorsling","razorhalo","crystalbloom","guillotine","dicecore","launchpad","magnetron","emp","leech"
+    "ringer","spiker","pinata","napalm","sunburst","synclets","seagull","shrapnel","quicksand","teslagate","satellite","wormhole","prismcage","skyhook","compressor","pinball","lighthouse","meteorsling","razorhalo","crystalbloom","guillotine","sentryseed","chessknight","cyclone","rocketcarousel","kaleidoscope","proximitymine","magnetron","emp","eclipse","sonicboom","gravitylasso","newtoncradle","anchorchain","landslide","bubblelift","adaptiveshell"
   ],
   3:[
     "kernelpop","deaddrop","faultline","pinpoint","megaflux","voidwell","carpetbomb","gunship","asteroidbelt","spider","bfg1000","recruiter",
-    "batteringram","rampage","snowball","fighterjet","breakermadness","fury","imploder","molecule","swapbomb","phantomcopy","sentryseed","rocketcarousel","kaleidoscope","eclipse"
+    "batteringram","rampage","snowball","fighterjet","breakermadness","fury","imploder","molecule","swapbomb","phantomcopy","launchpad","leech","aegisdome","laserplow"
   ]
 };
 

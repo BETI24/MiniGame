@@ -21,8 +21,10 @@ const SHAPE_BY_ID={
   digger:"diggerball",breaker:"breaker",zipper:"zipper",ringer:"ring",spiker:"spike",pinata:"pinata",
   miniv:"vshot",napalm:"flame",sunburst:"sun",synclets:"sync",seagull:"gull",shrapnel:"shrapnel",
   batteringram:"ram",rampage:"ragebolt",snowball:"snowball",fighterjet:"jet",breakermadness:"madbreaker",fury:"fury",
+  dicecore:"die",sentryseed:"turretseed",billiards:"poolball",launchpad:"booster",chessknight:"knight",cyclone:"vortex",rocketcarousel:"rocketwheel",kaleidoscope:"prism",proximitymine:"mine",cryogel:"snow",magnetron:"magnet",emp:"electric",leech:"dart",tetris:"block",eclipse:"moon",
   waterballoon:"balloon",quicksand:"sand",dualroller:"dualroller",imploder:"imploder",
-  pendulum:"weightorb",teslagate:"electric",satellite:"satellite",wormhole:"portalcore",prismcage:"prism",domino:"domino",skyhook:"hook",sandcastle:"castle",compressor:"compressor",pinball:"bumper",molecule:"molecule",lighthouse:"beacon",repulsor:"ring",swapbomb:"swap",phantomcopy:"ghost",meteorsling:"rock",razorhalo:"saw",crystalbloom:"crystal",guillotine:"blade",yoyo:"yoyo"
+  pendulum:"weightorb",teslagate:"electric",satellite:"satellite",wormhole:"portalcore",prismcage:"prism",domino:"domino",skyhook:"hook",sandcastle:"castle",compressor:"compressor",pinball:"bumper",molecule:"molecule",lighthouse:"beacon",repulsor:"ring",swapbomb:"swap",phantomcopy:"ghost",meteorsling:"rock",razorhalo:"saw",crystalbloom:"crystal",guillotine:"blade",yoyo:"yoyo",
+  sonicboom:"dart",bulldozer:"block",plinko:"poolball",aegisdome:"prism",gravitylasso:"hook",laserplow:"needle",conveyor:"block",geostamp:"block",newtoncradle:"weightorb",adaptiveshell:"hex",helix:"molecule",anchorchain:"hook",landslide:"rock",bubblelift:"balloon",bridgebuilder:"seed"
 };
 
 const TRAIL_BY_ID={
@@ -37,7 +39,9 @@ const TRAIL_BY_ID={
   digger:"orangePulse",breaker:"fracture",zipper:"electricTrail",ringer:"halo",spiker:"dust",pinata:"rainbowSpark",
   miniv:"neon",napalm:"embers",sunburst:"solar",synclets:"syncgreen",seagull:"wing",shrapnel:"metal",
   batteringram:"ramStreak",rampage:"rage",snowball:"snow",fighterjet:"jetSmoke",breakermadness:"pinkFracture",fury:"embers",
-  waterballoon:"droplets",quicksand:"dust",dualroller:"rainbowSpark",imploder:"plasma",pendulum:"neon",teslagate:"electricTrail",satellite:"orbital",wormhole:"void",prismcage:"neon",domino:"spark",skyhook:"thin",sandcastle:"dust",compressor:"neon",pinball:"rainbowSpark",molecule:"plasma",lighthouse:"thin",repulsor:"plasma",swapbomb:"void",phantomcopy:"ghost",meteorsling:"smoke",razorhalo:"metal",crystalbloom:"spark",guillotine:"metal",yoyo:"neon"
+  dicecore:"neon",sentryseed:"greenSmoke",billiards:"spark",launchpad:"plasma",chessknight:"ghost",cyclone:"plasma",rocketcarousel:"smoke",kaleidoscope:"rainbowSpark",proximitymine:"redSmoke",cryogel:"snow",magnetron:"electricTrail",emp:"electricTrail",leech:"ghost",tetris:"neon",eclipse:"ghost",
+  waterballoon:"droplets",quicksand:"dust",dualroller:"rainbowSpark",imploder:"plasma",pendulum:"neon",teslagate:"electricTrail",satellite:"orbital",wormhole:"void",prismcage:"neon",domino:"spark",skyhook:"thin",sandcastle:"dust",compressor:"neon",pinball:"rainbowSpark",molecule:"plasma",lighthouse:"thin",repulsor:"plasma",swapbomb:"void",phantomcopy:"ghost",meteorsling:"smoke",razorhalo:"metal",crystalbloom:"spark",guillotine:"metal",yoyo:"neon",
+  sonicboom:"thin",bulldozer:"dust",plinko:"spark",aegisdome:"neon",gravitylasso:"plasma",laserplow:"thin",conveyor:"neon",geostamp:"dust",newtoncradle:"metal",adaptiveshell:"rainbowSpark",helix:"helix",anchorchain:"metal",landslide:"dust",bubblelift:"droplets",bridgebuilder:"greenSmoke"
 };
 
 const IMPACT_BY_CATEGORY={
@@ -51,7 +55,8 @@ const IMPACT_BY_CATEGORY={
   Jumping:"ground","Ground Sweep":"electric",Ring:"ring","Terrain Spikes":"ground","Airburst Fire":"fire",
   Solar:"radial","Air Pause":"spark","Air Drop":"burst","Fragment Burst":"burst","Apex Drop":"shock",
   "Sine Barrage":"electric","Growing Bounce":"ring","Multistage Impact":"star","Impact Barrage":"fire","Global Seismic":"terrain",
-  "Chaos Water":"splash","Underground Volley":"dust","Split Roller":"ground","Self Burst":"shock","Kinetic Field":"ring","Beam Trap":"electric","Orbit Dive":"orbital","Portal Split":"field","Beam Geometry":"beam","Chain Line":"ground","Displacement":"spark","Trap Terraform":"terrain","Closing Walls":"field","Kinetic Trick":"ring","Orbiting Projectile":"orbital","Rotating Beam":"beam","Shock Utility":"shock","Position Trick":"field","Cross-Dimension":"field","Ground Crossfire":"ground","Contracting Ring":"ring","Growth Shatter":"star","Falling Line":"beam","Tether Sweep":"ring"
+  "Chaos Water":"splash","Underground Volley":"dust","Split Roller":"ground","Self Burst":"shock","Kinetic Field":"ring","Beam Trap":"electric","Orbit Dive":"orbital","Portal Split":"field","Beam Geometry":"beam","Chain Line":"ground","Displacement":"spark","Trap Terraform":"terrain","Closing Walls":"field","Kinetic Trick":"ring","Orbiting Projectile":"orbital","Rotating Beam":"beam","Shock Utility":"shock","Position Trick":"field","Cross-Dimension":"field","Ground Crossfire":"ground","Contracting Ring":"ring","Growth Shatter":"star","Falling Line":"beam","Tether Sweep":"ring",
+  "Sonic Trail":"shock","Terrain Vehicle":"ground","Pegboard":"ring","Projectile Shield":"field","Orbital Displacement":"ring","Angle Cutter":"beam","Persistent Motion":"ground","Pattern Terraform":"terrain","Impulse Transfer":"ring","Context Weapon":"burst","Helix Rise":"star","Movement Lock":"ground","Terrain Collapse":"terrain","Float Displacement":"splash","Causeway Terraform":"terrain"
 };
 
 export function weaponVisual(def,tier=1){

@@ -95,11 +95,6 @@ function windSettingMultiplier(v){
 }
 function densityChance(v){return v==="off"?0:v==="low"?.28:v==="high"?.90:.58;}
 function mobilityGrip(v){return v==="improved"?.90:v==="climber"?1.04:v==="allterrain"?1.20:.80;}
-function iceModifiers(s,x){
-  let grip=1,fuel=1;
-  for(const f of s?.fields||[]){if(f.kind!=="icePatch"||f.done)continue;if(Math.abs(x-f.x)<=f.span*.5){grip=Math.min(grip,f.gripFactor||1);fuel=Math.max(fuel,f.fuelMult||1);}}
-  return {grip,fuel};
-}
 
 function normalizeSettings(settings={}){
   return {...MATCH_DEFAULTS,...settings};
@@ -347,28 +342,41 @@ export function addWeaponReward(s,t,{airdrop=false}={}){
   return slot;
 }
 
+function iceModifiers(s,x){
+  let grip=1,fuel=1;
+  for(const f of s.fields||[])if(f.kind==="icePatch"&&f.turnsLeft>0&&Math.abs(x-f.x)<=f.span*.5){grip=Math.min(grip,f.grip||1);fuel=Math.max(fuel,f.fuel||1);}
+  return {grip,fuel};
+}
+function anchorConstraint(s,t){
+  let lo=9,hi=s.width-9,active=false;
+  for(const f of s.fields||[]){
+    if(f.kind!=="anchorChain"||!(f.turnsLeft>0)||!f.targetIds?.includes(t.id))continue;
+    active=true;lo=Math.max(lo,f.x-(f.leash||78));hi=Math.min(hi,f.x+(f.leash||78));
+  }
+  return {active,lo,hi};
+}
 export function moveTank(s,t,dir,distance=5){
   if(!s||!t?.alive||s.phase!=="aim"||currentTank(s)?.id!==t.id||t.fuel<=0)return false;
   dir=Math.sign(dir);if(!dir)return false;
-  const requested=Math.min(Math.abs(distance),Math.max(1,t.fuel));
+  const ice=iceModifiers(s,t.x),effectiveGrip=(t.grip||.8)*ice.grip;
+  const requested=Math.min(Math.abs(distance),Math.max(1,t.fuel)/ice.fuel);
   const sub=Math.max(1,Math.ceil(requested/2.25));
   const step=requested/sub;
   let moved=0,totalCost=0;
   for(let i=0;i<sub;i++){
-    const cx=t.x,nx=clamp(cx+dir*step,9,s.width-9);if(nx===cx)break;
+    const cx=t.x,anchor=anchorConstraint(s,t),nx=clamp(cx+dir*step,anchor.lo,anchor.hi);if(nx===cx){if(anchor.active&&moved<=.01){s.message="ANCHOR CHAIN LIMIT";s.messageTimer=.6;}break;}
     const cy=terrainY(s,cx),ny=terrainY(s,nx),uphill=Math.max(0,cy-ny);
     const local=Math.abs(terrainSlope(s,nx));
     const broad=Math.abs(Math.atan2(terrainY(s,nx+10)-terrainY(s,nx-10),20));
-    const ice=iceModifiers(s,nx),gripNow=(t.grip||.8)*ice.grip;
-    // Narrow one/two-pixel crater lips are more forgiving than broad cliffs. Ice can lower the
-    // effective grip without changing the tank's permanent track stat.
-    const narrowLip=local>gripNow&&broad<gripNow*.90&&uphill<7+gripNow*7;
-    const stepLimit=8+gripNow*10;
-    if((local>gripNow&&!narrowLip)||uphill>stepLimit){
-      if(moved<=.01){s.message=ice.grip<.99?"TRACKS SLIPPING ON CRYO GEL":"TRACKS CAN'T CLIMB THIS SLOPE";s.messageTimer=.6;}
+    // Narrow one/two-pixel crater lips are more forgiving than broad cliffs. This prevents tanks
+    // getting trapped on tiny sharp scars while preserving meaningful slope upgrades.
+    const narrowLip=local>effectiveGrip&&broad<effectiveGrip*.90&&uphill<7+effectiveGrip*7;
+    const stepLimit=8+effectiveGrip*10;
+    if((local>effectiveGrip&&!narrowLip)||uphill>stepLimit){
+      if(moved<=.01){s.message="TRACKS CAN'T CLIMB THIS SLOPE";s.messageTimer=.6;}
       break;
     }
-    const effectiveSlope=Math.min(local,Math.max(broad,gripNow*.45));
+    const effectiveSlope=Math.min(local,Math.max(broad,effectiveGrip*.45));
     const cost=step*(1+effectiveSlope*1.55)*(t.fuelEfficiency||1)*ice.fuel;
     if(totalCost+cost>t.fuel+.01)break;
     t.x=nx;t.y=tankGround(s,t);moved+=step;totalCost+=cost;
@@ -1054,6 +1062,162 @@ function spawnStraightSpecial(s,p,weaponId,kind,x,y,tx,ty,speed,damage,radius,co
   const dx=tx-x,dy=ty-y,len=Math.max(1,Math.hypot(dx,dy));
   s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId,tier:p.tier,kind,x,y,vx:dx/len*speed,vy:dy/len*speed,age:0,alive:true,radius:3,noGravity:true,windFactor:0,skipSkillObjects:true,damageMult:1,critShot:!!p.critShot,x2Active:!!p.x2Active,specialDamage:damage*(p.damageMult||1),specialRadius:radius,customColor:color||weaponDef(weaponId,p.tier).color,hitGrace:.03,maxAge:3.5});
 }
+
+
+// ---------------- V15 weapon content helpers ----------------
+function v15FieldMeta(p,d,extra={}){return v12FieldMeta(p,d,extra);}
+function bridgeCauseway(s,x0,x1,lift=34){
+  const a=Math.max(3,Math.floor(Math.min(x0,x1))),b=Math.min(s.terrain.length-4,Math.ceil(Math.max(x0,x1)));if(b-a<4)return;
+  const ya=terrainY(s,a),yb=terrainY(s,b),span=Math.max(1,b-a);
+  for(let x=a;x<=b;x++){
+    const q=(x-a)/span,ideal=ya+(yb-ya)*q-Math.sin(Math.PI*q)*lift;
+    // Construction only adds material / softens deep valleys; it never digs a new trench.
+    if(s.terrain[x]>ideal)s.terrain[x]+=(ideal-s.terrain[x])*.82;
+  }
+  for(let pass=0;pass<2;pass++){const c=s.terrain.slice();for(let x=a+2;x<=b-2;x++)s.terrain[x]=(c[x-2]+c[x-1]+c[x]*2+c[x+1]+c[x+2])/6;}
+}
+function stampTerrain(s,cx,span,teeth,raise,cut,phase=0){
+  const step=span/Math.max(1,teeth-1);
+  for(let i=0;i<teeth;i++){
+    const xx=clamp(cx-span*.5+i*step,5,s.width-5),up=(i+phase)%2===0;
+    if(up)modifyTerrainRaise(s,xx,Math.max(9,step*.34),raise);
+    else modifyTerrainCrater(s,xx,terrainY(s,xx),Math.max(10,step*.38),Math.max(.16,cut/36));
+  }
+}
+function relaxTerrainStrip(s,cx,span,strength=.22){
+  const a=Math.max(2,Math.floor(cx-span*.5)),b=Math.min(s.terrain.length-3,Math.ceil(cx+span*.5)),c=s.terrain.slice();
+  for(let x=a;x<=b;x++){const avg=(c[x-2]+c[x-1]+c[x]+c[x+1]+c[x+2])/5;s.terrain[x]+=(avg-s.terrain[x])*strength;}
+}
+function resolveV15Impact(s,p,d,x,y,hitTank){
+  const owner=ownerOf(s,p),mult=p.damageMult||1,meta=v15FieldMeta(p,d),gy=terrainY(s,x),incoming=Math.sign(p.vx||1)||1;
+  if(p.weaponId==="sonicboom"){
+    p.alive=false;explosion(s,x,y,d.radius||30,d.damage*mult,owner,.35,d.color,{crit:!!p.critShot,x2:!!p.x2Active});if((d.sonicFinal||0)>0){s.fx.push({kind:"sonicCrown",x,y,life:.48,max:.48,color:d.color,r:(d.radius||30)+28});explosion(s,x,y,(d.radius||30)+18,d.sonicFinal*mult,owner,.04,"#e9fdff",{crit:!!p.critShot,x2:!!p.x2Active});}return true;
+  }
+  if(p.weaponId==="bulldozer"){
+    p.alive=false;const passes=d.dozerPasses||1,life=.65+passes*(d.dozerSpan||150)/(d.dozerSpeed||92);
+    s.fields.push({kind:"dozerField",x,y:gy-8,startX:x,dir:incoming,pass:0,passes,returnPass:!!d.dozerReturn,speed:d.dozerSpeed||92,span:d.dozerSpan||150,damage:(d.dozerDamage||18)*mult,push:d.dozerPush||22,raise:d.dozerRaise||7,final:(d.dozerFinal||0)*mult,life,max:life,hitKeys:{},...meta});return true;
+  }
+  if(p.weaponId==="plinko"){
+    p.alive=false;const rows=d.plinkoRows||6,span=d.plinkoSpan||118,n=d.plinkoBalls||1,top=Math.max(42,gy-210),pegs=[];
+    for(let r=0;r<rows;r++){const cols=5+(r%2),yy=top+34+r*20;for(let c=0;c<cols;c++){const q=(c-(cols-1)/2)/(Math.max(1,cols-1)/2);pegs.push({x:x+q*span*.43+(r%2?span*.055:0),y:yy});}}
+    const balls=[];for(let i=0;i<n;i++){const gold=!!d.plinkoGold&&i===n-1;balls.push({id:i,x:x+(i-(n-1)/2)*12,y:top-22,fromX:x+(i-(n-1)/2)*12,fromY:top-22,toX:x,toY:top,row:-1,seg:0,done:false,gold});}
+    const life=1.25+rows*.18+n*.10;s.fields.push({kind:"plinkoBoard",x,y:gy,top,span,rows,pegs,balls,damage:(d.plinkoDamage||32)*mult,gold:(d.plinkoGold||0)*mult,final:(d.plinkoFinal||0)*mult,life,max:life,...meta});return true;
+  }
+  if(p.weaponId==="aegisdome"){
+    p.alive=false;s.fields.push({kind:"aegisDome",x,y:gy,dormant:true,life:9999,max:9999,turnsLeft:d.aegisTurns||2,r:d.aegisRadius||76,charges:d.aegisCharges||1,maxCharges:d.aegisCharges||1,reflect:d.aegisReflect||0,reflected:0,collapse:(d.aegisCollapse||0)*mult,...meta});s.fx.push({kind:"aegisDeploy",x,y:gy,r:d.aegisRadius||76,life:.48,max:.48,color:d.color});return true;
+  }
+  if(p.weaponId==="gravitylasso"){
+    p.alive=false;const targets=s.tanks.filter(t=>isEnemy(s,owner,t)&&Math.hypot(t.x-x,t.y-gy)<=(d.lassoRange||128)).sort((a,b)=>Math.hypot(a.x-x,a.y-gy)-Math.hypot(b.x-x,b.y-gy)).slice(0,d.lassoTargets||1);if(!targets.length)return true;
+    const life=.72+(d.lassoTurns||1)*.72;s.fields.push({kind:"gravityLasso",x,y:gy-16,life,max:life,targetIds:targets.map(t=>t.id),starts:targets.map(t=>({x:t.x,y:t.y})),turns:d.lassoTurns||1,orbit:d.lassoRadius||52,damage:(d.lassoDamage||28)*mult,throw:d.lassoThrow||42,final:(d.lassoFinal||0)*mult,dir:incoming,...meta});return true;
+  }
+  if(p.weaponId==="laserplow"){
+    p.alive=false;const len=Math.hypot(p.vx||1,p.vy||1)||1,ux=(p.vx||1)/len,uy=(p.vy||1)/len,rays=[];
+    const addRay=(ax,ay,bx,by)=>rays.push({ax,ay,bx,by});
+    if(d.cutDiamond){for(const a of [-.55,-.18,.18,.55]){const ca=Math.cos(a),sa=Math.sin(a),vx=ux*ca-uy*sa,vy=ux*sa+uy*ca;addRay(x,y,x+vx*(d.cutLength||225),y+vy*(d.cutLength||225));}}
+    else if(d.cutCross){addRay(x,y,x+ux*(d.cutLength||190),y+uy*(d.cutLength||190));addRay(x,y,x-uy*(d.cutLength||190),y+ux*(d.cutLength||190));}
+    else if((d.cutRays||1)>1){const off=d.cutParallel||18,nx=-uy,ny=ux;for(const q of [-.5,.5])addRay(x+nx*off*q,y+ny*off*q,x+nx*off*q+ux*(d.cutLength||160),y+ny*off*q+uy*(d.cutLength||160));}
+    else addRay(x,y,x+ux*(d.cutLength||130),y+uy*(d.cutLength||130));
+    s.fields.push({kind:"laserPlow",x,y:gy,life:.72,max:.72,rays,width:d.cutWidth||11,damage:(d.cutDamage||40)*mult,depth:d.cutDepth||.32,final:(d.cutFinal||0)*mult,applied:false,...meta});return true;
+  }
+  if(p.weaponId==="conveyor"){
+    p.alive=false;s.fields.push({kind:"conveyorBelt",x,y:gy,dormant:true,life:9999,max:9999,turnsLeft:d.beltTurns||3,span:d.beltSpan||105,speed:d.beltSpeed||18,damage:(d.beltDamage||8)*mult,mode:d.beltMode||"forward",dir:incoming,centerPulse:(d.beltCenterPulse||0)*mult,tick:.2,hitKeys:{},...meta});s.fx.push({kind:"beltDeploy",x,y:gy,span:d.beltSpan||105,life:.40,max:.40,color:d.color});return true;
+  }
+  if(p.weaponId==="geostamp"){
+    p.alive=false;const presses=d.stampPresses||1,life=.55+presses*.52;s.fields.push({kind:"geoStamp",x,y:gy,life,max:life,teeth:d.stampTeeth||3,span:d.stampSpan||105,raise:d.stampRaise||22,cut:d.stampCut||14,damage:(d.stampDamage||16)*mult,presses,index:0,tick:.30,fractal:!!d.stampFractal,final:(d.stampFinal||0)*mult,...meta});return true;
+  }
+  if(p.weaponId==="newtoncradle"){
+    p.alive=false;const n=d.cradleBalls||5,span=d.cradleSpan||118,dir=incoming,markerEnd=x,baseX=x-dir*span,balls=[];for(let i=0;i<n;i++){const q=i/(n-1);const xx=baseX+(markerEnd-baseX)*q;balls.push({x:xx,y:Math.min(gy-26,terrainY(s,xx)-30)});}const transfers=d.cradleTransfers||1,life=.65+transfers*.68;s.fields.push({kind:"newtonCradle",x,y:gy,life,max:life,balls,dir,transfers,damage:(d.cradleDamage||34)*mult,final:(d.cradleFinal||0)*mult,index:0,tick:.26,swing:0,...meta});return true;
+  }
+  if(p.weaponId==="adaptiveshell"){
+    p.alive=false;const dmg=(d.adaptiveDamage||38)*mult,near=s.tanks.filter(t=>isEnemy(s,owner,t)).sort((a,b)=>Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y))[0],nearDist=near?Math.hypot(near.x-x,near.y-y):Infinity;
+    let mode="breach";
+    if(hitTank&&isEnemy(s,owner,hitTank)){mode="pierce";damageTankP(s,p,hitTank,dmg*1.15,owner);if(d.adaptiveDouble)explosionFlat(s,p,hitTank.x,hitTank.y,28,dmg*.45,owner,.04,d.color);}
+    else if(near&&nearDist<Math.max(95,d.radius*2.6)){mode="seek";const seekers=d.adaptiveSeekers||Math.max(1,d.adaptiveLevel||1);for(let i=0;i<seekers;i++){const sx=x+rand(-18,18),sy=gy-28-rand(0,22),tx=near.x+rand(-6,6),ty=near.y,dx=tx-sx,dy=ty-sy,l=Math.max(1,Math.hypot(dx,dy));s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"adaptiveSeeker",x:sx,y:sy,vx:dx/l*(220+i*7),vy:dy/l*(220+i*7),age:-i*.045,alive:true,radius:3,noGravity:true,windFactor:0,skipSkillObjects:true,damageMult:1,critShot:!!p.critShot,x2Active:!!p.x2Active,specialDamage:(dmg*.72)/seekers+7,specialRadius:16,customColor:d.color,hitGrace:.03,maxAge:2.5});}if(d.adaptiveDouble)explosionFlat(s,p,x,gy,34,dmg*.36,owner,.10,d.color);}
+    else{explosionFlat(s,p,x,gy,38,dmg*.62,owner,.48,d.color);const n=2+(d.adaptiveLevel||1);for(let i=0;i<n;i++){const xx=clamp(x+(i-(n-1)/2)*18,6,s.width-6);modifyTerrainCrater(s,xx,terrainY(s,xx),12,.26);}}
+    if((d.adaptiveFinal||0)>0)explosionFlat(s,p,x,gy,44,d.adaptiveFinal*mult,owner,.05,"#fff0a8");s.fx.push({kind:"adaptiveMorph",x,y:gy-10,mode,life:.58,max:.58,color:d.color});return true;
+  }
+  if(p.weaponId==="helix"){
+    p.alive=false;const life=1.10+(d.helixHeight||120)/190;s.fields.push({kind:"helixRise",x,y:gy,life,max:life,strands:d.helixStrands||2,height:d.helixHeight||120,turns:d.helixTurns||1.6,drops:d.helixDrops||4,damage:(d.helixDamage||16)*mult,final:(d.helixFinal||0)*mult,spawned:false,...meta});return true;
+  }
+  if(p.weaponId==="anchorchain"){
+    p.alive=false;const targets=s.tanks.filter(t=>isEnemy(s,owner,t)&&Math.hypot(t.x-x,t.y-gy)<=(d.anchorRange||115)).sort((a,b)=>Math.hypot(a.x-x,a.y-gy)-Math.hypot(b.x-x,b.y-gy)).slice(0,d.anchorTargets||1);if(!targets.length)return true;
+    for(const t of targets)damageTank(s,t,(d.anchorDamage||12)*mult,owner,{crit:!!p.critShot,x2:!!p.x2Active});s.fields.push({kind:"anchorChain",x,y:gy-4,dormant:true,life:9999,max:9999,turnsLeft:d.anchorTurns||2,targetIds:targets.map(t=>t.id),leash:d.anchorLeash||78,breakDamage:(d.anchorBreak||0)*mult,...meta});return true;
+  }
+  if(p.weaponId==="landslide"){
+    p.alive=false;const pulses=d.slidePulses||4,life=.58+pulses*.18;s.fields.push({kind:"landSlide",x,y:gy,life,max:life,span:d.slideSpan||125,pulses,damage:(d.slideDamage||10)*mult,shift:d.slideShift||12,final:(d.slideFinal||0)*mult,index:0,tick:.12,...meta});return true;
+  }
+  if(p.weaponId==="bubblelift"){
+    p.alive=false;const targets=s.tanks.filter(t=>isEnemy(s,owner,t)&&Math.hypot(t.x-x,t.y-gy)<=(d.bubbleRange||120)).sort((a,b)=>Math.hypot(a.x-x,a.y-gy)-Math.hypot(b.x-x,b.y-gy)).slice(0,d.bubbleTargets||1);if(!targets.length)return true;
+    const life=1.55;s.fields.push({kind:"bubbleLift",x,y:gy-20,life,max:life,targetIds:targets.map(t=>t.id),starts:targets.map(t=>({x:t.x,y:t.y})),height:d.bubbleHeight||82,drift:d.bubbleDrift||34,damage:(d.bubbleDamage||20)*mult,final:(d.bubbleFinal||0)*mult,dir:incoming,...meta});return true;
+  }
+  if(p.weaponId==="bridgebuilder"){
+    p.alive=false;const sx=owner?.x??x,incomingSide=Math.sign(x-sx||1),half=(d.bridgeSpan||150)*.5,a=clamp(x-incomingSide*(d.bridgeSpan||150),5,s.width-5),b=clamp(x+incomingSide*half*.16,5,s.width-5);bridgeCauseway(s,a,b,d.bridgeLift||34);const yy=terrainY(s,x);if((d.bridgeDamage||0)>0)explosionFlat(s,p,x,yy,28,(d.bridgeDamage||6)*mult,owner,0,d.color);s.fields.push({kind:"bridgeBuild",x,y:yy,life:.85,max:.85,a,b,supports:d.bridgeSupports||3,ramp:!!d.bridgeRamp,final:(d.bridgeFinal||0)*mult,...meta});return true;
+  }
+  return false;
+}
+
+function resolveV13Impact(s,p,d,x,y,hitTank){
+  const owner=ownerOf(s,p),mult=p.damageMult||1,meta=v12FieldMeta(p,d),gy=terrainY(s,x);
+  if(p.weaponId==="dicecore"){
+    p.alive=false;const interval=d.diceInterval||.38,rolls=d.diceRolls||4,life=rolls*interval+1.05;
+    s.fields.push({kind:"diceCore",x,y:gy-34,life,max:life,interval,tick:.16,index:0,rolls,damage:(d.diceDamage||13)*mult,span:d.diceSpan||82,double:!!d.diceDouble,triple:!!d.diceTriple,final:(d.diceFinal||0)*mult,lastFace:1,...meta});return true;
+  }
+  if(p.weaponId==="sentryseed"){
+    p.alive=false;const n=d.sentryCount||1,positions=[];for(let i=0;i<n;i++){const xx=clamp(x+(i-(n-1)/2)*42,12,s.width-12);positions.push({x:xx,y:terrainY(s,xx)-8,flash:0});}
+    const life=d.sentryTime||2.2;s.fields.push({kind:"sentryBattery",x,y:gy,life,max:life,turrets:positions,shots:d.sentryShots||5,damage:(d.sentryDamage||13)*mult,range:d.sentryRange||280,tick:.18,index:0,heavy:(d.sentryHeavy||0)*mult,final:(d.sentryFinal||0)*mult,...meta});return true;
+  }
+  if(p.weaponId==="billiards"){
+    p.alive=false;const n=d.poolBalls||7,span=d.poolSpan||128,balls=[];
+    for(let i=0;i<n;i++){const a=(i/(Math.max(1,n-1))-.5)*1.45,spd=(d.poolSpeed||155)*(1+rand(-.10,.10));balls.push({x,y:gy-13,vx:Math.sin(a)*spd+rand(-12,12),vy:-Math.cos(a)*spd*.50-rand(25,70),r:i===n-1&&d.poolEight?7:5,id:i,hit:{}});}
+    const life=2.25+(d.poolBounces||2)*.32;s.fields.push({kind:"poolTable",x,y:gy-10,life,max:life,balls,span,damage:(d.poolDamage||15)*mult,bounces:d.poolBounces||2,rails:!!d.poolRails,cue:!!d.poolCue,eight:(d.poolEight||0)*mult,railPulse:(d.poolRailPulse||0)*mult,...meta});return true;
+  }
+  if(p.weaponId==="launchpad"){
+    p.alive=false;const targets=s.tanks.filter(t=>isEnemy(s,owner,t)&&Math.abs(t.x-x)<=(d.launchRange||118)).sort((a,b)=>Math.abs(a.x-x)-Math.abs(b.x-x)).slice(0,d.launchTargets||1);
+    if(!targets.length){s.fx.push({kind:"launchMiss",x,y:gy,life:.45,max:.45,color:d.color});return true;}
+    const life=d.launchTime||1.15;s.fields.push({kind:"launchPad",x,y:gy,life,max:life,targetIds:targets.map(t=>t.id),starts:targets.map(t=>t.y),height:d.launchHeight||92,damage:(d.launchDamage||26)*mult,airburst:(d.launchAirburst||0)*mult,hit:false,...meta});return true;
+  }
+  if(p.weaponId==="chessknight"){
+    p.alive=false;const n=d.knightCount||1,span=d.knightSpan||108,paths=[];
+    const target=nearestEnemy(s,p.owner,x,gy,span*.75),center=target&&Math.abs(target.x-x)<span*.75?target.x:x;
+    for(let k=0;k<n;k++){const pts=[],jumps=d.knightJumps||5;let xx=clamp(center+(k-(n-1)/2)*32,12,s.width-12);for(let j=0;j<jumps;j++){const pattern=[-.72,.46,-.25,.68,0,-.48,.28];let nx=clamp(center+pattern[(j+k*2)%pattern.length]*span*.58+rand(-9,9),12,s.width-12);if(target&&j%3===2)nx=clamp(target.x+rand(-16,16),12,s.width-12);pts.push({x:nx,y:terrainY(s,nx)-10});xx=nx;}paths.push(pts);}
+    const life=.55+(d.knightJumps||5)*.25;s.fields.push({kind:"knightField",x:center,y:gy,life,max:life,paths,damage:(d.knightDamage||14)*mult,r:d.radius||27,tick:.18,index:0,rook:(d.knightRook||0)*mult,final:(d.knightFinal||0)*mult,...meta});return true;
+  }
+  if(p.weaponId==="cyclone"){
+    p.alive=false;const life=d.cycloneTime||1.85;s.fields.push({kind:"cycloneField",x,y:gy-20,life,max:life,count:d.cycloneCount||1,range:d.cycloneRange||82,damage:(d.cycloneDamage||8)*mult,force:d.cycloneForce||13,final:(d.cycloneFinal||0)*mult,tick:.12,hitCycle:0,...meta});return true;
+  }
+  if(p.weaponId==="rocketcarousel"){
+    p.alive=false;const life=d.carouselTime||1.65;s.fields.push({kind:"rocketCarousel",x,y:gy-78,life,max:life,pods:d.carouselPods||6,shots:d.carouselShots||6,damage:(d.carouselDamage||12)*mult,orbit:d.carouselRadius||62,tick:.14,index:0,heavy:d.carouselHeavy||0,final:(d.carouselFinal||0)*mult,...meta});return true;
+  }
+  if(p.weaponId==="kaleidoscope"){
+    p.alive=false;const shooter=owner||{x:x-150,y:gy},n=d.mirrorCount||2,span=d.prismSpan||105,nodes=[];for(let i=0;i<n;i++){const q=(i+1)/(n+1),xx=shooter.x+(x-shooter.x)*q+Math.sin(i*2.2)*span*.34,yy=Math.min(terrainY(s,xx)-28,gy-62-(i%2)*34);nodes.push({x:clamp(xx,10,s.width-10),y:yy});}
+    const target=nearestEnemy(s,p.owner,x,gy,210),end=target?{x:target.x,y:target.y}:{x,y:gy-8};s.fields.push({kind:"prismBank",x,y:gy,life:1.05,max:1.05,nodes,start:{x:shooter.x,y:shooter.y-10},end,damage:(d.beamDamage||34)*mult,dual:!!d.prismDual,returnBeam:!!d.prismReturn,final:(d.prismFinal||0)*mult,applied:false,...meta});return true;
+  }
+  if(p.weaponId==="proximitymine"){
+    p.alive=false;const n=d.mineCount||1;for(let i=0;i<n;i++){const xx=clamp(x+(i-(n-1)/2)*48,10,s.width-10);s.fields.push({kind:"proximityMine",x:xx,y:terrainY(s,xx)-5,life:9999,max:9999,dormant:true,turnsLeft:d.mineTurns||4,sensor:d.mineSensor||62,damage:(d.mineDamage||38)*mult,r:d.radius||42,final:(d.mineFinal||0)*mult,armedDelay:.45,...meta});}return true;
+  }
+  if(p.weaponId==="cryogel"){
+    p.alive=false;s.fields.push({kind:"icePatch",x,y:gy,life:9999,max:9999,dormant:true,turnsLeft:d.iceTurns||3,span:d.iceSpan||110,grip:d.iceGrip||.72,fuel:d.iceFuel||1.22,damage:(d.iceDamage||8)*mult,shards:d.iceShards||0,...meta});explosionFlat(s,p,x,gy,28,(d.iceDamage||8)*mult,owner,.03,d.color);return true;
+  }
+  if(p.weaponId==="magnetron"){
+    p.alive=false;const pulses=d.magnetPulses||3,life=.65+pulses*.29;s.fields.push({kind:"magnetron",x,y:gy-9,life,max:life,pulses,range:d.magnetRange||122,force:d.magnetForce||34,damage:(d.magnetDamage||12)*mult,poles:d.magnetPoles||1,final:(d.magnetFinal||0)*mult,tick:.12,index:0,...meta});return true;
+  }
+  if(p.weaponId==="emp"){
+    p.alive=false;const r=d.radius||36;for(const t of s.tanks){if(!t.alive||!isEnemy(s,owner,t)||Math.hypot(t.x-x,t.y-y)>r+13)continue;damageTank(s,t,(d.empDamage||16)*mult,owner,damageMeta(p));t.overcharge=Math.max(0,t.overcharge-(d.empOvercharge||.35)*100);t.overchargeReady=t.overcharge>=100;t.nextFuelPenalty=Math.max(t.nextFuelPenalty||0,d.empFuel||.25);if(d.empArmor)t.armor=Math.max(0,(t.armor||0)-d.empArmor);}
+    s.fx.push({kind:"empBurst",x,y:gy-8,r,life:.55,max:.55,color:d.color});return true;
+  }
+  if(p.weaponId==="leech"){
+    p.alive=false;const targets=s.tanks.filter(t=>isEnemy(s,owner,t)&&Math.hypot(t.x-x,t.y-y)<=(d.leechRange||130)).sort((a,b)=>Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y)).slice(0,d.leechTargets||1);if(!targets.length)return true;
+    const pulses=d.leechPulses||2,life=.45+pulses*.35;s.fields.push({kind:"leechField",x,y:gy,life,max:life,targetIds:targets.map(t=>t.id),pulses,damage:(d.leechDamage||14)*mult,heal:d.leechHeal||.45,armor:!!d.leechArmor,final:(d.leechFinal||0)*mult,tick:.16,index:0,...meta});return true;
+  }
+  if(p.weaponId==="tetris"){
+    p.alive=false;if((d.blockImpact||0)>0)explosionFlat(s,p,x,gy,30,d.blockImpact*mult,owner,0,d.color);const count=d.blockCount||3,life=.75+count*.20;s.fields.push({kind:"tetrisDrop",x,y:gy,life,max:life,count,damage:(d.blockDamage||18)*mult,raise:d.blockRaise||18,span:d.blockSpan||92,bombs:d.blockBombs||0,clear:(d.blockClear||0)*mult,reactor:(d.blockReactor||0)*mult,tick:.10,index:0,...meta});return true;
+  }
+  if(p.weaponId==="eclipse"){
+    p.alive=false;const life=d.eclipseTime||1.8;s.fields.push({kind:"eclipseField",x,y:gy-12,life,max:life,moons:d.eclipseMoons||1,passes:d.eclipsePasses||1,damage:(d.eclipseDamage||16)*mult,width:d.eclipseWidth||34,final:(d.eclipseFinal||0)*mult,hitKeys:{},...meta});return true;
+  }
+  return false;
+}
+
 function resolveV12Impact(s,p,d,x,y,hitTank){
   const owner=ownerOf(s,p),mult=p.damageMult||1,meta=v12FieldMeta(p,d),gy=terrainY(s,x);
   noteTelemetryProximity(s,owner,x,y,d.radius||0);
@@ -1064,10 +1228,10 @@ function resolveV12Impact(s,p,d,x,y,hitTank){
     s.fx.push({kind:"dualSplit",x,y:gy,life:.44,max:.44,color:d.color});return true;
   }
   if(p.weaponId==="pendulum"){
-    p.alive=false;s.fields.push({kind:"pendulumField",x,y:gy-8,life:1.05+(d.pendulumPasses||3)*.34,max:1.05+(d.pendulumPasses||3)*.34,orbs:d.pendulumOrbs||1,passes:d.pendulumPasses||3,span:d.pendulumSpan||82,rope:d.pendulumRope||132,damage:(d.pendulumDamage||20)*mult,final:(d.pendulumFinal||0)*mult,hitKeys:{},...meta});return true;
+    p.alive=false;s.fields.push({kind:"pendulumField",x,y:gy-11,life:1.05+(d.pendulumPasses||3)*.34,max:1.05+(d.pendulumPasses||3)*.34,orbs:d.pendulumOrbs||1,passes:d.pendulumPasses||3,span:d.pendulumSpan||82,rope:d.pendulumRope||132,hitRadius:d.pendulumHitRadius||24,damage:(d.pendulumDamage||20)*mult,final:(d.pendulumFinal||0)*mult,hitKeys:{},...meta});return true;
   }
   if(p.weaponId==="teslagate"){
-    p.alive=false;s.fields.push({kind:"teslaGate",x,y:gy,life:1.10+(d.gatePulses||3)*.22,max:1.10+(d.gatePulses||3)*.22,pylons:d.gatePylons||2,pulses:d.gatePulses||3,span:d.gateSpan||118,damage:(d.gateDamage||19)*mult,cross:!!d.gateCross,pulseIndex:0,tick:.24,...meta});return true;
+    p.alive=false;s.fields.push({kind:"teslaGate",x,y:gy,life:1.10+(d.gatePulses||3)*.22,max:1.10+(d.gatePulses||3)*.22,pylons:d.gatePylons||2,pulses:d.gatePulses||3,span:d.gateSpan||118,beamHeight:d.gateBeamHeight||12,damage:(d.gateDamage||19)*mult,cross:!!d.gateCross,pulseIndex:0,tick:.24,...meta});return true;
   }
   if(p.weaponId==="satellite"){
     p.alive=false;s.fields.push({kind:"satelliteOrbit",x,y:gy-36,life:(d.satelliteOrbit||.95)+1.05,max:(d.satelliteOrbit||.95)+1.05,orbitTime:d.satelliteOrbit||.95,count:d.satelliteCount||3,orbitRadius:d.satelliteRadius||78,damage:(d.satelliteDamage||18)*mult,core:(d.satelliteCore||0)*mult,spawned:false,...meta});return true;
@@ -1082,7 +1246,7 @@ function resolveV12Impact(s,p,d,x,y,hitTank){
     p.alive=false;s.fields.push({kind:"prismCage",x,y:gy-8,life:1.10+(d.cagePulses||3)*.25,max:1.10+(d.cagePulses||3)*.25,sides:d.cageSides||3,pulses:d.cagePulses||3,span:d.cageSpan||76,height:d.cageHeight||106,damage:(d.cageDamage||20)*mult,final:(d.cageFinal||0)*mult,pulseIndex:0,tick:.28,...meta});return true;
   }
   if(p.weaponId==="domino"){
-    p.alive=false;s.fields.push({kind:"dominoChain",x,y:gy,life:(d.dominoCount||5)*(d.dominoDelay||.13)+(d.dominoReturn?1.15:.55),max:(d.dominoCount||5)*(d.dominoDelay||.13)+(d.dominoReturn?1.15:.55),count:d.dominoCount||5,spacing:d.dominoSpacing||34,damage:(d.dominoDamage||14)*mult,r:d.radius||24,delay:d.dominoDelay||.13,tick:.08,index:0,returning:false,return:!!d.dominoReturn,...meta});return true;
+    p.alive=false;const dl=(d.dominoCount||6)*(d.dominoDelay||.12)+(d.dominoReturn?1.05:.50);s.fields.push({kind:"dominoChain",x,y:gy,life:dl,max:dl,count:d.dominoCount||6,spacing:d.dominoSpacing||22,damage:(d.dominoDamage||15)*mult,r:d.radius||24,delay:d.dominoDelay||.12,tick:.08,index:0,returning:false,return:!!d.dominoReturn,final:(d.dominoFinal||0)*mult,...meta});return true;
   }
   if(p.weaponId==="skyhook"){
     p.alive=false;const target=nearestEnemy(s,p.owner,x,y,d.hookRange||190);
@@ -1091,14 +1255,16 @@ function resolveV12Impact(s,p,d,x,y,hitTank){
   }
   if(p.weaponId==="sandcastle"){
     p.alive=false;const span=d.castleSpan||92,raise=d.castleRaise||40;modifyTerrainRaise(s,clamp(x-span*.48,8,s.width-8),16,raise);modifyTerrainRaise(s,clamp(x+span*.48,8,s.width-8),16,raise);if(d.castleTower)modifyTerrainRaise(s,x,20,raise*.72);
-    s.fields.push({kind:"castleDrop",x,y:terrainY(s,x)-92,life:1.25,max:1.25,drops:d.castleDrops||3,damage:(d.castleDropDamage||14)*mult,r:d.radius||22,span,tick:.10,index:0,...meta});return true;
+    s.fields.push({kind:"castleDrop",x,y:terrainY(s,x)-92,life:1.35,max:1.35,drops:d.castleDrops||3,damage:(d.castleDropDamage||14)*mult,r:d.radius||22,span,tick:.10,index:0,cannons:d.castleCannons||0,final:(d.castleFinal||0)*mult,...meta});return true;
   }
   if(p.weaponId==="compressor"){
     p.alive=false;s.fields.push({kind:"compressor",x,y:gy-28,life:d.compressTime||1.15,max:d.compressTime||1.15,span:d.compressSpan||126,cycles:d.compressCycles||1,damage:(d.compressDamage||19)*mult,r:d.radius||24,final:(d.compressFinal||24)*mult,hitKeys:{},...meta});return true;
   }
   if(p.weaponId==="pinball"){
-    p.alive=false;const n=d.pinNodes||3,span=d.pinSpan||88,nodes=[];for(let i=0;i<n;i++){const a=i/n*Math.PI*2-Math.PI/2,nx=clamp(x+Math.cos(a)*span,10,s.width-10),ny=Math.min(gy-25,gy-68+Math.sin(a)*span*.42);nodes.push({x:nx,y:ny});}
-    s.fields.push({kind:"pinballRig",x,y:gy-45,life:1.35+(d.pinHops||6)*.10,max:1.35+(d.pinHops||6)*.10,nodes,hops:d.pinHops||6,damage:(d.pinDamage||17)*mult,final:(d.pinFinal||0)*mult,hop:0,segT:0,from:{x,y:gy-34},to:nodes[0],hitKeys:{},...meta});return true;
+    p.alive=false;const n=d.pinNodes||4,span=d.pinSpan||82,nodes=[],target=nearestEnemy(s,p.owner,x,gy,Math.max(170,span*1.7));
+    for(let i=0;i<n;i++){const q=n<=1?.5:i/(n-1),nx=clamp(x+(q-.5)*span*1.5,10,s.width-10),ny=terrainY(s,nx)-(i%2?58:16);nodes.push({x:nx,y:ny});}
+    if(target)nodes.splice(Math.min(1,nodes.length),0,{x:target.x,y:target.y,target:true});
+    const pl=1.45+(d.pinHops||7)*.115;s.fields.push({kind:"pinballRig",x,y:gy-28,life:pl,max:pl,nodes,hops:d.pinHops||7,damage:(d.pinDamage||18)*mult,final:(d.pinFinal||0)*mult,targetId:target?.id||null,targetEvery:d.pinTargetEvery||2,hop:0,segT:0,from:{x,y:gy-16},to:nodes[0],hitKeys:{},...meta});return true;
   }
   if(p.weaponId==="molecule"){
     p.alive=false;explosionP(s,p,x,y,d.radius||26,(d.damage||28)*mult,owner,.38,d.color);
@@ -1106,7 +1272,7 @@ function resolveV12Impact(s,p,d,x,y,hitTank){
     s.fx.push({kind:"moleculeBurst",x,y,life:.48,max:.48,color:d.color,count:n});return true;
   }
   if(p.weaponId==="lighthouse"){
-    p.alive=false;s.fields.push({kind:"lighthouse",x,y:gy-8,life:d.beaconTime||1.65,max:d.beaconTime||1.65,beams:d.beaconBeams||1,turns:d.beaconTurns||1,range:d.beaconRange||430,damage:(d.beaconDamage||18)*mult,final:(d.beaconFinal||0)*mult,hitKeys:{},...meta});return true;
+    p.alive=false;s.fields.push({kind:"lighthouse",x,y:gy-8,life:d.beaconTime||1.85,max:d.beaconTime||1.85,beams:d.beaconBeams||1,turns:d.beaconTurns||1.15,range:d.beaconRange||430,beamWidth:d.beaconBeamWidth||15,counter:!!d.beaconCounter,focus:d.beaconFocus||0,solar:!!d.beaconSolar,damage:(d.beaconDamage||19)*mult,final:(d.beaconFinal||0)*mult,hitKeys:{},focusTick:.42,focusIndex:0,...meta});return true;
   }
   if(p.weaponId==="repulsor"){
     p.alive=false;s.fields.push({kind:"repulsor",x,y:gy-7,life:.72+(d.repulsePulses||2)*.28,max:.72+(d.repulsePulses||2)*.28,pulses:d.repulsePulses||2,range:d.repulseRange||120,damage:(d.repulseDamage||16)*mult,force:d.repulseForce||30,final:(d.repulseFinal||0)*mult,pulseIndex:0,tick:.12,hitKeys:{},...meta});return true;
@@ -1118,11 +1284,11 @@ function resolveV12Impact(s,p,d,x,y,hitTank){
     targets.forEach(t=>damageTank(s,t,(d.swapDamage||20)*mult,owner,damageMeta(p)));s.fx.push({kind:"swapRift",points:chain.map(t=>({x:t.x,y:t.y})),life:.62,max:.62,color:d.color});return true;
   }
   if(p.weaponId==="phantomcopy"){
-    p.alive=false;s.fields.push({kind:"phantomRift",x,y:gy-4,life:(d.phantomDelay||.35)+.85,max:(d.phantomDelay||.35)+.85,delay:d.phantomDelay||.35,shots:d.phantomShots||1,damage:(d.phantomDamage||44),r:d.radius||25,top:!!d.phantomTop,spawned:false,...meta});return true;
+    p.alive=false;s.fields.push({kind:"phantomRift",x,y:gy-4,life:(d.phantomDelay||.35)+1.05,max:(d.phantomDelay||.35)+1.05,delay:d.phantomDelay||.35,shots:d.phantomShots||1,damage:(d.phantomDamage||44),r:d.radius||25,top:!!d.phantomTop,localSpan:d.phantomLocalSpan||165,phaseRange:d.phantomPhaseRange||72,final:(d.phantomFinal||0)*mult,spawned:false,...meta});return true;
   }
   if(p.weaponId==="meteorsling"){
     p.alive=false;const shots=d.slingShots||3,span=d.slingSpan||96;for(let i=0;i<shots;i++){const delay=i*.065;for(const side of [-1,1]){const sx=clamp(x+side*span,8,s.width-8),sy=terrainY(s,sx)-5,tx=clamp(x-side*rand(8,32),8,s.width-8),ty=gy-18;const dx=tx-sx,dy=ty-sy,a=Math.atan2(-dy,dx),spd=(d.slingSpeed||175)*(1+rand(-.08,.08));s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"slingRock",x:sx,y:sy,vx:Math.cos(a)*spd,vy:-Math.sin(a)*spd,age:-delay,alive:true,radius:4,gravityMult:.78,windFactor:.25,damageMult:1,critShot:!!p.critShot,x2Active:!!p.x2Active,specialDamage:(d.slingDamage||17)*mult,specialRadius:d.radius||20,hitGrace:.04});}}
-    if(d.slingHeavy){for(const side of [-1,1]){const sx=clamp(x+side*span*.72,8,s.width-8),sy=terrainY(s,sx)-7,dx=x-sx,dy=(gy-40)-sy,a=Math.atan2(-dy,dx);s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"slingHeavy",x:sx,y:sy,vx:Math.cos(a)*(d.slingSpeed||205)*.9,vy:-Math.sin(a)*(d.slingSpeed||205)*.9,age:-.36,alive:true,radius:7,gravityMult:.72,damageMult:1,critShot:!!p.critShot,x2Active:!!p.x2Active,specialDamage:d.slingHeavy*mult,specialRadius:(d.radius||20)+10,hitGrace:.04});}}return true;
+    if(d.slingHeavy){for(const side of [-1,1]){const sx=clamp(x+side*span*.72,8,s.width-8),sy=terrainY(s,sx)-7,dx=x-sx,dy=(gy-40)-sy,a=Math.atan2(-dy,dx);s.projectiles.push({id:s.nextId++,owner:p.owner,weaponId:p.weaponId,tier:p.tier,kind:"slingHeavy",x:sx,y:sy,vx:Math.cos(a)*(d.slingSpeed||205)*.9,vy:-Math.sin(a)*(d.slingSpeed||205)*.9,age:-.36,alive:true,radius:7,gravityMult:.72,damageMult:1,critShot:!!p.critShot,x2Active:!!p.x2Active,specialDamage:d.slingHeavy*mult,specialRadius:(d.radius||20)+10,hitGrace:.04});}}if(d.slingConverge)s.fields.push({kind:"slingConverge",x,y:gy-22,life:.92,max:.92,damage:d.slingConverge*mult,r:48,done:false,...meta});return true;
   }
   if(p.weaponId==="razorhalo"){
     p.alive=false;s.fields.push({kind:"razorHalo",x,y:gy-22,life:d.haloTime||1.35,max:d.haloTime||1.35,blades:d.haloBlades||8,start:d.haloStart||112,turns:d.haloTurns||1,damage:(d.haloDamage||10)*mult,final:(d.haloFinal||0)*mult,hitKeys:{},...meta});return true;
@@ -1131,80 +1297,10 @@ function resolveV12Impact(s,p,d,x,y,hitTank){
     p.alive=false;s.fields.push({kind:"crystalBloom",x,y:gy,life:1.28,max:1.28,spikes:d.crystalSpikes||3,span:d.crystalSpan||86,damage:(d.crystalDamage||13)*mult,shards:d.crystalShards||2,core:(d.crystalCore||0)*mult,spawned:false,shattered:false,...meta});return true;
   }
   if(p.weaponId==="guillotine"){
-    p.alive=false;const n=d.bladeDrops||1,span=d.bladeLength||112;for(let i=0;i<n;i++)s.fields.push({kind:"guillotine",x:clamp(x+(i-(n-1)/2)*span*.35,15,s.width-15),startY:Math.max(28,gy-180-i*20),y:Math.max(28,gy-180-i*20),groundY:gy,length:span,life:1.25+i*(d.bladeDelay||.35),max:1.25+i*(d.bladeDelay||.35),delay:i*(d.bladeDelay||.35),damage:(d.bladeDamage||46)*mult,cross:!!d.bladeCross&&i===n-1,hitIds:[],...meta});return true;
+    p.alive=false;const n=d.bladeDrops||1,span=d.bladeLength||112,pattern=d.bladePattern||"single";for(let i=0;i<n;i++){const off=(i-(n-1)/2)*span*(pattern==="verdict"?.28:.32),startX=clamp(x+off+(pattern==="scissor"?(i%2?-55:55):0),15,s.width-15),targetX=clamp(x+off,15,s.width-15),startY=Math.max(28,gy-190-i*14);s.fields.push({kind:"guillotine",x:startX,startX,targetX,startY,y:startY,groundY:gy,length:span,life:1.18+i*(d.bladeDelay||.35),max:1.18+i*(d.bladeDelay||.35),delay:i*(d.bladeDelay||.35),damage:(d.bladeDamage||46)*mult,pattern,angle:pattern==="scissor"?(i%2?-.20:.20):pattern==="verdict"?((i%2?1:-1)*.12):0,hitIds:[],...meta});}if(d.bladeSweep)s.fields.push({kind:"guillotineSweep",x,y:gy-12,life:1.45,max:1.45,delay:1.00,length:span*1.08,damage:d.bladeSweep*mult,final:(d.bladeFinal||0)*mult,done:false,...meta});return true;
   }
   if(p.weaponId==="yoyo"){
-    p.alive=false;const sx=owner?.x??p.startX??x,sy=owner?.y??gy;s.fields.push({kind:"yoyoField",x,y:gy-9,anchorX:x,anchorY:gy-9,shooterX:sx,shooterY:sy-8,life:d.yoyoTime||1.35,max:d.yoyoTime||1.35,passes:d.yoyoPasses||2,damage:(d.yoyoDamage||18)*mult,final:(d.yoyoFinal||0)*mult,hitKeys:{},...meta});return true;
-  }
-  return false;
-}
-
-
-// ---------------- V13 Apex Arsenal helpers ----------------
-function v13Meta(p,d,extra={}){return {owner:p.owner,weaponId:p.weaponId,tier:p.tier,damageMult:p.damageMult||1,critShot:!!p.critShot,x2Active:!!p.x2Active,color:d.color,...extra};}
-function resolveV13Impact(s,p,d,x,y,hitTank){
-  const owner=ownerOf(s,p),mult=p.damageMult||1,gy=terrainY(s,x),meta=v13Meta(p,d);
-  if(!["billiards"].includes(p.weaponId))noteTelemetryProximity(s,owner,x,y,d.radius||0);
-  if(p.weaponId==="dicecore"){
-    p.alive=false;s.fields.push({kind:"diceCore",x,y:gy-24,life:(d.diceRolls||4)*(d.diceInterval||.22)+.72,max:(d.diceRolls||4)*(d.diceInterval||.22)+.72,rolls:d.diceRolls||4,interval:d.diceInterval||.22,tick:.12,index:0,count:d.diceCount||1,span:d.diceSpan||0,blast:(d.diceBlast||18)*mult,shock:(d.diceShock||14)*mult,shards:d.diceShards||4,push:d.dicePush||22,jackpot:(d.diceJackpot||26)*mult,loaded:!!d.diceLoaded,final:(d.diceFinal||0)*mult,face:1,dieIndex:0,...meta});return true;
-  }
-  if(p.weaponId==="sentryseed"){
-    p.alive=false;const n=d.sentryCount||1,span=d.sentrySpan||72,positions=[];for(let i=0;i<n;i++){const q=n<=1?.5:i/(n-1),xx=clamp(x+(q-.5)*span,10,s.width-10);positions.push({x:xx,y:terrainY(s,xx)-8,angle:-Math.PI/2});}
-    s.fields.push({kind:"sentryBattery",x,y:gy,life:(d.sentryShots||3)*(d.sentryRate||.23)*n+.9,max:(d.sentryShots||3)*(d.sentryRate||.23)*n+.9,positions,shots:d.sentryShots||3,damage:(d.sentryDamage||12)*mult,rate:d.sentryRate||.23,tick:.18,index:0,heavy:(d.sentryHeavy||0)*mult,burst:!!d.sentryBurst,...meta});return true;
-  }
-  if(p.weaponId==="billiards"){
-    p.alive=false;const n=d.poolBalls||5,mid=(n-1)/2,cols=["#f6e95c","#63dfff","#ff6d78","#9a7cff","#ff9b4f","#77e583","#f36dc7","#f4f4f4"];
-    s.fx.push({kind:"rackBreak",x,y:gy-8,life:.52,max:.52,color:d.color,count:n});
-    for(let i=0;i<n;i++){const q=(i-mid)/Math.max(1,mid),a=Math.PI*.5+q*.95+rand(-.08,.08),sp=(d.poolSpeed||145)*rand(.86,1.10);spawnMiniProjectile(s,p,{angle:a,speed:sp,kind:"poolBall",damageMult:1,extra:{radius:4.3,specialDamage:(d.poolDamage||12)*mult,specialRadius:d.radius||15,poolBounces:d.poolBounces||2,customColor:cols[i%cols.length],hitGrace:.06}});}
-    if(d.poolCue)spawnMiniProjectile(s,p,{angle:Math.PI*.5+rand(-.18,.18),speed:(d.poolSpeed||145)*1.18,kind:"poolBall",damageMult:1,extra:{age:-.10,radius:5.2,specialDamage:d.poolCue*mult,specialRadius:(d.radius||15)+5,poolBounces:(d.poolBounces||2)+1,customColor:"#ffffff",hitGrace:.06}});
-    if(d.poolHeavy)spawnMiniProjectile(s,p,{angle:Math.PI*.5+rand(-.12,.12),speed:(d.poolSpeed||145)*1.06,kind:"poolHeavyBall",damageMult:1,extra:{age:-.34,radius:7,specialDamage:d.poolHeavy*mult,specialRadius:(d.radius||15)+12,poolBounces:2,customColor:"#17181d",hitGrace:.06}});return true;
-  }
-  if(p.weaponId==="launchpad"){
-    p.alive=false;const candidates=s.tanks.filter(t=>isEnemy(s,owner,t)&&Math.hypot(t.x-x,t.y-y)<=(d.launchRange||150)).sort((a,b)=>Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y)).slice(0,d.launchTargets||1);
-    if(!candidates.length){s.fx.push({kind:"launchPadMiss",x,y:gy,life:.45,max:.45,color:d.color});return true;}
-    for(const t of candidates)damageTank(s,t,(d.launchDamage||18)*mult,owner,damageMeta(p));
-    s.fields.push({kind:"launchPad",x,y:gy,targetIds:candidates.map(t=>t.id),life:d.launchTime||.72,max:d.launchTime||.72,height:d.launchHeight||88,slam:(d.launchSlam||22)*mult,airburst:(d.launchAirburst||0)*mult,burstDone:false,slamDone:false,...meta});return true;
-  }
-  if(p.weaponId==="chessknight"){
-    p.alive=false;const forks=d.knightForks||1,paths=[];for(let k=0;k<forks;k++){const dir=k%2===0?1:-1,path=[];let xx=x;for(let i=0;i<(d.knightJumps||4);i++){const sx=(i%2===0?d.knightStepX:d.knightStepX*.52)*dir,sy=(i%2===0?d.knightStepY:-d.knightStepY*.55);xx=clamp(xx+sx,10,s.width-10);path.push({x:xx,y:terrainY(s,xx)-Math.max(4,sy*.25)});}paths.push(path);}
-    s.fields.push({kind:"knightField",x,y:gy,paths,life:(d.knightJumps||4)*.22+.75,max:(d.knightJumps||4)*.22+.75,damage:(d.knightDamage||15)*mult,r:d.radius||22,index:0,tick:.12,final:(d.knightFinal||0)*mult,...meta});return true;
-  }
-  if(p.weaponId==="cyclone"){
-    p.alive=false;const n=d.cycloneCount||1;for(let i=0;i<n;i++){const dir=n===1?(owner&&x<owner.x?-1:1):(i?1:-1);s.fields.push({kind:"cycloneField",x:clamp(x+dir*12,8,s.width-8),startX:x,y:gy-4,dir,life:d.cycloneTime||1.65,max:d.cycloneTime||1.65,speed:d.cycloneSpeed||92,range:d.cycloneRange||150,pull:d.cyclonePull||34,damage:(d.cycloneDamage||8)*mult,tickEvery:d.cycloneTick||.28,tick:.08,travel:0,final:(d.cycloneFinal||0)*mult,finalOwner:i===0,...meta});}return true;
-  }
-  if(p.weaponId==="rocketcarousel"){
-    p.alive=false;s.fields.push({kind:"rocketCarousel",x,y:gy-78,life:d.carouselTime||1.5,max:d.carouselTime||1.5,count:d.carouselRockets||6,damage:(d.carouselDamage||12)*mult,orbit:d.carouselRadius||64,tick:.14,index:0,heavy:d.carouselHeavy||0,heavyDamage:(d.carouselHeavyDamage||22)*mult,heavyIndex:0,final:(d.carouselFinal||0)*mult,...meta});return true;
-  }
-  if(p.weaponId==="kaleidoscope"){
-    p.alive=false;const n=d.mirrorNodes||1,nodes=[];for(let i=0;i<n;i++){const a=-Math.PI/2+i/Math.max(1,n)*Math.PI*2,nx=clamp(x+Math.cos(a)*(d.mirrorSpan||78),10,s.width-10),ny=Math.max(42,gy-62+Math.sin(a)*(d.mirrorSpan||78)*.32);nodes.push({x:nx,y:ny});}
-    const target=nearestEnemy(s,p.owner,x,y,450),sx=owner?.x??p.startX??x,sy=(owner?.y??gy)-12;s.fields.push({kind:"kaleidoscope",x,y:gy-25,nodes,shooter:{x:sx,y:sy},targetId:target?.id||null,life:(n+2)*(d.mirrorPulses||1)*.18+.75,max:(n+2)*(d.mirrorPulses||1)*.18+.75,damage:(d.mirrorDamage||42)*mult,pulses:d.mirrorPulses||1,dual:!!d.mirrorDual,final:(d.mirrorFinal||0)*mult,tick:.12,segment:0,cycle:0,hitKeys:{},beamA:null,beamB:null,...meta});return true;
-  }
-  if(p.weaponId==="proximitymine"){
-    p.alive=false;const n=d.proxMines||1,span=d.proxSpan||0;for(let i=0;i<n;i++){const q=n<=1?.5:i/(n-1),xx=clamp(x+(q-.5)*span,12,s.width-12);s.fields.push({kind:"proximityMine",x:xx,y:terrainY(s,xx)-4,dormant:true,life:999,max:999,turnsLeft:d.proxTurns||3,justPlaced:true,sensor:d.proxSensor||45,damage:(d.proxDamage||45)*mult,r:d.radius||36,pulse:(d.proxPulse||0)*mult,...meta});}return true;
-  }
-  if(p.weaponId==="cryogel"){
-    p.alive=false;if((d.iceDamage||0)>0)explosionFlat(s,p,x,gy,34,d.iceDamage*mult,owner,.05,d.color);s.fields.push({kind:"icePatch",x,y:gy,dormant:true,life:999,max:999,turnsLeft:d.iceTurns||3,justPlaced:true,span:d.iceSpan||110,gripFactor:d.iceGrip||.72,fuelMult:d.iceFuel||1.22,...meta});
-    if(d.iceShards){for(let i=0;i<d.iceShards;i++){const a=Math.PI*(.18+.64*i/Math.max(1,d.iceShards-1));spawnMiniProjectile(s,p,{angle:a,speed:105+rand(0,45),kind:"cryoShard",damageMult:1,extra:{radius:2.2,specialDamage:3*mult,specialRadius:8,noTerrainDamage:true,customColor:"#d8fbff",hitGrace:.04,maxAge:1.2}});}}return true;
-  }
-  if(p.weaponId==="magnetron"){
-    p.alive=false;s.fields.push({kind:"magnetron",x,y:gy-8,life:(d.magnetPulses||3)*.28+.65,max:(d.magnetPulses||3)*.28+.65,pulses:d.magnetPulses||3,damage:(d.magnetDamage||12)*mult,range:d.magnetRange||122,force:d.magnetForce||38,poles:d.magnetPoles||2,index:0,tick:.10,final:(d.magnetFinal||0)*mult,...meta});return true;
-  }
-  if(p.weaponId==="emp"){
-    p.alive=false;s.fx.push({kind:"empPulse",x,y:gy-12,r:d.empRadius||72,life:.62,max:.62,color:d.color});
-    for(const t of s.tanks){if(!isEnemy(s,owner,t)||Math.hypot(t.x-x,t.y-y)>(d.empRadius||72)+12)continue;damageTank(s,t,(d.empDamage||12)*mult,owner,damageMeta(p));t.nextFuelPenalty=Math.max(t.nextFuelPenalty||0,d.empFuelPenalty||.35);t.overcharge=Math.max(0,(t.overcharge||0)-(d.empOverchargeDrain||20));t.overchargeReady=t.overcharge>=100;if(d.empArmorBurn&&t.armor>0)t.armor=Math.max(0,t.armor-d.empArmorBurn);}
-    modifyTerrainCrater(s,x,gy,26,.10);return true;
-  }
-  if(p.weaponId==="leech"){
-    p.alive=false;const targets=s.tanks.filter(t=>isEnemy(s,owner,t)&&Math.hypot(t.x-x,t.y-y)<=(d.leechRange||78)).sort((a,b)=>Math.hypot(a.x-x,a.y-y)-Math.hypot(b.x-x,b.y-y)).slice(0,d.leechTargets||1);
-    if(!targets.length){s.fx.push({kind:"leechMiss",x,y:gy,life:.42,max:.42,color:d.color});return true;}
-    s.fields.push({kind:"leechField",x,y:gy-12,targetIds:targets.map(t=>t.id),life:(d.leechPulses||1)*.34+.55,max:(d.leechPulses||1)*.34+.55,pulses:d.leechPulses||1,damage:(d.leechDamage||32)*mult,heal:d.leechHeal||.5,index:0,tick:.12,armor:!!d.leechArmor,final:(d.leechFinal||0)*mult,...meta});return true;
-  }
-  if(p.weaponId==="tetris"){
-    p.alive=false;const n=d.blockCount||3,span=d.blockSpan||92;for(let i=0;i<n;i++){const q=n<=1?.5:i/(n-1),xx=clamp(x+(q-.5)*span+rand(-10,10),12,s.width-12),ground=terrainY(s,xx),delay=.05+i*.10,bomb=!!d.blockBombs&&i>=n-d.blockBombs;s.fields.push({kind:"tetrisBlock",x:xx,y:-40-i*18,startY:-40-i*18,groundY:ground-8,life:1.55+delay,max:1.55+delay,delay,shape:i%5,damage:(d.blockDamage||13)*mult,r:d.radius||22,raise:d.blockRaise||18,bomb,...meta});}
-    if(d.blockClear)s.fields.push({kind:"tetrisClear",x,y:gy,life:1.45+n*.10,max:1.45+n*.10,delay:1.18+n*.10,span:span+36,damage:d.blockClear*mult,r:20,...meta});return true;
-  }
-  if(p.weaponId==="eclipse"){
-    p.alive=false;const orbs=d.eclipseOrbs||1;for(let i=0;i<orbs;i++){const dir=i%2? -1:1;s.fields.push({kind:"eclipseField",x,y:Math.max(55,gy-190-i*24),centerX:x,life:d.eclipseTime||1.65,max:d.eclipseTime||1.65,passes:d.eclipsePasses||1,damage:(d.eclipseDamage||8)*mult,width:d.eclipseWidth||34,span:d.eclipseSpan||210,dir,orbIndex:i,orbs,hitKeys:{},final:(i===0?d.eclipseFinal||0:0)*mult,...meta});}return true;
+    p.alive=false;const sx=owner?.x??p.startX??x,sy=owner?.y??gy;s.fields.push({kind:"yoyoField",x,y:gy-9,anchorX:x,anchorY:gy-9,shooterX:sx,shooterY:sy-8,life:d.yoyoTime||1.35,max:d.yoyoTime||1.35,passes:d.yoyoPasses||2,damage:(d.yoyoDamage||18)*mult,selfScale:d.yoyoSelfScale??.5,final:(d.yoyoFinal||0)*mult,hitKeys:{},...meta});return true;
   }
   return false;
 }
@@ -1223,12 +1319,9 @@ function onImpact(s,p,x,y,hitTank=null){
   if(p.kind==="sandGrain"){p.kind="sandBurrow";p.noGravity=true;p.windFactor=0;p.vx*=.16;p.vy=62+rand(0,28);p.burrowLeft=d.sandBurrowTime||.16;p.hitGrace=999;p.y=Math.max(y,terrainY(s,x)+2);s.fx.push({kind:"sandDive",x,y,life:.16,max:.16,color:d.color});return;}
   if(p.kind==="spreaderMarker"){p.alive=false;spawnSpreader(s,p,d,x);return;}
   if(p.kind==="spreaderDrop"){p.alive=false;if((p.rollDir||0)===0)explosionFlat(s,p,x,y,d.radius||18,(d.dualRollDamage||15)*mult,owner,.18,d.color);else createDualRollerField(s,p,d,x,p.rollDir,p.rollSpeedScale||1);return;}
-  if(["portalChild","electronShard","slingRock","slingHeavy","castleStone","crystalShard","satelliteDive","phantomShell","cryoShard","carouselRocket","carouselHeavy","diceShard","sentryRound","sentryHeavy"].includes(p.kind)){p.alive=false;explosionFlat(s,p,x,y,p.specialRadius||10,p.specialDamage||0,owner,p.noTerrainDamage?0:.18,p.customColor||d.color);return;}
-  if(p.kind==="poolBall"||p.kind==="poolHeavyBall"){
-    if(hitTank){p.alive=false;damageTankP(s,p,hitTank,p.specialDamage||0,owner);s.fx.push({kind:"poolHit",x,y,life:.22,max:.22,color:p.customColor||d.color});return;}
-    if((p.poolBounces||0)>0){p.poolBounces--;p.x=x;p.y=terrainY(s,x)-5;p.vy=-Math.max(62,Math.abs(p.vy)*.62);p.vx*=.84;p.hitGrace=.06;s.fx.push({kind:"poolBounce",x,y:p.y,life:.16,max:.16,color:p.customColor||d.color});return;}
-    p.alive=false;explosionFlat(s,p,x,y,p.specialRadius||12,p.specialDamage||0,owner,.08,p.customColor||d.color);return;
-  }
+  if(["portalChild","electronShard","slingRock","slingHeavy","castleStone","crystalShard","satelliteDive","adaptiveSeeker","helixDrop"].includes(p.kind)){p.alive=false;explosionFlat(s,p,x,y,p.specialRadius||10,p.specialDamage||0,owner,p.noTerrainDamage?0:.18,p.customColor||d.color);return;}
+  if(p.kind==="phantomShell"){p.alive=false;explosionFlat(s,p,x,y,p.specialRadius||10,p.specialDamage||0,owner,.08,p.customColor||d.color);return;}
+  if(resolveV15Impact(s,p,d,x,y,hitTank))return;
   if(resolveV13Impact(s,p,d,x,y,hitTank))return;
   if(resolveV12Impact(s,p,d,x,y,hitTank))return;
 
@@ -1284,9 +1377,9 @@ function onImpact(s,p,x,y,hitTank=null){
   }
   if(p.weaponId==="miniv"){
     if(p.kind==="vShot"){p.alive=false;explosionP(s,p,x,y,p.specialRadius||d.radius||30,p.specialDamage||d.damage*mult,owner,.30,d.color);return;}
-    p.alive=false;const n=d.vShots||6,half=n/2;
-    for(let i=0;i<n;i++){const side=i<half?-1:1,k=i%half,q=(k+1)/(half+1),a=Math.PI*.5+side*(.10+q*(d.vWidth||.42));spawnMiniProjectile(s,{...p,x,y:y-5},{angle:a,speed:(d.vSpeed||175)*(1-q*.08),kind:"vShot",extra:{specialDamage:d.damage*mult,specialRadius:d.radius||30,hitGrace:.10}});}
-    s.fx.push({kind:"vLaunch",x,y,life:.42,max:.42,color:d.color,count:n});return;
+    p.alive=false;const n=d.vShots||7,mid=(n-1)/2;
+    for(let i=0;i<n;i++){const off=i-mid,q=Math.abs(off)/Math.max(1,mid),a=Math.PI*.5+off*(d.vWidth||.028),spd=(d.vSpeed||150)+(mid-Math.abs(off))*(d.vSpeedStep||15);spawnMiniProjectile(s,{...p,x:x+off*1.15,y:y-6},{angle:a,speed:spd,kind:"vShot",extra:{specialDamage:d.damage*mult,specialRadius:d.radius||30,hitGrace:.12,windFactor:1}});}
+    s.fx.push({kind:"vLaunch",x,y,life:.52,max:.52,color:d.color,count:n,vertical:true});return;
   }
   if(p.weaponId==="napalm"){
     if(p.kind==="napalmFrag"){p.alive=false;if(hitTank)damageTankP(s,p,hitTank,p.specialDamage??d.damage*mult,owner);s.fx.push({kind:"napalmHit",x,y,life:.20,max:.20,color:p.customColor||d.color});return;}
@@ -1342,9 +1435,8 @@ function onImpact(s,p,x,y,hitTank=null){
   if(p.weaponId==="tadpoles"){
     const rr=p.bullfrog?(d.bigRadius||25):(d.radius||12),dd=p.bullfrog?(d.bigDamage||18):(d.damage||5);
     explosionP(s,p,x,y,rr,dd*mult,owner,.08,d.color);
-    if(hitTank){p.alive=false;return;}
     p.tadHops=(p.tadHops||0)+1;
-    if(p.tadHops<=(d.tadHops||2)){const dir=rand(-1,1),sp=(d.tadHopSpeed||72)*rand(.78,1.05);p.kind="tadpoleHop";p.x=x;p.y=terrainY(s,x)-5;p.vx=dir*sp;p.vy=-rand(72,105);p.noGravity=false;p.windFactor=.35;s.fx.push({kind:"frogBounce",x,y,life:.25,max:.25,color:d.color});return;}
+    if(p.tadHops<=(d.tadHops||2)){const dir=hitTank?(Math.sign(p.vx||1)*rand(.35,1)):rand(-1,1),sp=(d.tadHopSpeed||72)*rand(.78,1.05);p.kind="tadpoleHop";p.x=clamp(x+dir*7,5,s.width-5);p.y=Math.min(y-5,terrainY(s,p.x)-6);p.vx=dir*sp;p.vy=-rand(78,112);p.noGravity=false;p.windFactor=.35;p.hitGrace=.12;s.fx.push({kind:"frogBounce",x,y,life:.25,max:.25,color:d.color});return;}
     p.alive=false;return;
   }
   if(p.weaponId==="bounder"&&!p.bounderLocked&&!hitTank){
@@ -1527,18 +1619,66 @@ function updateFields(s,dt){
       const owner=fieldOwner(f);if(owner){f.x=owner.x;f.y=owner.y;}
       if(f.life<=0&&!f.done){f.done=true;if(owner?.alive){const self=Math.min(Math.max(0,owner.hp-1),Math.max(0,owner.hp*(f.selfFraction||.45)));if(self>0)damageTank(s,owner,self,owner,{crit:false,x2:false});owner.hp=Math.max(1,owner.hp);const fake={critShot:f.critShot,x2Active:f.x2Active};for(const t of damageOrderForOwner(s,owner)){if(!t.alive||t.id===owner.id)continue;if(Math.hypot(t.x-owner.x,t.y-owner.y)<=f.r+14)damageTank(s,t,f.enemyDamage,owner,damageMeta(fake));}modifyTerrainCrater(s,owner.x,owner.y,f.r,f.terrainScale||.72);s.fx.push({kind:"imploderBlast",x:owner.x,y:owner.y,r:f.r,life:.78,max:.78,color:f.color});s.cameraShake=Math.max(s.cameraShake,13);}}
     }
+    else if(f.kind==="dozerField"){
+      const owner=fieldOwner(f),elapsed=f.max-f.life,travel=Math.min(f.span,elapsed*f.speed),passLen=f.span/Math.max(1,f.speed),phase=Math.min(f.passes-1,Math.floor(elapsed/Math.max(.01,passLen))),local=(elapsed-phase*passLen)/Math.max(.01,passLen),dir=(f.returnPass&&phase%2? -f.dir:f.dir);f.pass=phase;f.x=clamp(f.startX+dir*Math.min(f.span,local*f.span),6,s.width-6);f.y=terrainY(s,f.x)-8;
+      if((f.terrainTick=(f.terrainTick||0)-dt)<=0){f.terrainTick=.075;modifyTerrainRaise(s,clamp(f.x+dir*12,6,s.width-6),13,f.raise);s.fx.push({kind:"dozerDirt",x:f.x+dir*10,y:terrainY(s,f.x+dir*10),life:.22,max:.22,color:f.color});}
+      for(const t of s.tanks){if(!t.alive)continue;const key=`${phase}:${t.id}`;if(Math.abs(t.x-f.x)<22&&Math.abs(t.y-f.y)<24){t.x=clamp(t.x+dir*f.push*dt*3.1,10,s.width-10);if(!f.hitKeys[key]){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}
+      if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),44,f.final,owner,.18,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="plinkoBoard"){
+      const owner=fieldOwner(f),rowH=20,step=f.span/Math.max(7,f.rows+1)*.72;
+      for(const b of f.balls){if(b.done)continue;b.seg+=dt*4.7;while(b.seg>=1&&!b.done){b.seg-=1;b.fromX=b.toX;b.fromY=b.toY;b.row++;if(b.row<f.rows){const sign=((b.id*11+b.row*7)%2)?1:-1;b.toX=clamp(b.fromX+sign*step, f.x-f.span*.46,f.x+f.span*.46);b.toY=f.top+34+b.row*rowH;}else{b.toX=clamp(b.fromX+(b.id-(f.balls.length-1)/2)*7,f.x-f.span*.50,f.x+f.span*.50);b.toY=terrainY(s,b.toX)-4;b.finalSegment=true;}}
+        const u=clamp(b.seg,0,1);b.x=b.fromX+(b.toX-b.fromX)*u;b.y=b.fromY+(b.toY-b.fromY)*u;if(b.finalSegment&&u>.96&&!b.done){b.done=true;const dd=b.gold&&f.gold>0?f.gold:f.damage;explosion(s,b.toX,terrainY(s,b.toX),24,dd,owner,.10,b.gold?"#ffe66b":f.color,{crit:!!f.critShot,x2:!!f.x2Active});}}
+      if(f.balls.every(b=>b.done)&&!f.done){f.done=true;if(f.final>0){for(const off of [-f.span*.24,0,f.span*.24])explosion(s,clamp(f.x+off,5,s.width-5),terrainY(s,clamp(f.x+off,5,s.width-5)),26,f.final/3,owner,.03,"#fff0a0",{crit:!!f.critShot,x2:!!f.x2Active});}f.life=Math.min(f.life,.24);}
+    }
+    else if(f.kind==="aegisDome"){
+      const owner=fieldOwner(f);if(owner&&f.charges>0){for(const p of s.projectiles){if(!p.alive||p.aegisCooldown>0)continue;const po=s.tanks.find(t=>t.id===p.owner);if(!po||po.id===owner.id||!isEnemy(s,owner,po))continue;const cy=f.y-5,hit=pointSegmentDistance(f.x,cy,p.x,p.y,p.x+(p.vx||0)*dt,p.y+(p.vy||0)*dt);if(hit.d>f.r||hit.y>f.y+8)continue;f.charges--;const canReflect=f.reflected<(f.reflect||0);if(canReflect){f.reflected++;p.owner=f.owner;p.vx=-(p.vx||0)*.88;p.vy=-Math.abs(p.vy||0)*.72-25;p.x=hit.x;p.y=hit.y;p.aegisCooldown=.18;p.customColor=f.color;s.fx.push({kind:"aegisReflect",x:hit.x,y:hit.y,life:.34,max:.34,color:f.color});}else{p.alive=false;s.fx.push({kind:"aegisAbsorb",x:hit.x,y:hit.y,life:.34,max:.34,color:f.color});}s.cameraShake=Math.max(s.cameraShake,3);if(f.charges<=0)break;}}
+      if((f.charges<=0||f.expiring)&&!f.done){f.done=true;f.dormant=false;f.life=.18;if(f.collapse>0)explosion(s,f.x,f.y-8,f.r*.48,f.collapse,owner,0,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="gravityLasso"){
+      const owner=fieldOwner(f),u=1-clamp(f.life/f.max,0,1),theta=u*f.turns*Math.PI*2;for(let i=0;i<f.targetIds.length;i++){const t=s.tanks.find(q=>q.id===f.targetIds[i]&&q.alive);if(!t)continue;const phase=theta+i*Math.PI,rr=f.orbit*(1-.18*Math.sin(Math.PI*u));t.x=clamp(f.x+Math.cos(phase)*rr,10,s.width-10);t.forcedY=f.y-16-Math.sin(phase)*rr*.48-24*Math.sin(Math.PI*u);f[`tx${i}`]=t.x;f[`ty${i}`]=t.forcedY;if(u>.92&&!f.released){const throwDir=Math.sign(Math.cos(phase)||f.dir||1);t.x=clamp(t.x+throwDir*f.throw,10,s.width-10);t.forcedY=undefined;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}
+      if(u>.92&&!f.released){f.released=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),42,f.final,owner,.06,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}if(f.life<=0){for(const id of f.targetIds){const t=s.tanks.find(q=>q.id===id);if(t)t.forcedY=undefined;}}
+    }
+    else if(f.kind==="laserPlow"){
+      if(!f.applied){f.applied=true;const owner=fieldOwner(f);for(const r of f.rays){for(const t of s.tanks){if(!t.alive)continue;if(pointSegmentDistance(t.x,t.y,r.ax,r.ay,r.bx,r.by).d<f.width+12)damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}const steps=Math.max(5,Math.floor(Math.hypot(r.bx-r.ax,r.by-r.ay)/13));for(let i=0;i<=steps;i++){const q=i/steps,xx=clamp(r.ax+(r.bx-r.ax)*q,5,s.width-5);modifyTerrainCrater(s,xx,terrainY(s,xx),Math.max(8,f.width*.85),f.depth);}}}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),40,f.final,fieldOwner(f),.12,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="conveyorBelt"){
+      const owner=fieldOwner(f);f.tick-=dt;for(const t of s.tanks){if(!t.alive||Math.abs(t.x-f.x)>f.span*.5)continue;let dir=f.dir;if(f.mode==="split")dir=Math.sign(f.x-t.x||f.dir);t.x=clamp(t.x+dir*f.speed*dt,10,s.width-10);t.y=tankGround(s,t);
+        const contactKey=`belt:${s.round}:${s.current}:${t.id}`;if(f.damage>0&&!f.hitKeys[contactKey]){f.hitKeys[contactKey]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}
+        if(f.mode==="split"&&Math.abs(t.x-f.x)<11&&f.centerPulse>0){const key=`crush:${s.round}:${s.current}:${t.id}`;if(!f.hitKeys[key]){f.hitKeys[key]=1;damageTank(s,t,f.centerPulse,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"beltCrush",x:t.x,y:t.y,life:.28,max:.28,color:f.color});}}}if(f.expiring){f.dormant=false;f.life=.05;}
+    }
+    else if(f.kind==="geoStamp"){
+      f.tick-=dt;if(f.tick<=0&&f.index<f.presses){f.tick=.48;const phase=f.fractal&&f.index?1:f.index;stampTerrain(s,f.x,f.span,f.teeth,f.raise,f.cut,phase);const owner=fieldOwner(f);for(const t of s.tanks)if(t.alive&&Math.abs(t.x-f.x)<f.span*.52)damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"stampImpact",x:f.x,y:terrainY(s,f.x),span:f.span,teeth:f.teeth,life:.40,max:.40,color:f.color,index:f.index});f.index++;}if(f.index>=f.presses&&f.life<.24&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),44,f.final,fieldOwner(f),.06,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="newtonCradle"){
+      f.tick-=dt;f.swing=Math.sin((f.max-f.life)*7.5);if(f.tick<=0&&f.index<f.transfers){f.tick=.58;const owner=fieldOwner(f),targetX=f.balls[f.balls.length-1].x+f.dir*24;explosion(s,targetX,terrainY(s,targetX)-6,24,f.damage,owner,.03,f.color,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"cradlePulse",points:f.balls,dir:f.index%2? -f.dir:f.dir,life:.32,max:.32,color:f.color});f.index++;f.dir*=-1;}if(f.index>=f.transfers&&f.life<.24&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),38,f.final,fieldOwner(f),.04,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="helixRise"){
+      const u=1-clamp(f.life/f.max,0,1);f.progress=Math.min(1,u*1.45);if(!f.spawned&&u>.58){f.spawned=true;const owner=fieldOwner(f),n=f.drops,mid=(n-1)/2;for(let i=0;i<n;i++){const q=(i-mid)/Math.max(1,mid),sx=f.x+q*46,sy=f.y-f.height+Math.sin(i*1.7)*12,tx=clamp(f.x+q*64,8,s.width-8),ty=terrainY(s,tx)-3,dx=tx-sx,dy=ty-sy,l=Math.max(1,Math.hypot(dx,dy));s.projectiles.push({id:s.nextId++,owner:f.owner,weaponId:f.weaponId,tier:f.tier,kind:"helixDrop",x:sx,y:sy,vx:dx/l*(225+i*2),vy:dy/l*(225+i*2),age:-i*.035,alive:true,radius:3,noGravity:true,windFactor:0,skipSkillObjects:true,damageMult:1,critShot:!!f.critShot,x2Active:!!f.x2Active,specialDamage:f.damage,specialRadius:18,customColor:f.color,hitGrace:.03,maxAge:2.4});}}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),42,f.final,fieldOwner(f),.05,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="anchorChain"){
+      if(f.expiring&&!f.done){f.done=true;f.dormant=false;f.life=.12;if(f.breakDamage>0){const owner=fieldOwner(f);for(const id of f.targetIds){const t=s.tanks.find(q=>q.id===id&&q.alive);if(t)damageTank(s,t,f.breakDamage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}s.fx.push({kind:"anchorBreak",x:f.x,y:f.y,life:.35,max:.35,color:f.color});}}
+    }
+    else if(f.kind==="landSlide"){
+      f.tick-=dt;if(f.tick<=0&&f.index<f.pulses){f.tick=.18;relaxTerrainStrip(s,f.x,f.span,.28);const owner=fieldOwner(f);for(const t of s.tanks){if(!t.alive||Math.abs(t.x-f.x)>f.span*.52)continue;const slope=terrainSlope(s,t.x);t.x=clamp(t.x+Math.sign(slope||1)*f.shift,10,s.width-10);t.y=tankGround(s,t);damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}s.fx.push({kind:"landslideDust",x:f.x,y:terrainY(s,f.x),span:f.span,life:.32,max:.32,color:f.color,index:f.index});f.index++;}if(f.index>=f.pulses&&f.life<.22&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),52,f.final,fieldOwner(f),.22,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="bubbleLift"){
+      const owner=fieldOwner(f),u=1-clamp(f.life/f.max,0,1),arc=Math.sin(Math.PI*u);for(let i=0;i<f.targetIds.length;i++){const t=s.tanks.find(q=>q.id===f.targetIds[i]&&q.alive);if(!t)continue;const side=f.targetIds.length>1?(i%2?1:-1):f.dir;t.x=clamp(f.starts[i].x+side*f.drift*u,10,s.width-10);t.forcedY=tankGround(s,t)-arc*f.height;f[`tx${i}`]=t.x;f[`ty${i}`]=t.forcedY;}if(u>.91&&!f.popped){f.popped=true;for(const id of f.targetIds){const t=s.tanks.find(q=>q.id===id&&q.alive);if(t){t.forcedY=undefined;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"bubblePop",x:t.x,y:t.y-35,life:.38,max:.38,color:f.color});}}if(f.final>0)explosion(s,f.x,terrainY(s,f.x)-25,48,f.final,owner,.02,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}if(f.life<=0){for(const id of f.targetIds){const t=s.tanks.find(q=>q.id===id);if(t)t.forcedY=undefined;}}
+    }
+    else if(f.kind==="bridgeBuild"){
+      if(f.life<=.22&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),38,f.final,fieldOwner(f),0,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
     else if(f.kind==="dualRollerField"){
       if(f.delay>0){f.delay-=dt;continue;}const ox=f.x;f.x=clamp(f.x+f.dir*f.speed*dt,6,s.width-6);f.y=terrainY(s,f.x)-5;const steep=Math.abs(terrainY(s,f.x+f.dir*7)-terrainY(s,f.x-f.dir*7));if(steep>32)f.speed*=.985;for(const t of s.tanks){if(!t.alive)continue;if(Math.hypot(t.x-f.x,t.y-f.y)<16&&!f.hitIds.includes(t.id)){f.hitIds.push(t.id);explosion(s,f.x,f.y,f.r,f.damage,fieldOwner(f),.16,f.color,{crit:!!f.critShot,x2:!!f.x2Active});f.life=0;break;}}if(Math.abs(f.x-ox)<.001)f.life=0;
     }
     else if(f.kind==="pendulumField"){
-      const elapsed=f.max-f.life,u=clamp(elapsed/f.max,0,1),owner=fieldOwner(f),anchorY=Math.max(24,f.y-f.rope*.82),wave=u*f.passes*Math.PI;
-      for(let i=0;i<f.orbs;i++){const phase=wave+i/f.orbs*Math.PI,px=f.x+Math.sin(phase)*f.span,py=anchorY+Math.cos(phase)*f.rope,keyPass=Math.floor((phase+Math.PI*.5)/Math.PI);for(const t of s.tanks){if(!t.alive)continue;const key=`${i}:${keyPass}:${t.id}`;if(!f.hitKeys[key]&&Math.hypot(t.x-px,t.y-py)<18){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"pendulumHit",x:px,y:py,life:.22,max:.22,color:f.color});}}}
-      if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),30,f.final,owner,.18,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+      const owner=fieldOwner(f),elapsed=f.max-f.life,wave=elapsed/f.max*f.passes*Math.PI*2,anchorY=f.y-f.rope,maxAngle=Math.asin(Math.min(.92,f.span/f.rope));
+      for(let i=0;i<f.orbs;i++){const theta=Math.sin(wave+i/f.orbs*Math.PI*2)*maxAngle,px=f.x+Math.sin(theta)*f.rope,py=anchorY+Math.cos(theta)*f.rope,key=`${Math.floor(wave/Math.PI)}:${i}`;f[`orb${i}`]={x:px,y:py};for(const t of s.tanks){if(!t.alive)continue;const hk=key+":"+t.id;if(!f.hitKeys[hk]&&Math.hypot(t.x-px,t.y-py)<(f.hitRadius||24)){f.hitKeys[hk]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}
+      f.anchorY=anchorY;if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x)-8,34,f.final,owner,.12,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
     }
     else if(f.kind==="teslaGate"){
-      f.tick-=dt;if(f.tick<=0&&f.pulseIndex<f.pulses){f.tick=.24;const owner=fieldOwner(f),n=f.pylons,pts=[];for(let i=0;i<n;i++){const q=n<=1?.5:i/(n-1),xx=clamp(f.x+(q-.5)*f.span,6,s.width-6);pts.push({x:xx,y:terrainY(s,xx)-38});}const segments=[];for(let i=0;i<pts.length-1;i++)segments.push([pts[i],pts[i+1]]);if(f.cross&&pts.length>=4){segments.push([pts[0],pts[2]],[pts[1],pts[3]]);}for(const [a,b] of segments)for(const t of s.tanks){if(!t.alive)continue;if(pointSegmentDistance(t.x,t.y,a.x,a.y,b.x,b.y).d<15)damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}s.fx.push({kind:"teslaPulse",points:pts,cross:f.cross,life:.20,max:.20,color:f.color,index:f.pulseIndex});f.pulseIndex++;}if(f.pulseIndex>=f.pulses&&f.life<.18)f.life=0;
-    }
-    else if(f.kind==="satelliteOrbit"){
+      f.tick-=dt;if(f.tick<=0&&f.pulseIndex<f.pulses){f.tick=.22;const owner=fieldOwner(f),pts=[];for(let i=0;i<f.pylons;i++){const q=f.pylons<=1?.5:i/(f.pylons-1),xx=clamp(f.x+(q-.5)*f.span,6,s.width-6);pts.push({x:xx,y:terrainY(s,xx)-(f.beamHeight||12)});}const pulse=f.pulseIndex++;for(let i=0;i<pts.length-1;i++){for(const t of s.tanks){if(!t.alive)continue;const key=`${pulse}:${i}:${t.id}`;if(!f[key]&&pointSegmentDistance(t.x,t.y,pts[i].x,pts[i].y,pts[i+1].x,pts[i+1].y).d<18){f[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}if(f.cross&&pts.length>=4){for(const [a,b] of [[0,2],[1,3]])for(const t of s.tanks){if(!t.alive)continue;const key=`c${pulse}:${a}:${t.id}`;if(!f[key]&&pointSegmentDistance(t.x,t.y,pts[a].x,pts[a].y,pts[b].x,pts[b].y).d<18){f[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}s.fx.push({kind:"teslaPulse",points:pts,life:.18,max:.18,color:f.color,cross:f.cross});}
+    }else if(f.kind==="satelliteOrbit"){
       const elapsed=f.max-f.life;if(elapsed>=f.orbitTime&&!f.spawned){f.spawned=true;const p={owner:f.owner,weaponId:f.weaponId,tier:f.tier,damageMult:f.damageMult,critShot:f.critShot,x2Active:f.x2Active};for(let i=0;i<f.count;i++){const a=i/f.count*Math.PI*2,ox=f.x+Math.cos(a)*f.orbitRadius,oy=f.y+Math.sin(a)*f.orbitRadius*.45,target=nearestEnemy(s,f.owner,ox,oy),tx=target?.x??f.x,ty=target?.y??terrainY(s,tx);spawnStraightSpecial(s,p,f.weaponId,"satelliteDive",ox,oy,tx,ty,245+i*4,f.damage/f.damageMult,15,f.color);}if(f.core>0)explosion(s,f.x,terrainY(s,f.x),34,f.core,fieldOwner(f),.12,f.color,{crit:!!f.critShot,x2:!!f.x2Active});f.life=.82;} 
     }
     else if(f.kind==="portalCollapse"&&f.life<=0&&!f.done){f.done=true;explosion(s,f.x,f.y,f.r,f.damage,fieldOwner(f),.18,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
@@ -1546,28 +1686,30 @@ function updateFields(s,dt){
       f.tick-=dt;if(f.tick<=0&&f.pulseIndex<f.pulses){f.tick=.25;const owner=fieldOwner(f),pts=[];for(let i=0;i<f.sides;i++){const a=-Math.PI/2+i/f.sides*Math.PI*2,px=f.x+Math.cos(a)*f.span,py=f.y-f.height*.42+Math.sin(a)*f.height*.50;pts.push({x:px,y:py});}const offset=f.pulseIndex%f.sides;for(let e=0;e<f.sides;e++){const a=pts[(e+offset)%f.sides],b=pts[(e+1+offset)%f.sides];for(const t of s.tanks){if(t.alive&&pointSegmentDistance(t.x,t.y,a.x,a.y,b.x,b.y).d<14)damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}s.fx.push({kind:"prismPulse",points:pts,life:.23,max:.23,color:f.color,index:f.pulseIndex});f.pulseIndex++;}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x)-14,45,f.final,fieldOwner(f),.08,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
     }
     else if(f.kind==="dominoChain"){
-      f.tick-=dt;if(f.tick<=0){f.tick=f.delay;let idx=f.returning?f.count-1-f.index:f.index;if(f.index<f.count){const xx=clamp(f.x+(idx-(f.count-1)/2)*f.spacing,5,s.width-5),yy=terrainY(s,xx);explosion(s,xx,yy,f.r,f.damage*(f.returning?.62:1),fieldOwner(f),.22,f.color,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"dominoPop",x:xx,y:yy,life:.24,max:.24,color:f.color});f.index++;}else if(f.return&&!f.returning){f.returning=true;f.index=0;}else f.life=0;}
+      f.tick-=dt;if(f.tick<=0){f.tick=f.delay;let idx=f.returning?f.count-1-f.index:f.index;if(f.index<f.count){const xx=clamp(f.x+(idx-(f.count-1)/2)*f.spacing,5,s.width-5),yy=terrainY(s,xx);explosion(s,xx,yy,f.r,f.damage*(f.returning?.62:1),fieldOwner(f),.22,f.color,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"dominoPop",x:xx,y:yy,life:.24,max:.24,color:f.color});f.index++;}else if(f.return&&!f.returning){f.returning=true;f.index=0;}else{if(f.final>0&&!f.finalDone){f.finalDone=true;explosion(s,f.x,terrainY(s,f.x),38,f.final,fieldOwner(f),.12,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}f.life=0;}}
     }
     else if(f.kind==="skyHook"){
       const t=s.tanks.find(q=>q.id===f.targetId&&q.alive),u=1-clamp(f.life/f.max,0,1);if(t){t.x=clamp(f.startX+(f.endX-f.startX)*(1-Math.pow(1-u,2)),10,s.width-10);t.y=tankGround(s,t);f.targetX=t.x;f.targetY=t.y;}if(f.life<=0&&!f.done){f.done=true;if(t){damageTank(s,t,f.damage,fieldOwner(f),{crit:!!f.critShot,x2:!!f.x2Active});explosion(s,t.x,t.y,f.r,f.damage*.35,fieldOwner(f),.12,f.color,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"hookSlam",x:t.x,y:t.y,life:.40,max:.40,color:f.color});}}
     }
     else if(f.kind==="castleDrop"){
-      f.tick-=dt;if(f.tick<=0&&f.index<f.drops){f.tick=.16;const q=f.drops<=1?.5:f.index/(f.drops-1),tx=clamp(f.x+(q-.5)*f.span*.68,8,s.width-8),ty=terrainY(s,tx)-3,sy=Math.max(35,f.y-45-rand(0,35));f.index++;spawnStraightSpecial(s,{owner:f.owner,weaponId:f.weaponId,tier:f.tier,damageMult:f.damageMult,critShot:f.critShot,x2Active:f.x2Active},f.weaponId,"castleStone",tx+rand(-28,28),sy,tx,ty,205,f.damage/f.damageMult,f.r,f.color);}if(f.index>=f.drops&&f.life<.32)f.life=0;
+      f.tick-=dt;if(f.tick<=0&&f.index<f.drops){f.tick=.16;const q=f.drops<=1?.5:f.index/(f.drops-1),tx=clamp(f.x+(q-.5)*f.span*.68,8,s.width-8),ty=terrainY(s,tx)-3,sy=Math.max(35,f.y-45-rand(0,35));f.index++;spawnStraightSpecial(s,{owner:f.owner,weaponId:f.weaponId,tier:f.tier,damageMult:f.damageMult,critShot:f.critShot,x2Active:f.x2Active},f.weaponId,"castleStone",tx+rand(-28,28),sy,tx,ty,205,f.damage/f.damageMult,f.r,f.color);}if(f.index>=f.drops&&f.life<.48&&!f.cannonsDone){f.cannonsDone=true;const owner=fieldOwner(f);for(let i=0;i<(f.cannons||0);i++){const target=nearestEnemy(s,f.owner,f.x,terrainY(s,f.x),360);if(target){damageTank(s,target,f.damage*.85,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"castleCannon",x1:f.x+(i%2?1:-1)*f.span*.48,y1:terrainY(s,f.x+(i%2?1:-1)*f.span*.48)-42,x2:target.x,y2:target.y,life:.24,max:.24,color:f.color});}}if(f.final>0)explosion(s,f.x,terrainY(s,f.x),46,f.final,owner,.28,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}if(f.index>=f.drops&&f.life<.20)f.life=0;
     }
     else if(f.kind==="compressor"){
       const owner=fieldOwner(f),elapsed=f.max-f.life,phase=elapsed/f.max*f.cycles,cycle=Math.min(f.cycles-1,Math.floor(phase)),local=phase-cycle,fold=local<.5?local*2:(1-local)*2,left=f.x-f.span*(1-fold),right=f.x+f.span*(1-fold);for(const t of s.tanks){if(!t.alive)continue;for(const [side,wx] of [["L",left],["R",right]]){const key=`${cycle}:${side}:${t.id}`;if(!f.hitKeys[key]&&Math.abs(t.x-wx)<11){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}f.left=left;f.right=right;if(f.life<=0&&!f.done){f.done=true;explosion(s,f.x,terrainY(s,f.x),36,f.final,owner,.10,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
     }
     else if(f.kind==="pinballRig"){
-      const speed=4.2+f.hops*.07;f.segT+=dt*speed;if(f.segT>=1&&f.hop<f.hops){f.from={...f.to};f.hop++;f.segT=0;f.to=f.nodes[(f.hop*2+1)%f.nodes.length];}const u=clamp(f.segT,0,1),px=f.from.x+(f.to.x-f.from.x)*u,py=f.from.y+(f.to.y-f.from.y)*u;f.ballX=px;f.ballY=py;const owner=fieldOwner(f),keyPass=f.hop;for(const t of s.tanks){if(!t.alive)continue;const key=`${keyPass}:${t.id}`;if(!f.hitKeys[key]&&Math.hypot(t.x-px,t.y-py)<15){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"pinballHit",x:px,y:py,life:.16,max:.16,color:f.color});}}if(f.hop>=f.hops&&f.segT>=.98){if(!f.done&&f.final>0)explosion(s,px,py,28,f.final,owner,.05,f.color,{crit:!!f.critShot,x2:!!f.x2Active});f.done=true;f.life=0;}
+      const speed=4.0+f.hops*.055;f.segT+=dt*speed;if(f.segT>=1&&f.hop<f.hops){f.from={...f.to};f.hop++;f.segT=0;const target=f.targetId?s.tanks.find(t=>t.id===f.targetId&&t.alive):null;if(target&&f.hop%(f.targetEvery||2)===0)f.to={x:target.x,y:target.y,target:true};else f.to=f.nodes[(f.hop*2+1)%f.nodes.length];}const u=clamp(f.segT,0,1),px=f.from.x+(f.to.x-f.from.x)*u,py=f.from.y+(f.to.y-f.from.y)*u;f.ballX=px;f.ballY=py;const owner=fieldOwner(f),keyPass=f.hop;for(const t of s.tanks){if(!t.alive)continue;const key=`${keyPass}:${t.id}`;if(!f.hitKeys[key]&&Math.hypot(t.x-px,t.y-py)<22){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"pinballHit",x:px,y:py,life:.20,max:.20,color:f.color});}}if(f.hop>=f.hops&&f.segT>=.98){if(!f.done&&f.final>0)explosion(s,px,py,34,f.final,owner,.05,f.color,{crit:!!f.critShot,x2:!!f.x2Active});f.done=true;f.life=0;}
     }
     else if(f.kind==="lighthouse"){
-      const elapsed=f.max-f.life,rot=elapsed/f.max*f.turns*Math.PI*2,owner=fieldOwner(f);f.angle=rot;for(let b=0;b<f.beams;b++){const a=rot+b/f.beams*Math.PI*2,bx=f.x+Math.cos(a)*f.range,by=f.y+Math.sin(a)*f.range,rev=Math.floor(rot/(Math.PI*2)*4);for(const t of s.tanks){if(!t.alive)continue;const key=`${rev}:${b}:${t.id}`;if(!f.hitKeys[key]&&pointSegmentDistance(t.x,t.y,f.x,f.y-18,bx,by).d<11){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,f.y,62,f.final,owner,0,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+      const elapsed=f.max-f.life,rot=elapsed/f.max*f.turns*Math.PI*2,owner=fieldOwner(f);f.angle=rot;for(let b=0;b<f.beams;b++){const dir=f.counter&&b%2?-1:1,a=dir*rot+b/f.beams*Math.PI*2,bx=f.x+Math.cos(a)*f.range,by=f.y-32+Math.sin(a)*f.range,rev=Math.floor(elapsed*5);for(const t of s.tanks){if(!t.alive)continue;const key=`${rev}:${b}:${t.id}`;if(!f.hitKeys[key]&&pointSegmentDistance(t.x,t.y,f.x,f.y-32,bx,by).d<(f.beamWidth||15)){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}
+      if(f.focus>0&&f.focusIndex<f.focus){f.focusTick-=dt;if(f.focusTick<=0){f.focusTick=Math.max(.30,f.max/(f.focus+2));const target=nearestEnemy(s,f.owner,f.x,f.y,520);if(target){f.focusIndex++;damageTank(s,target,f.damage*.85,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"beaconFocus",x1:f.x,y1:f.y-42,x2:target.x,y2:target.y,life:.32,max:.32,color:f.solar?"#fff2a8":f.color,solar:f.solar});}}}
+      if(f.life<=0&&!f.done){f.done=true;if(f.final>0){if(f.solar){const target=nearestEnemy(s,f.owner,f.x,f.y,600),xx=target?.x??f.x;explosion(s,xx,terrainY(s,xx),56,f.final,owner,.06,"#fff0a0",{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"solarColumn",x:xx,y:terrainY(s,xx),life:.55,max:.55,color:"#fff0a0"});}else explosion(s,f.x,f.y,62,f.final,owner,0,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}}
     }
     else if(f.kind==="repulsor"){
       f.tick-=dt;if(f.tick<=0&&f.pulseIndex<f.pulses){f.tick=.27;const owner=fieldOwner(f),idx=f.pulseIndex++,rad=f.range*((idx+1)/f.pulses);for(const t of s.tanks){if(!t.alive)continue;const dist=Math.abs(t.x-f.x),key=`${idx}:${t.id}`;if(dist<=rad+14&&!f.hitKeys[key]){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});t.x=clamp(t.x+Math.sign(t.x-f.x||1)*f.force,10,s.width-10);t.y=tankGround(s,t);}}s.fx.push({kind:"repulseRing",x:f.x,y:f.y,r:rad,life:.28,max:.28,color:f.color});}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,f.y,42,f.final,fieldOwner(f),.08,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
     }
     else if(f.kind==="phantomRift"){
-      f.delay-=dt;if(f.delay<=0&&!f.spawned){f.spawned=true;const p={owner:f.owner,weaponId:f.weaponId,tier:f.tier,damageMult:f.damageMult,critShot:f.critShot,x2Active:f.x2Active},entries=[];if(f.shots===1)entries.push({x:f.x<s.width/2?s.width+30:-30,y:Math.max(40,f.y-90)});else{entries.push({x:-30,y:Math.max(45,f.y-80)},{x:s.width+30,y:Math.max(45,f.y-80)});if(f.top||f.shots>=3)entries.push({x:f.x,y:-30});}for(const e of entries.slice(0,f.shots))spawnStraightSpecial(s,p,f.weaponId,"phantomShell",e.x,e.y,f.x,f.y,300,f.damage,f.r,f.color);s.fx.push({kind:"phantomRift",x:f.x,y:f.y,life:.45,max:.45,color:f.color,count:f.shots});}if(f.spawned&&f.life<.25)f.life=0;
+      f.delay-=dt;if(f.delay<=0&&!f.spawned){f.spawned=true;const p={owner:f.owner,weaponId:f.weaponId,tier:f.tier,damageMult:f.damageMult,critShot:f.critShot,x2Active:f.x2Active},entries=[],span=f.localSpan||165,left=clamp(f.x-span,18,s.width-18),right=clamp(f.x+span,18,s.width-18),target=nearestEnemy(s,f.owner,f.x,terrainY(s,f.x),220),tx=target?.x??f.x,ty=target?.y??f.y;if(f.shots===1)entries.push({x:f.x<tx?left:right,y:Math.max(35,Math.min(ty-85,terrainY(s,f.x<tx?left:right)-95))});else{entries.push({x:left,y:Math.max(35,Math.min(ty-80,terrainY(s,left)-95))},{x:right,y:Math.max(35,Math.min(ty-80,terrainY(s,right)-95))});if(f.top||f.shots>=3)entries.push({x:tx,y:Math.max(18,ty-180)});}for(const e of entries.slice(0,f.shots)){spawnStraightSpecial(s,p,f.weaponId,"phantomShell",e.x,e.y,tx,ty,320,f.damage,f.r,f.color);const last=s.projectiles[s.projectiles.length-1];last.phantomTargetX=tx;last.phantomPhaseRange=f.phaseRange||72;last.noTerrainDamage=true;}s.fx.push({kind:"phantomRift",x:f.x,y:f.y,life:.45,max:.45,color:f.color,count:f.shots});if(f.final>0)explosion(s,tx,ty,30,f.final,fieldOwner(f),.02,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}if(f.spawned&&f.life<.25)f.life=0;
     }
     else if(f.kind==="razorHalo"){
       const owner=fieldOwner(f),u=1-clamp(f.life/f.max,0,1),rad=f.start*(1-u*.92),rot=u*f.turns*Math.PI*2;f.radius=rad;f.angle=rot;const rev=Math.floor(u*f.turns*6);for(let i=0;i<f.blades;i++){const a=rot+i/f.blades*Math.PI*2,bx=f.x+Math.cos(a)*rad,by=f.y+Math.sin(a)*rad*.58;for(const t of s.tanks){if(!t.alive)continue;const key=`${rev}:${i}:${t.id}`;if(!f.hitKeys[key]&&Math.hypot(t.x-bx,t.y-by)<15){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x)-8,34,f.final,owner,.12,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
@@ -1577,44 +1719,70 @@ function updateFields(s,dt){
       if(elapsed>.66&&!f.shattered){f.shattered=true;const p={owner:f.owner,weaponId:f.weaponId,tier:f.tier,damageMult:f.damageMult,critShot:f.critShot,x2Active:f.x2Active};for(let i=0;i<f.spikes;i++){const q=f.spikes<=1?.5:i/(f.spikes-1),xx=clamp(f.x+(q-.5)*f.span,7,s.width-7),yy=terrainY(s,xx)-26;for(let j=0;j<f.shards;j++){const a=(j/(Math.max(1,f.shards-1))-.5)*1.15+Math.PI/2;spawnMiniProjectile(s,p,{angle:a,speed:125+rand(-12,15),weaponId:f.weaponId,kind:"crystalShard",damageMult:1,extra:{specialDamage:f.damage*.55,specialRadius:10,radius:2.5,gravityMult:.72,hitGrace:.03}});const last=s.projectiles[s.projectiles.length-1];last.x=xx;last.y=yy;}}if(f.core>0)explosion(s,f.x,terrainY(s,f.x),34,f.core,fieldOwner(f),.16,f.color,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"crystalShatter",x:f.x,y:f.y,span:f.span,life:.48,max:.48,color:f.color});}
     }
     else if(f.kind==="guillotine"){
-      if(f.delay>0){f.delay-=dt;continue;}const progress=1-clamp(f.life/Math.max(.01,f.max),0,1);f.y=f.startY+(f.groundY-f.startY)*Math.pow(progress,.72);const owner=fieldOwner(f);for(const t of s.tanks){if(!t.alive||f.hitIds.includes(t.id))continue;if(Math.abs(t.x-f.x)<=f.length*.5+10&&Math.abs(t.y-f.y)<14){f.hitIds.push(t.id);damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}if(f.y>=f.groundY-4&&!f.done){f.done=true;const a=Math.max(2,Math.floor(f.x-f.length/2)),b=Math.min(s.terrain.length-2,Math.ceil(f.x+f.length/2));for(let xx=a;xx<=b;xx++)s.terrain[xx]=Math.min(s.height-5,s.terrain[xx]+7);s.fx.push({kind:"guillotineImpact",x:f.x,y:f.groundY,length:f.length,life:.36,max:.36,color:f.color,cross:f.cross});if(f.cross)explosion(s,f.x,f.groundY,38,f.damage*.45,owner,.10,f.color,{crit:!!f.critShot,x2:!!f.x2Active});f.life=0;}
+      if(f.delay>0){f.delay-=dt;continue;}const progress=1-clamp(f.life/Math.max(.01,f.max),0,1);f.x=f.startX+(f.targetX-f.startX)*progress;f.y=f.startY+(f.groundY-f.startY)*Math.pow(progress,.72);const owner=fieldOwner(f),cs=Math.cos(f.angle||0),sn=Math.sin(f.angle||0),hx=cs*f.length*.5,hy=sn*f.length*.5;for(const t of s.tanks){if(!t.alive||f.hitIds.includes(t.id))continue;if(pointSegmentDistance(t.x,t.y,f.x-hx,f.y-hy,f.x+hx,f.y+hy).d<15){f.hitIds.push(t.id);damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}if(f.y>=f.groundY-4&&!f.done){f.done=true;const a=Math.max(2,Math.floor(f.x-f.length/2)),b=Math.min(s.terrain.length-2,Math.ceil(f.x+f.length/2));for(let xx=a;xx<=b;xx++)s.terrain[xx]=Math.min(s.height-5,s.terrain[xx]+6);s.fx.push({kind:"guillotineImpact",x:f.x,y:f.groundY,length:f.length,life:.36,max:.36,color:f.color});f.life=0;}
+    }
+    else if(f.kind==="guillotineSweep"){
+      f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const owner=fieldOwner(f),gy=terrainY(s,f.x);for(const t of s.tanks){if(t.alive&&Math.abs(t.x-f.x)<=f.length*.55)damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}s.fx.push({kind:"executionSweep",x:f.x,y:gy,length:f.length,life:.48,max:.48,color:f.color});if(f.final>0)explosion(s,f.x,gy,48,f.final,owner,.18,"#ff5f7d",{crit:!!f.critShot,x2:!!f.x2Active});f.life=0;}
     }
     else if(f.kind==="yoyoField"){
-      const u=(1-clamp(f.life/f.max,0,1))*f.passes,pass=Math.min(f.passes-1,Math.floor(u)),local=u-pass,forward=pass%2===0,a=forward?{x:f.anchorX,y:f.anchorY}:{x:f.shooterX,y:f.shooterY},b=forward?{x:f.shooterX,y:f.shooterY}:{x:f.anchorX,y:f.anchorY},px=a.x+(b.x-a.x)*local,py=a.y+(b.y-a.y)*local;f.ballX=px;f.ballY=py;const owner=fieldOwner(f);for(const t of s.tanks){if(!t.alive)continue;const key=`${pass}:${t.id}`;if(!f.hitKeys[key]&&Math.hypot(t.x-px,t.y-py)<16){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.anchorX,f.anchorY,30,f.final,owner,.10,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+      const u=(1-clamp(f.life/f.max,0,1))*f.passes,pass=Math.min(f.passes-1,Math.floor(u)),local=u-pass,forward=pass%2===0,a=forward?{x:f.anchorX,y:f.anchorY}:{x:f.shooterX,y:f.shooterY},b=forward?{x:f.shooterX,y:f.shooterY}:{x:f.anchorX,y:f.anchorY},px=a.x+(b.x-a.x)*local,py=a.y+(b.y-a.y)*local;f.ballX=px;f.ballY=py;const owner=fieldOwner(f);for(const t of s.tanks){if(!t.alive)continue;const key=`${pass}:${t.id}`;if(!f.hitKeys[key]&&Math.hypot(t.x-px,t.y-py)<16){f.hitKeys[key]=1;damageTank(s,t,f.damage*(owner&&t.id===owner.id?(f.selfScale??.5):1),owner,{crit:!!f.critShot,x2:!!f.x2Active});}}if(f.life<=0&&!f.done){f.done=true;if(f.final>0){s.fx.push({kind:"burst",x:f.anchorX,y:f.anchorY,life:.35,max:.35,color:f.color,r:30});for(const t of s.tanks){if(t.alive&&Math.hypot(t.x-f.anchorX,t.y-f.anchorY)<43)damageTank(s,t,f.final*(owner&&t.id===owner.id?(f.selfScale??.5):1),owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}
     }
+
     else if(f.kind==="diceCore"){
-      f.tick-=dt;if(f.tick<=0&&f.index<f.rolls){f.tick=f.interval;const die=f.index%f.count,off=f.count<=1?0:(die-(f.count-1)/2)*(f.span||38),px=clamp(f.x+off,8,s.width-8),py=terrainY(s,px)-18;let face=f.loaded?(Math.random()<.72?rint(3,6):rint(1,6)):rint(1,6);f.face=face;f.dieIndex=die;f.index++;const owner=fieldOwner(f);s.fx.push({kind:"diceRoll",x:px,y:py,face,life:.28,max:.28,color:f.color});if(face===1)explosion(s,px,py+14,26,f.blast,owner,.16,f.color,{crit:!!f.critShot,x2:!!f.x2Active});else if(face===2){const t=nearestEnemy(s,f.owner,px,py,170);if(t){damageTank(s,t,f.shock,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"lightningBolt",x:t.x,y:t.y,life:.28,max:.28,color:f.color});}}else if(face===3){for(let i=0;i<f.shards;i++){const a=Math.PI*(.18+.64*i/Math.max(1,f.shards-1));spawnMiniProjectile(s,{owner:f.owner,weaponId:f.weaponId,tier:f.tier,x:px,y:py,damageMult:1,critShot:f.critShot,x2Active:f.x2Active},{angle:a,speed:115+rand(0,35),kind:"diceShard",damageMult:1,extra:{specialDamage:f.blast*.34,specialRadius:9,radius:2.2,hitGrace:.04,maxAge:1.3,customColor:f.color}});}}else if(face===4){explosion(s,px,terrainY(s,px),22,f.blast*.60,owner,.55,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}else if(face===5){for(const t of s.tanks){if(!t.alive||t.id===f.owner)continue;const dx=t.x-px,dist=Math.abs(dx);if(dist<86){t.x=clamp(t.x+Math.sign(dx||1)*(f.push||22)*(1-dist/86),10,s.width-10);damageTank(s,t,f.shock*.65,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}s.fx.push({kind:"repulse",x:px,y:py,r:86,life:.30,max:.30,color:f.color});}else explosion(s,px,py+10,40,f.jackpot,owner,.24,"#ffe36b",{crit:!!f.critShot,x2:!!f.x2Active});}
-      if(f.index>=f.rolls&&f.life<=.36&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x)-4,58,f.final,fieldOwner(f),.28,"#fff0a0",{crit:!!f.critShot,x2:!!f.x2Active});}
-    }else if(f.kind==="sentryBattery"){
-      f.tick-=dt;const total=f.positions.length*f.shots;if(f.tick<=0&&f.index<total){f.tick=f.rate;const pos=f.positions[f.index%f.positions.length],target=nearestEnemy(s,f.owner,pos.x,pos.y,500);if(target){const dx=target.x-pos.x,dy=target.y-pos.y,len=Math.max(1,Math.hypot(dx,dy));pos.angle=Math.atan2(dy,dx);s.projectiles.push({id:s.nextId++,owner:f.owner,weaponId:f.weaponId,tier:f.tier,kind:"sentryRound",x:pos.x,y:pos.y-7,vx:dx/len*390,vy:dy/len*390,age:0,alive:true,radius:2,noGravity:true,windFactor:0,skipSkillObjects:true,damageMult:1,critShot:!!f.critShot,x2Active:!!f.x2Active,specialDamage:f.damage,specialRadius:6,customColor:f.color,hitGrace:.03,maxAge:1.7});s.fx.push({kind:"sentryMuzzle",x:pos.x,y:pos.y-7,life:.12,max:.12,color:f.color});}f.index++;}
-      if(f.index>=total&&f.heavy>0&&!f.heavyDone){f.heavyDone=true;const pos=f.positions[Math.floor(f.positions.length/2)],target=nearestEnemy(s,f.owner,pos.x,pos.y,560);if(target)spawnStraightSpecial(s,{owner:f.owner,weaponId:f.weaponId,tier:f.tier,x:pos.x,y:pos.y-10,damageMult:1,critShot:f.critShot,x2Active:f.x2Active},f.weaponId,"sentryHeavy",pos.x,pos.y-10,target.x,target.y,310,f.heavy,24,"#fff0a8");if(f.burst){for(const q of f.positions)explosion(s,q.x,q.y,24,f.damage*.55,fieldOwner(f),.05,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}}
-    }else if(f.kind==="launchPad"){
-      const u=clamp((f.max-f.life)/f.max,0,1),lift=Math.sin(u*Math.PI);for(const id of f.targetIds){const t=s.tanks.find(q=>q.id===id&&q.alive);if(!t)continue;const gy=tankGround(s,t);t.forcedY=gy-lift*f.height;if(f.airburst>0&&u>.48&&!f.burstDone){damageTank(s,t,f.airburst,fieldOwner(f),{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"launchBurst",x:t.x,y:t.forcedY,life:.28,max:.28,color:f.color});}}if(f.airburst>0&&u>.48)f.burstDone=true;if(f.life<=0&&!f.slamDone){f.slamDone=true;for(const id of f.targetIds){const t=s.tanks.find(q=>q.id===id&&q.alive);if(!t)continue;t.forcedY=null;t.y=tankGround(s,t);explosion(s,t.x,t.y,30,f.slam,fieldOwner(f),.18,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}}
-    }else if(f.kind==="knightField"){
-      f.tick-=dt;if(f.tick<=0&&f.index<Math.max(...f.paths.map(p=>p.length))){f.tick=.22;for(const path of f.paths){const q=path[f.index];if(!q)continue;f.active=q;s.fx.push({kind:"knightJump",x:q.x,y:q.y,life:.26,max:.26,color:f.color,index:f.index});explosion(s,q.x,terrainY(s,q.x)-3,f.r,f.damage,fieldOwner(f),.08,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}f.index++;}if(f.index>=Math.max(...f.paths.map(p=>p.length))&&f.life<=.30&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x)-4,38,f.final,fieldOwner(f),.15,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
-    }else if(f.kind==="cycloneField"){
-      const step=f.dir*f.speed*dt;f.x=clamp(f.x+step,6,s.width-6);f.travel+=Math.abs(step);f.y=terrainY(s,f.x)-10;for(const t of s.tanks){if(!t.alive||t.id===f.owner)continue;const dx=f.x-t.x,dist=Math.abs(dx);if(dist<72){t.x=clamp(t.x+Math.sign(dx||1)*f.pull*dt*(1-dist/72),10,s.width-10);}}f.tick-=dt;if(f.tick<=0){f.tick=f.tickEvery;const owner=fieldOwner(f);for(const t of s.tanks){if(t.alive&&t.id!==f.owner&&Math.hypot(t.x-f.x,t.y-f.y)<42)damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}if(f.travel>=f.range)f.life=0;if(f.life<=0&&!f.done){f.done=true;if(f.finalOwner&&f.final>0)explosion(s,f.x,terrainY(s,f.x),42,f.final,fieldOwner(f),.18,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
-    }else if(f.kind==="rocketCarousel"){
-      const elapsed=f.max-f.life;f.angle=elapsed*4.5;f.tick-=dt;if(f.tick<=0&&f.index<f.count){f.tick=Math.max(.07,f.max/Math.max(1,f.count)*.72);const a=f.angle+f.index/f.count*Math.PI*2,sx=f.x+Math.cos(a)*f.orbit,sy=f.y+Math.sin(a)*f.orbit*.55,target=nearestEnemy(s,f.owner,f.x,f.y,430),tx=target?.x??f.x+Math.cos(a)*90,ty=target?.y??terrainY(s,tx);spawnStraightSpecial(s,{owner:f.owner,weaponId:f.weaponId,tier:f.tier,x:sx,y:sy,damageMult:1,critShot:f.critShot,x2Active:f.x2Active},f.weaponId,"carouselRocket",sx,sy,tx,ty,250,f.damage,18,f.color);f.index++;}
-      if(f.index>=f.count&&f.heavyIndex<f.heavy&&f.life<.55){const a=f.angle+f.heavyIndex/Math.max(1,f.heavy)*Math.PI*2,sx=f.x+Math.cos(a)*f.orbit,sy=f.y+Math.sin(a)*f.orbit*.55,target=nearestEnemy(s,f.owner,f.x,f.y,500),tx=target?.x??f.x,ty=target?.y??terrainY(s,tx);spawnStraightSpecial(s,{owner:f.owner,weaponId:f.weaponId,tier:f.tier,x:sx,y:sy,damageMult:1,critShot:f.critShot,x2Active:f.x2Active},f.weaponId,"carouselHeavy",sx,sy,tx,ty,220,f.heavyDamage,28,"#ffe76c");f.heavyIndex++;}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),46,f.final,fieldOwner(f),.18,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
-    }else if(f.kind==="kaleidoscope"){
-      f.tick-=dt;const target=s.tanks.find(t=>t.id===f.targetId&&t.alive)||nearestEnemy(s,f.owner,f.x,f.y,500),end=target?{x:target.x,y:target.y}:{x:f.x,y:terrainY(s,f.x)};const route=[f.shooter,...f.nodes,end],segments=Math.max(1,route.length-1);if(f.tick<=0&&f.cycle<f.pulses){f.tick=.18;const i=f.segment%segments,a=route[i],b=route[i+1];f.beamA=a;f.beamB=b;const owner=fieldOwner(f);for(const t of s.tanks){if(!t.alive||t.id===f.owner)continue;const key=`${f.cycle}:${i}:${t.id}`;const hit=pointSegmentDistance(t.x,t.y,a.x,a.y,b.x,b.y);if(hit.d<12&&!f.hitKeys[key]){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}if(f.dual){const j=segments-1-i,c=route[j+1],d=route[j];f.beamA2=c;f.beamB2=d;for(const t of s.tanks){if(!t.alive||t.id===f.owner)continue;const key=`d:${f.cycle}:${j}:${t.id}`,hit=pointSegmentDistance(t.x,t.y,c.x,c.y,d.x,d.y);if(hit.d<12&&!f.hitKeys[key]){f.hitKeys[key]=1;damageTank(s,t,f.damage*.72,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}f.segment++;if(f.segment>=segments){f.segment=0;f.cycle++;}}
-      if(f.cycle>=f.pulses&&f.life<=.28&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x)-8,50,f.final,fieldOwner(f),.10,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
-    }else if(f.kind==="proximityMine"){
-      if(f.done)continue;const owner=fieldOwner(f),target=nearestEnemy(s,f.owner,f.x,f.y,f.sensor);if(target){f.done=true;f.dormant=false;f.life=0;if(f.pulse>0)damageTank(s,target,f.pulse,owner,{crit:!!f.critShot,x2:!!f.x2Active});explosion(s,f.x,terrainY(s,f.x)-2,f.r,f.damage,owner,.48,f.color,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"mineTrigger",x:f.x,y:f.y,r:f.sensor,life:.38,max:.38,color:f.color});}
-    }else if(f.kind==="icePatch"){
-      f.y=terrainY(s,f.x);if(f.done){f.dormant=false;f.life=0;}
-    }else if(f.kind==="magnetron"){
-      f.tick-=dt;if(f.tick<=0&&f.index<f.pulses){f.tick=.27;const attract=f.index%2===0,owner=fieldOwner(f);f.polarity=attract?1:-1;for(const t of s.tanks){if(!t.alive||t.id===f.owner)continue;const dx=f.x-t.x,dist=Math.abs(dx);if(dist<f.range){t.x=clamp(t.x+Math.sign(dx||1)*f.force*(attract?1:-1)*(1-dist/f.range),10,s.width-10);damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}s.fx.push({kind:"magnetPulse",x:f.x,y:f.y,r:f.range,polarity:f.polarity,life:.28,max:.28,color:f.color});f.index++;}if(f.index>=f.pulses&&f.life<=.28&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x)-5,48,f.final,fieldOwner(f),.12,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
-    }else if(f.kind==="leechField"){
-      f.tick-=dt;if(f.tick<=0&&f.index<f.pulses){f.tick=.32;const owner=fieldOwner(f);let healed=0;f.links=[];for(const id of f.targetIds){const t=s.tanks.find(q=>q.id===id&&q.alive);if(!t)continue;const applied=damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});healed+=applied*f.heal;f.links.push({x1:owner?.x??f.x,y1:(owner?.y??f.y)-10,x2:t.x,y2:t.y});}if(owner&&healed>0){const missing=Math.max(0,owner.maxHp-owner.hp),hpGain=Math.min(missing,healed);owner.hp+=hpGain;const excess=healed-hpGain;if(f.armor&&excess>0)owner.armor=Math.min(150,(owner.armor||0)+excess);s.fx.push({kind:"leechHeal",x:owner.x,y:owner.y,life:.34,max:.34,color:f.color,value:healed});}f.index++;}
-      if(f.index>=f.pulses&&f.life<=.25&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),36,f.final,fieldOwner(f),.08,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
-    }else if(f.kind==="tetrisBlock"){
-      if(f.delay>0){f.delay-=dt;continue;}const u=clamp((f.max-f.life)/Math.max(.01,f.max*.70),0,1);f.y=f.startY+(f.groundY-f.startY)*u;if(f.y>=f.groundY-1&&!f.done){f.done=true;modifyTerrainRaise(s,f.x,16,f.raise);explosion(s,f.x,terrainY(s,f.x)-5,f.r+(f.bomb?9:0),f.damage*(f.bomb?1.55:1),fieldOwner(f),.08,f.bomb?"#ff8a68":f.color,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"blockLock",x:f.x,y:terrainY(s,f.x),shape:f.shape,life:.30,max:.30,color:f.color});f.life=0;}
-    }else if(f.kind==="tetrisClear"){
-      f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const owner=fieldOwner(f),a=Math.max(8,f.x-f.span/2),b=Math.min(s.width-8,f.x+f.span/2);for(const t of s.tanks){if(t.alive&&t.id!==f.owner&&t.x>=a&&t.x<=b)damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}s.fx.push({kind:"lineClear",x:f.x,y:terrainY(s,f.x)-18,span:f.span,life:.45,max:.45,color:f.color});f.life=0;}
-    }else if(f.kind==="eclipseField"){
-      const elapsed=f.max-f.life,total=Math.max(.001,f.max),u=clamp(elapsed/total,0,1),phase=u*f.passes,pass=Math.min(f.passes-1,Math.floor(phase)),local=phase-pass,forward=(pass%2===0)?f.dir:-f.dir;f.shadowX=clamp(f.centerX+(local-.5)*f.span*forward,8,s.width-8);const owner=fieldOwner(f);for(const t of s.tanks){if(!t.alive||t.id===f.owner)continue;const key=`${pass}:${t.id}`;if(Math.abs(t.x-f.shadowX)<=f.width*.5&&!f.hitKeys[key]){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"eclipseHit",x:t.x,y:t.y,life:.25,max:.25,color:f.color});}}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.centerX,terrainY(s,f.centerX)-6,62,f.final,owner,.10,"#d6c2ff",{crit:!!f.critShot,x2:!!f.x2Active});}
+      f.tick-=dt;if(f.tick<=0&&f.index<f.rolls){f.tick=f.interval;f.index++;const owner=fieldOwner(f),face=rint(1,6);f.lastFace=face;const reps=f.triple&&f.index%3===0?3:f.double&&f.index%2===0?2:1;for(let z=0;z<reps;z++){const xx=clamp(f.x+rand(-f.span*.55,f.span*.55),8,s.width-8),yy=terrainY(s,xx);if(face===1)explosion(s,xx,yy,24,f.damage,owner,.18,f.color,{crit:!!f.critShot,x2:!!f.x2Active});else if(face===2){modifyTerrainCrater(s,xx,yy,28,.45);s.fx.push({kind:"diceCrater",x:xx,y:yy,life:.3,max:.3,color:f.color});}else if(face===3){for(const t of s.tanks)if(t.alive&&isEnemy(s,owner,t)&&Math.abs(t.x-xx)<50)damageTank(s,t,f.damage*.75,owner,{crit:!!f.critShot,x2:!!f.x2Active});}else if(face===4){for(const t of s.tanks)if(t.alive&&Math.abs(t.x-xx)<70){t.x=clamp(t.x+Math.sign(t.x-xx||1)*18,10,s.width-10);}}else if(face===5)explosion(s,xx,yy,38,f.damage*.75,owner,.08,"#ffe47a",{crit:!!f.critShot,x2:!!f.x2Active});else explosion(s,f.x,terrainY(s,f.x),30,f.damage*1.25,owner,.14,"#ff7fdd",{crit:!!f.critShot,x2:!!f.x2Active});}s.fx.push({kind:"diceRoll",x:f.x,y:f.y,face,life:.28,max:.28,color:f.color});}
+      if(f.index>=f.rolls&&f.life<.72&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),62,f.final,fieldOwner(f),.42,"#ffd76e",{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="sentryBattery"){
+      for(const q of f.turrets)q.flash=Math.max(0,(q.flash||0)-dt);f.tick-=dt;if(f.tick<=0&&f.index<f.shots){f.tick=Math.max(.16,f.max/Math.max(1,f.shots+1));const owner=fieldOwner(f);for(const q of f.turrets){const target=nearestEnemy(s,f.owner,q.x,q.y,f.range);if(target){q.flash=.12;damageTank(s,target,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"sentryBeam",x1:q.x,y1:q.y-12,x2:target.x,y2:target.y,life:.15,max:.15,color:f.color});}}f.index++;}
+      if(f.index>=f.shots&&f.life<.5&&!f.done){f.done=true;const owner=fieldOwner(f);if(f.heavy>0){const target=nearestEnemy(s,f.owner,f.x,f.y,f.range);if(target){damageTank(s,target,f.heavy,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"sentryHeavy",x1:f.x,y1:f.y-28,x2:target.x,y2:target.y,life:.30,max:.30,color:"#ffd36e"});}}if(f.final>0)explosion(s,f.x,terrainY(s,f.x),46,f.final,owner,.08,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="poolTable"){
+      const owner=fieldOwner(f),lo=clamp(f.x-f.span*.62,8,s.width-8),hi=clamp(f.x+f.span*.62,8,s.width-8);for(const b of f.balls){b.vy+=s.gravity*.62*dt;b.x+=b.vx*dt;b.y+=b.vy*dt;if(b.x<lo||b.x>hi){b.x=clamp(b.x,lo,hi);b.vx*=-.88;s.fx.push({kind:"poolBank",x:b.x,y:b.y,life:.12,max:.12,color:f.color});}const gy=terrainY(s,b.x)-5;if(b.y>=gy){b.y=gy;b.vy=-Math.abs(b.vy)*.62-18;b.vx*=.94;b.bank=(b.bank||0)+1;}for(const t of s.tanks){if(!t.alive)continue;const key=`${t.id}:${Math.floor((f.max-f.life)*5)}`;if(!b.hit[key]&&Math.hypot(t.x-b.x,t.y-b.y)<16){b.hit[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});b.vx*=-.65;b.vy=-90;s.fx.push({kind:"poolHit",x:b.x,y:b.y,life:.2,max:.2,color:f.color});}}}
+      if(f.life<=0&&!f.done){f.done=true;if(f.eight>0)explosion(s,f.x,terrainY(s,f.x),38,f.eight,owner,.12,"#f5f5f0",{crit:!!f.critShot,x2:!!f.x2Active});if(f.railPulse>0){for(const xx of [lo,hi])explosion(s,xx,terrainY(s,xx),24,f.railPulse,owner,.04,"#ff77d9",{crit:!!f.critShot,x2:!!f.x2Active});}}
+    }
+    else if(f.kind==="launchPad"){
+      const owner=fieldOwner(f),u=1-clamp(f.life/f.max,0,1),arc=Math.sin(Math.PI*u);for(let i=0;i<f.targetIds.length;i++){const t=s.tanks.find(q=>q.id===f.targetIds[i]&&q.alive);if(!t)continue;t.forcedY=tankGround(s,t)-arc*f.height;if(u>.93&&!f.hit){t.forcedY=undefined;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});if(f.airburst>0)explosion(s,t.x,t.y-35,34,f.airburst,owner,.02,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}}if(u>.93)f.hit=true;if(f.life<=0){for(const id of f.targetIds){const t=s.tanks.find(q=>q.id===id);if(t)t.forcedY=undefined;}}
+    }
+    else if(f.kind==="knightField"){
+      f.tick-=dt;const maxJ=Math.max(...f.paths.map(a=>a.length));if(f.tick<=0&&f.index<maxJ){f.tick=.22;const owner=fieldOwner(f);for(let k=0;k<f.paths.length;k++){const q=f.paths[k][f.index];if(!q)continue;explosion(s,q.x,q.y,f.r,f.damage,owner,.08,f.color,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"knightLand",x:q.x,y:q.y,life:.28,max:.28,color:f.color,index:f.index,knight:k});}f.index++;}
+      if(f.index>=maxJ&&f.life<.45&&!f.done){f.done=true;const owner=fieldOwner(f);if(f.rook>0){for(const t of s.tanks)if(t.alive&&isEnemy(s,owner,t)&&(Math.abs(t.x-f.x)<22||Math.abs(t.x-f.x)<110&&Math.abs(t.y-terrainY(s,t.x)+11)<20))damageTank(s,t,f.rook,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"rookCross",x:f.x,y:terrainY(s,f.x),life:.35,max:.35,color:f.color});}if(f.final>0)explosion(s,f.x,terrainY(s,f.x),42,f.final,owner,.12,"#f2e9ff",{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="cycloneField"){
+      const owner=fieldOwner(f),u=1-clamp(f.life/f.max,0,1);for(let c=0;c<f.count;c++){const dir=c%2?1:-1,cx=clamp(f.x+dir*Math.sin(u*Math.PI*2)*f.range*.55,10,s.width-10),cy=terrainY(s,cx)-26;s.fx.push({kind:"cycloneCore",x:cx,y:cy,life:.10,max:.10,color:f.color});for(const t of s.tanks){if(!t.alive)continue;const dx=cx-t.x,dist=Math.abs(dx);if(dist<f.range){t.x=clamp(t.x+Math.sign(dx)*f.force*dt*(1-dist/f.range),10,s.width-10);const key=Math.floor(u*9)+":"+c+":"+t.id;if(!f[key]&&dist<34){f[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),48,f.final,owner,.10,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="rocketCarousel"){
+      const owner=fieldOwner(f),u=1-clamp(f.life/f.max,0,1);f.angle=u*Math.PI*5;f.tick-=dt;if(f.tick<=0&&f.index<f.shots){f.tick=Math.max(.10,f.max/(f.shots+2));const a=f.angle+f.index/f.pods*Math.PI*2,sx=f.x+Math.cos(a)*f.orbit,sy=f.y+Math.sin(a)*f.orbit*.45,target=nearestEnemy(s,f.owner,f.x,terrainY(s,f.x),360);if(target){damageTank(s,target,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"carouselRocket",x1:sx,y1:sy,x2:target.x,y2:target.y,life:.22,max:.22,color:f.color});}f.index++;}
+      if(f.index>=f.shots&&f.life<.55&&!f.done){f.done=true;for(let i=0;i<(f.heavy||0);i++){const target=nearestEnemy(s,f.owner,f.x,terrainY(s,f.x),430);if(target){damageTank(s,target,f.damage*1.8,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"carouselHeavy",x1:f.x,y1:f.y,x2:target.x,y2:target.y,life:.30,max:.30,color:"#ffd76e"});}}if(f.final>0)explosion(s,f.x,terrainY(s,f.x),50,f.final,owner,.20,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="prismBank"){
+      if(!f.applied){f.applied=true;const owner=fieldOwner(f),pts=[f.start,...f.nodes,f.end];for(let i=0;i<pts.length-1;i++){for(const t of s.tanks){if(!t.alive)continue;if(pointSegmentDistance(t.x,t.y,pts[i].x,pts[i].y,pts[i+1].x,pts[i+1].y).d<14)damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}if(f.returnBeam){for(let i=pts.length-1;i>0;i--){for(const t of s.tanks){if(!t.alive)continue;if(pointSegmentDistance(t.x,t.y,pts[i].x,pts[i].y,pts[i-1].x,pts[i-1].y).d<10)damageTank(s,t,f.damage*.55,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}if(f.dual){for(const t of s.tanks)if(t.alive&&Math.abs(t.x-f.x)<55)damageTank(s,t,f.damage*.45,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}
+      if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),38,f.final,fieldOwner(f),.04,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="proximityMine"){
+      f.armedDelay=Math.max(0,(f.armedDelay||0)-dt);if(f.armedDelay<=0){const owner=fieldOwner(f),target=s.tanks.find(t=>isEnemy(s,owner,t)&&Math.hypot(t.x-f.x,t.y-f.y)<=f.sensor);if(target){f.dormant=false;f.life=.01;explosion(s,f.x,terrainY(s,f.x),f.r,f.damage,owner,.45,f.color,{crit:!!f.critShot,x2:!!f.x2Active});if(f.final>0)damageTank(s,target,f.final,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"mineTrigger",x:f.x,y:f.y,life:.42,max:.42,color:f.color});}}
+    }
+    else if(f.kind==="icePatch"){
+      if((f.damage||0)>0){f.tick=(f.tick||0)-dt;if(f.tick<=0){f.tick=.9;const owner=fieldOwner(f);for(const t of s.tanks)if(t.alive&&isEnemy(s,owner,t)&&Math.abs(t.x-f.x)<=f.span*.5)damageTank(s,t,f.damage*.25,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}
+    }
+    else if(f.kind==="magnetron"){
+      f.tick-=dt;if(f.tick<=0&&f.index<f.pulses){f.tick=.28;const owner=fieldOwner(f),pull=f.index%2===0,idx=f.index++;for(const t of s.tanks){if(!t.alive)continue;const dx=f.x-t.x,dist=Math.abs(dx);if(dist<f.range){const dir=Math.sign(dx||1)*(pull?1:-1);t.x=clamp(t.x+dir*f.force*(1-dist/f.range),10,s.width-10);damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}s.fx.push({kind:"magnetPulse",x:f.x,y:f.y,r:f.range,life:.25,max:.25,color:f.color,pull});}if(f.index>=f.pulses&&f.life<.35&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),46,f.final,fieldOwner(f),.10,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="leechField"){
+      f.tick-=dt;if(f.tick<=0&&f.index<f.pulses){f.tick=.34;const owner=fieldOwner(f);for(const id of f.targetIds){const t=s.tanks.find(q=>q.id===id&&q.alive);if(!t||!owner?.alive)continue;const before=t.hp+t.armor,applied=damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});const heal=Math.max(0,applied)*f.heal,missing=owner.maxHp-owner.hp,hpGain=Math.min(missing,heal);owner.hp+=hpGain;if(f.armor&&heal>hpGain)owner.armor=Math.min(150,(owner.armor||0)+(heal-hpGain));s.fx.push({kind:"leechBeam",x1:t.x,y1:t.y,x2:owner.x,y2:owner.y,life:.28,max:.28,color:f.color});}f.index++;}if(f.index>=f.pulses&&f.life<.35&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),42,f.final,fieldOwner(f),.06,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+    else if(f.kind==="tetrisDrop"){
+      f.tick-=dt;if(f.tick<=0&&f.index<f.count){f.tick=.18;const q=f.count<=1?.5:f.index/(f.count-1),xx=clamp(f.x+(q-.5)*f.span+rand(-10,10),8,s.width-8),gy=terrainY(s,xx),bomb=f.index>=f.count-f.bombs,owner=fieldOwner(f);f.index++;s.fx.push({kind:"tetrisBlock",x:xx,y:gy-120,targetY:gy,life:.38,max:.38,color:f.color,bomb,shape:f.index%7});explosion(s,xx,gy,18,f.damage,owner,bomb?.18:.03,bomb?"#ff8870":f.color,{crit:!!f.critShot,x2:!!f.x2Active});modifyTerrainRaise(s,xx,12,f.raise);}
+      if(f.index>=f.count&&f.life<.5&&!f.cleared){f.cleared=true;if(f.clear>0){const owner=fieldOwner(f);for(const t of s.tanks)if(t.alive&&Math.abs(t.x-f.x)<f.span*.58)damageTank(s,t,f.clear,owner,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"tetrisClear",x:f.x,y:terrainY(s,f.x),span:f.span,life:.42,max:.42,color:"#ffffff"});}if(f.reactor>0)s.fields.push({kind:"tetrisReactor",x:f.x,y:terrainY(s,f.x)-55,life:.72,max:.72,span:f.span,damage:f.reactor,owner:f.owner,critShot:f.critShot,x2Active:f.x2Active,color:"#ffd76e",done:false});}
+    }
+    else if(f.kind==="tetrisReactor"){
+      const u=1-clamp(f.life/f.max,0,1);f.scanX=f.x-f.span*.55+u*f.span*1.1;if(!f.done&&u>.5){f.done=true;const owner=fieldOwner(f);for(const t of s.tanks)if(t.alive&&Math.abs(t.x-f.x)<f.span*.6)damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});modifyTerrainCrater(s,f.x,terrainY(s,f.x),Math.min(60,f.span*.30),.28);}
+    }
+    else if(f.kind==="eclipseField"){
+      const owner=fieldOwner(f),u=1-clamp(f.life/f.max,0,1);for(let m=0;m<f.moons;m++){const dir=m%2?-1:1,phase=(u*f.passes)%1,cx=dir>0?(-60+(s.width+120)*phase):(s.width+60-(s.width+120)*phase);f[`moon${m}`]=cx;for(const t of s.tanks){if(!t.alive)continue;const pass=Math.floor(u*f.passes),key=`${m}:${pass}:${t.id}`;if(!f.hitKeys[key]&&Math.abs(t.x-cx)<f.width*.5){f.hitKeys[key]=1;damageTank(s,t,f.damage,owner,{crit:!!f.critShot,x2:!!f.x2Active});}}}if(f.life<=0&&!f.done){f.done=true;if(f.final>0)explosion(s,f.x,terrainY(s,f.x),56,f.final,owner,.04,"#7588ff",{crit:!!f.critShot,x2:!!f.x2Active});}
+    }
+
+    else if(f.kind==="slingConverge"){
+      if(f.life<.34&&!f.done){f.done=true;const owner=fieldOwner(f);explosion(s,f.x,terrainY(s,f.x),f.r,f.damage,owner,.20,f.color,{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"slingConverge",x:f.x,y:f.y,life:.44,max:.44,color:f.color});f.life=0;}
     }
     else if(f.kind==="burnTarget"){f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const target=s.tanks.find(t=>t.id===f.targetId&&t.alive);if(target){damageTank(s,target,f.damage,fieldOwner(f),{crit:!!f.critShot,x2:!!f.x2Active});s.fx.push({kind:"burnTick",x:target.x,y:target.y,life:.28,max:.28,color:f.color});}}}
     else if(f.kind==="lightningStrike"){f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const y=terrainY(s,f.x);s.fx.push({kind:"lightningBolt",x:f.x,y,life:.38,max:.38,color:f.color});explosion(s,f.x,y,f.r,f.damage,fieldOwner(f),0,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}}
@@ -1691,7 +1859,7 @@ function updateFields(s,dt){
     else if(f.kind==="timebomb"&&f.life<=0&&!f.done){f.done=true;explosion(s,f.x,f.y,f.r,f.damage,fieldOwner(f),1,f.color,{crit:!!f.critShot,x2:!!f.x2Active});}
     else if(f.kind==="faultPop"){f.delay-=dt;if(f.delay<=0&&!f.done){f.done=true;const y=terrainY(s,f.x);explosion(s,f.x,y,f.r||28,f.damage,fieldOwner(f),.38,f.color||"#cf8c58",{crit:!!f.critShot,x2:!!f.x2Active});}}
   }
-  const oneShot=["faultPop","burnTarget","lightningStrike","stickyMine","twinkleDrop","twinkleFinal","timeEcho","nukeShock","pinataDrop","fireStormRocks","portalCollapse","imploderCharge"];
+  const oneShot=["faultPop","burnTarget","lightningStrike","stickyMine","twinkleDrop","twinkleFinal","timeEcho","nukeShock","pinataDrop","fireStormRocks","portalCollapse","imploderCharge","guillotineSweep","slingConverge","tetrisReactor"];
   s.fields=s.fields.filter(f=>(f.dormant||f.life>0)&&!(f.done&&oneShot.includes(f.kind)));
 }
 function updateFires(s,dt){
@@ -1751,7 +1919,7 @@ function tryEdgeWallBounce(s,p,d){
 function updateProjectile(s,p,dt){
   if(!p.alive)return;const d=weaponDef(p.weaponId,p.tier);
   p.age+=dt;if(p.age<0)return;
-  p.edgeWallCooldown=Math.max(0,(p.edgeWallCooldown||0)-dt);
+  p.edgeWallCooldown=Math.max(0,(p.edgeWallCooldown||0)-dt);p.aegisCooldown=Math.max(0,(p.aegisCooldown||0)-dt);
   p.traceTimer=(p.traceTimer||0)-dt;if(p.traceTimer<=0){p.traceTimer=.055;(p.trace||(p.trace=[])).push({x:p.x,y:p.y});}
   if(!p.skipSkillObjects)handleSkillObjects(s,p);
 
@@ -1845,8 +2013,15 @@ function updateProjectile(s,p,dt){
     const target=(p.bounderTargetId&&s.tanks.find(t=>t.id===p.bounderTargetId&&t.alive))||nearestEnemy(s,p.owner,p.x,p.y);
     if(target){p.bounderStage="drop";p.x=target.x;p.vx=0;p.vy=d.bounderDropSpeed||260;p.noGravity=true;p.windFactor=0;s.fx.push({kind:"bounderLock",x:p.x,y:p.y,targetX:target.x,targetY:target.y,life:.32,max:.32,color:d.color});}
   }
+  const prevX=p.x,prevY=p.y;
   if(p.kind!=="deadDrop"){p.vx+=s.wind*(p.windFactor??1)*dt;if(!p.noGravity)p.vy+=s.gravity*(d.gravity||1)*(p.gravityMult||1)*dt;}
   p.x+=p.vx*dt;p.y+=p.vy*dt;
+  if(p.weaponId==="sonicboom"){
+    p.sonicTick=(p.sonicTick||0)-dt;if(p.sonicTick<=0&&p.age>.12){p.sonicTick=d.sonicInterval||.16;p.sonicHits||(p.sonicHits={});const vx=p.x-prevX,vy=p.y-prevY,l=Math.max(1,Math.hypot(vx,vy)),nx=-vy/l,ny=vx/l,w=d.sonicWidth||30,cx=(prevX+p.x)/2,cy=(prevY+p.y)/2;const owner=ownerOf(s,p);
+      const bands=[{scale:1,damage:d.sonicDamage||8,back:0}];if(d.sonicEcho)bands.push({scale:.72,damage:(d.sonicDamage||8)*.55,back:18});
+      for(const b of bands){const bx=cx-(vx/l)*b.back,by=cy-(vy/l)*b.back,ax=bx-nx*w*b.scale,bay=by-ny*w*b.scale,bx2=bx+nx*w*b.scale,by2=by+ny*w*b.scale;s.fx.push({kind:"sonicBand",x1:ax,y1:bay,x2:bx2,y2:by2,life:.22,max:.22,color:d.color});for(const t of s.tanks){if(!isEnemy(s,owner,t))continue;const key=t.id,count=p.sonicHits[key]||0;if(count>=(d.sonicMaxHits||2))continue;if(pointSegmentDistance(t.x,t.y,ax,bay,bx2,by2).d<14){p.sonicHits[key]=count+1;damageTankP(s,p,t,b.damage*(p.damageMult||1),owner);}}}
+    }
+  }
   if(!p.skipSkillObjects)handleSkillObjects(s,p);
   tryEdgeWallBounce(s,p,d);
 
@@ -1884,6 +2059,7 @@ function updateProjectile(s,p,dt){
     }
   }
   if(p.x>=0&&p.x<s.width&&p.y>=terrainY(s,p.x)){
+    if(p.kind==="phantomShell"&&Number.isFinite(p.phantomTargetX)&&Math.abs(p.x-p.phantomTargetX)>(p.phantomPhaseRange||72)){p.y=terrainY(s,p.x)-3;return;}
     if(p.weaponId==="sniper"&&p.terrainPierce){return;}
     if(p.kind==="scatterFrag"){p.alive=false;explosionP(s,p,p.x,p.y,14,p.fragDamage||12,ownerOf(s,p),.25,"#ffd56d");}
     else onImpact(s,p,p.x,p.y);
@@ -1893,9 +2069,8 @@ function updateProjectile(s,p,dt){
 function settleTanks(s,dt){
   for(const t of s.tanks){
     if(!t.alive)continue;t.x=clamp(t.x,9,s.width-9);
-    if(t.forcedY!=null){t.y=t.forcedY;continue;}
-    const target=tankGround(s,t);t.y=t.y<target?Math.min(target,t.y+180*dt):target;
-    const ice=iceModifiers(s,t.x),effectiveGrip=(t.grip||.8)*ice.grip,slope=terrainSlope(s,t.x),slideAt=Math.min(1.34,Math.max(.52,effectiveGrip+.08));if(!t.isDummy&&Math.abs(slope)>slideAt){t.x+=Math.sign(slope)*(ice.grip<.99?22:12)*dt;t.y=tankGround(s,t);}
+    const target=tankGround(s,t);if(Number.isFinite(t.forcedY))t.y=t.forcedY;else t.y=t.y<target?Math.min(target,t.y+180*dt):target;
+    const ice=iceModifiers(s,t.x),slope=terrainSlope(s,t.x),slideAt=Math.min(1.34,Math.max(.72,(t.grip||.8)*ice.grip+.08));if(!t.isDummy&&!Number.isFinite(t.forcedY)&&Math.abs(slope)>slideAt){t.x+=Math.sign(slope)*12*dt;t.y=tankGround(s,t);}
     if(t.y>s.height-4){t.alive=false;t.hp=0;}
   }
 }
@@ -1944,7 +2119,7 @@ export function resetTrainingRange(s){
   s.terrain=createTerrain(s.width,s.height,s.arenaIndex);s.initialTerrain=s.terrain.slice();
   const margin=s.width*.075;
   for(let i=0;i<s.tanks.length;i++){
-    const t=s.tanks[i];t.x=margin+(s.width-margin*2)*(i/Math.max(1,s.tanks.length-1));t.y=tankGround(s,t);t.forcedY=null;t.nextFuelPenalty=0;t.alive=true;t.knockedOut=false;t.hp=t.maxHp;t.armor=t.trainingArmor||0;t.fuel=t.maxFuel;
+    const t=s.tanks[i];t.x=margin+(s.width-margin*2)*(i/Math.max(1,s.tanks.length-1));t.y=tankGround(s,t);t.forcedY=undefined;t.nextFuelPenalty=0;t.alive=true;t.knockedOut=false;t.hp=t.maxHp;t.armor=t.trainingArmor||0;t.fuel=t.maxFuel;
   }
   s.projectiles=[];s.fields=[];s.fires=[];s.fx=[];s.crate=null;s.skillObjects=[];s.traceCurrent=[];s.lastShotTraces=[];s.botLastShotTraces=[];s.playerPersistentTraces=[];s.phase="aim";s.shotInProgress=false;s.nextTurnDelay=0;s.current=0;s.turnTimer=s.turnTime;s.message="TRAINING RANGE RESET";s.messageTimer=1.4;
   return true;
@@ -1961,12 +2136,17 @@ function advanceTurn(s){
   if(s.training){
     restoreTrainingDummies(s);s.round++;s.current=0;s.turnTimer=s.turnTime;s.phase="aim";s.nextTurnDelay=0;const p=s.tanks[0];if(p){p.fuel=p.maxFuel;s.selectedWeapon=p.selected;s.selectedTier=p.selectedTier;s.playerAngle=p.angle;s.playerPower=p.power;}s.message="TRAINING · FIRE WHEN READY";s.messageTimer=.8;return;
   }
-  for(const f of s.fields){
-    if(f.kind!=="proximityMine"&&f.kind!=="icePatch")continue;
-    if(f.justPlaced){f.justPlaced=false;continue;}
-    f.turnsLeft=(f.turnsLeft??1)-1;if(f.turnsLeft<=0){f.done=true;f.dormant=false;f.life=0;s.fx.push({kind:f.kind==="icePatch"?"iceFade":"mineFade",x:f.x,y:f.y,life:.35,max:.35,color:f.color});}
-  }
   const restocked=performRestock(s);
+  // Persistent V13/V14 fields age by completed turns rather than frame time.
+  for(const f of s.fields){
+    const persistent=["proximityMine","icePatch","aegisDome","conveyorBelt","anchorChain"].includes(f.kind);
+    if(!persistent||!f.dormant||f.expiring)continue;
+    f.turnsLeft=(f.turnsLeft||1)-1;
+    if(f.turnsLeft<=0){
+      if(f.kind==="proximityMine"||f.kind==="icePatch"){f.dormant=false;f.life=0;}
+      else f.expiring=true;
+    }
+  }
   const old=s.current;
   s.current=nextAliveIndex(s,s.current);
   const wrapped=s.current<=old;
@@ -1996,7 +2176,7 @@ function updateCrate(s,dt){
   if(!s.crate?.alive)return;const c=s.crate;
   if(!c.grounded){c.vy+=s.gravity*.7*dt;c.y+=c.vy*dt;if(c.y>=terrainY(s,c.x)-9){c.y=terrainY(s,c.x)-9;c.vy=0;c.grounded=true;}}
   for(const p of s.projectiles){
-    if(p.alive&&Math.hypot(p.x-c.x,p.y-c.y)<15){c.alive=false;grantAirdropReward(s,ownerOf(s,p),c.x,c.y);p.alive=false;break;}
+    if(p.alive&&Math.hypot(p.x-c.x,p.y-c.y)<15){c.alive=false;grantAirdropReward(s,ownerOf(s,p),c.x,c.y);p.hitGrace=Math.max(p.hitGrace||0,.05);break;}
   }
   // Once on the ground, a tank can simply drive over the crate to collect it.
   if(c.alive&&c.grounded){
@@ -2021,54 +2201,184 @@ export function updateState(s,dt){
     s.turnTimer-=dt;
     if(s.turnTimer<=0){const t=currentTank(s);if(t){if(t.isPlayer)fire(s,t,s.playerAngle,s.playerPower,t.selected);else performBotShot(s,t);}}
   }
-  const no=s.projectiles.length===0,transient=s.fires.length>0||s.fields.some(f=>["gravity","voidwell","groundwave","echo","timebomb","faultPop","burnTarget","lightningStrike","stickyMine","snake","viperPath","horizonWave","twinkleDrop","twinkleFinal","timeEcho","gunshipRun","hoverStrike","discoHang","palmTree","nukeShock","zipper","spikerRun","pinataWait","pinataDrop","fireStormRocks","sunburstField","jetRocketBurst","furyTower","imploderCharge","dualRollerField","pendulumField","teslaGate","satelliteOrbit","portalCollapse","prismCage","dominoChain","skyHook","castleDrop","compressor","pinballRig","lighthouse","repulsor","phantomRift","razorHalo","crystalBloom","guillotine","yoyoField","diceCore","sentryBattery","launchPad","knightField","cycloneField","rocketCarousel","kaleidoscope","magnetron","leechField","tetrisBlock","tetrisClear","eclipseField"].includes(f.kind));
+  const no=s.projectiles.length===0,transient=s.fires.length>0||s.fields.some(f=>["gravity","voidwell","groundwave","echo","timebomb","faultPop","burnTarget","lightningStrike","stickyMine","snake","viperPath","horizonWave","twinkleDrop","twinkleFinal","timeEcho","gunshipRun","hoverStrike","discoHang","palmTree","nukeShock","zipper","spikerRun","pinataWait","pinataDrop","fireStormRocks","sunburstField","jetRocketBurst","furyTower","imploderCharge","dualRollerField","pendulumField","teslaGate","satelliteOrbit","portalCollapse","prismCage","dominoChain","skyHook","castleDrop","compressor","pinballRig","lighthouse","repulsor","phantomRift","razorHalo","crystalBloom","guillotine","guillotineSweep","yoyoField","diceCore","sentryBattery","poolTable","launchPad","knightField","cycloneField","rocketCarousel","prismBank","magnetron","leechField","tetrisDrop","tetrisReactor","eclipseField","slingConverge","dozerField","plinkoBoard","gravityLasso","laserPlow","geoStamp","newtonCradle","helixRise","landSlide","bubbleLift","bridgeBuild"].includes(f.kind));
   if(s.phase==="shot"&&no&&!transient&&!s.shotInProgress){s.nextTurnDelay-=dt;if(s.nextTurnDelay<=0)advanceTurn(s);}
   else if(s.phase==="shot"&&no&&!transient&&s.shotInProgress)scheduleTurnEnd(s,.8);
 }
 
-function simulateLanding(s,t,angle,power){
-  const d=weaponDef(t.selected,t.selectedTier||1),speed=launchSpeedFromPower(power);let x=t.x+Math.cos(angle)*18,y=t.y-8-Math.sin(angle)*18,vx=Math.cos(angle)*speed,vy=-Math.sin(angle)*speed;
-  const dt=.035;
-  for(let i=0;i<260;i++){vx+=s.wind*dt;vy+=s.gravity*(d.gravity||1)*dt;x+=vx*dt;y+=vy*dt;
-    if(x<0||x>=s.width){const side=x<0?-1:1,edgeX=side<0?0:s.width-1,ground=terrainY(s,edgeX),top=ground-(s.edgeWallHeight||s.height*.20);if(y>=top&&y<=ground+10){x=side<0?4:s.width-4;vx=-vx*.92;}else return{x:clamp(x,0,s.width),y:s.height};}
-    if(y>s.height)return{x:clamp(x,0,s.width),y:s.height};if(y>=terrainY(s,x))return{x,y};}
-  return{x,y};
+// ---------- Weapon-aware bot planning ----------
+// The old bot treated almost every weapon as if its first terrain contact were the damage point.
+// With a large trick-weapon arsenal that produces obviously wrong shots (especially forward vs.
+// reverse rollers).  The planner below keeps the expensive work small: weapon/target suitability is
+// cheap, then only the chosen family runs the normal ballistic sample search with a family-specific
+// scoring profile.
+function botLineClear(s,a,b){
+  const steps=Math.max(8,Math.ceil(Math.abs(b.x-a.x)/14));
+  for(let i=1;i<steps;i++){
+    const q=i/steps,x=a.x+(b.x-a.x)*q,y=a.y+(b.y-a.y)*q;
+    if(y>=terrainY(s,x)-3)return false;
+  }
+  return true;
 }
-function botPickWeapon(s,t,target){
-  const usable=t.inventory.filter(v=>v.ammo>0),special=usable.filter(v=>v.id!=="pulse");if(!special.length)return usable[0];
-  const dx=Math.abs(target.x-t.x),cluster=s.tanks.filter(q=>isEnemy(s,t,q)&&Math.abs(q.x-target.x)<115).length;
-  let scored=special.map(slot=>{
-    let score=Math.random()*18;const id=slot.id,d=weaponDef(id,slot.tier);score+=slot.tier*4;
-    if(id==="rampart")score+=t.hp<t.maxHp*.45?24:-18;
-    if(["roller","sawblade","viper","backroller"].includes(id))score+=dx<430?20:-12;
-    if(["pinpoint","raillance","sniper","batteringram"].includes(id))score+=dx<700?17:-4;
-    if(["meteorchoir","skymarker","arcchain","megaflux","acidrain","areastrike","carpetbomb","asteroidbelt","gunship","quakecharge","ringer","sunburst","shrapnel","fury","pinata","napalm"].includes(id))score+=cluster*10;
-    if(id==="burrow"||id==="ghostbomb"||id==="digger"||id==="breaker"||id==="spiker")score+=Math.abs(terrainY(s,target.x)-terrainY(s,(target.x+t.x)/2))>45?14:6;
-    if(["zipper","miniv","snowball","breakermadness"].includes(id))score+=dx<360?14:-4;
-    // V12 families: keep utility/self-centered weapons from being selected in nonsensical ranges.
-    if(id==="imploder")score+=Math.hypot(target.x-t.x,target.y-t.y)<(d.radius||92)+16?78:-150;
-    if(id==="swapbomb")score+=dx<(d.swapRange||230)?34:-48;
-    if(id==="skyhook")score+=dx<(d.hookRange||190)?26:-22;
-    if(id==="repulsor")score+=dx<(d.repulseRange||120)*1.05?24:-16;
-    if(["pendulum","teslagate","prismcage","compressor","pinball","razorhalo","crystalbloom","guillotine","yoyo"].includes(id))score+=dx<330?12:2;
-    if(["waterballoon","quicksand","dualroller","satellite","wormhole","lighthouse","phantomcopy","meteorsling","molecule"].includes(id))score+=cluster*4+6;
-    // V13 tactical families: prefer sensible ranges and situations without hard-coding exact aim solutions.
-    if(id==="launchpad")score+=dx<(d.launchRange||150)?28:-30;
-    if(id==="leech")score+=dx<(d.leechRange||78)?(t.hp<t.maxHp*.65?42:18):-24;
-    if(id==="emp")score+=dx<(d.empRadius||72)+80?24:-8;
-    if(id==="proximitymine")score+=dx<320?16:-6;
-    if(id==="cryogel")score+=dx<360?12:3;
-    if(["dicecore","sentryseed","rocketcarousel","kaleidoscope","chessknight","tetris","eclipse"].includes(id))score+=cluster*5+8;
-    if(["cyclone","magnetron","billiards"].includes(id))score+=dx<380?16:2;
-    return {slot,score};
-  }).sort((a,b)=>b.score-a.score);
-  return scored[0].slot;
+function botTerrainRelief(s,a,b){
+  const lo=Math.max(3,Math.min(a,b)),hi=Math.min(s.width-3,Math.max(a,b));if(hi-lo<4)return 0;
+  let mn=Infinity,mx=-Infinity,slopes=0,n=0;
+  for(let i=0;i<=10;i++){const x=lo+(hi-lo)*i/10,y=terrainY(s,x);mn=Math.min(mn,y);mx=Math.max(mx,y);slopes+=Math.abs(terrainSlope(s,x));n++;}
+  return (mx-mn)+slopes/Math.max(1,n)*22;
 }
-function botReposition(s,t,target){
-  if(t.fuel<=5)return;
+function botClusterCount(s,t,target,r=118){return s.tanks.filter(q=>isEnemy(s,t,q)&&Math.abs(q.x-target.x)<=r).length;}
+function botDeformation(s){
+  if(!s.initialTerrain?.length)return 0;let sum=0,n=0,step=Math.max(8,Math.floor(s.width/28));
+  for(let x=4;x<s.width-4;x+=step){sum+=Math.abs(terrainY(s,x)-s.initialTerrain[x]);n++;}
+  return sum/Math.max(1,n);
+}
+function botWeaponTargetScore(s,t,slot,target){
+  const id=slot.id,d=weaponDef(id,slot.tier),dx=Math.abs(target.x-t.x),dist=Math.hypot(target.x-t.x,target.y-t.y);
+  const cluster=botClusterCount(s,t,target),relief=botTerrainRelief(s,t.x,target.x),hpFrac=t.hp/Math.max(1,t.maxHp),targetFrac=target.hp/Math.max(1,target.maxHp);
+  let score=24+slot.tier*5+Math.min(18,Math.max(0,d.damage||0)*.14)+Math.random()*7+(1-targetFrac)*5;
+  if(id==="pulse")score+=7;
+  const clusterFamilies=["meteorchoir","skymarker","arcchain","megaflux","acidrain","areastrike","carpetbomb","asteroidbelt","gunship","ringer","sunburst","shrapnel","fury","pinata","napalm","teslagate","prismcage","compressor","razorhalo","crystalbloom","guillotine","tetris","eclipse","plinko","geostamp","helix","landslide"];
+  if(clusterFamilies.includes(id))score+=(cluster-1)*8;
+  const precision=["pinpoint","sniper","raillance","uzi","bfg1000"];
+  if(precision.includes(id))score+=dx>240?13:dx<90?-10:3;
+  const lineClear=botLineClear(s,{x:t.x,y:t.y-12},{x:target.x,y:target.y-9});
+  if((id==="raillance"||id==="uzi")&&!lineClear)score-=58;
+  if(["roller","sawblade","backroller"].includes(id))score+=dx>75&&dx<520?18:-20;
+  if(id==="dualroller")score+=dx<470?15:-10;
+  if(["groundwave","horizon","zipper","miniv","snowball","breakermadness","bulldozer"].includes(id))score+=dx<430?11:-5;
+  if(["burrow","ghostbomb","digger","breaker","spiker","laserplow","landslide"].includes(id))score+=Math.min(18,relief*.16);
+  if(["waterballoon","quicksand","satellite","wormhole","lighthouse","phantomcopy","meteorsling","molecule","sentryseed","rocketcarousel","eclipse","plinko","helix"].includes(id))score+=6+(cluster-1)*3;
+  if(["skyhook","launchpad","gravitylasso","bubblelift","leech","emp","anchorchain"].includes(id))score+=dx<260?16:-18;
+  if(id==="swapbomb")score+=dx<(d.swapRange||230)?30:-45;
+  if(id==="repulsor")score+=dx<(d.repulseRange||120)*1.15?22:-16;
+  if(id==="imploder")score+=dist<(d.radius||92)+10?92:-190;
+  if(id==="rampart"){score+=hpFrac<.48?40:relief>55?10:-25;}
+  if(id==="aegisdome"){score+=hpFrac<.55?48:hpFrac<.78?24:2;score+=Math.max(0,aliveEnemies(s,t).length-1)*4;}
+  if(id==="bridgebuilder"){score+=relief>58?32:relief>34?16:-18;}
+  if(id==="conveyor")score+=dx<210?14:-8;
+  if(id==="proximitymine")score+=dx<260?15:-12;
+  if(id==="anchorchain")score+=(target.maxFuel||0)>80?9:2;
+  if(id==="leech")score+=hpFrac<.62?26:4;
+  if(id==="quakecharge")score+=botDeformation(s)>16?24:4;
+  if(id==="adaptiveshell")score+=14; // deliberately safe generalist
+  if(id==="sonicboom")score+=dx>130?14:2;
+  if(id==="newtoncradle")score+=dx>70&&dx<380?14:-6;
+  if(id==="geostamp")score+=relief>35?9:0;
+  if(id==="batteringram")score+=dx>150?9:0;
+  if(id==="fighterjet"||id==="deadweight"||id==="seagull")score+=dx>160?11:-4;
+  // Huge explosions at knife range are rarely a clever choice unless the family is intentionally self-centered.
+  if((d.radius||0)>65&&dist<(d.radius||0)*.72&&!["imploder","repulsor"].includes(id))score-=18;
+  return score;
+}
+function botPickPlan(s,t){
+  const enemies=aliveEnemies(s,t);if(!enemies.length)return null;
+  const usable=t.inventory.filter(v=>v.ammo>0);if(!usable.length)return null;
+  let best=null;
+  for(const slot of usable){
+    for(const target of enemies){
+      const score=botWeaponTargetScore(s,t,slot,target);
+      if(!best||score>best.score)best={slot,target,score};
+    }
+  }
+  return best;
+}
+function botBestBridgePoint(s,t,target){
+  const dir=Math.sign(target.x-t.x||1);let bestX=t.x+dir*Math.min(105,Math.abs(target.x-t.x)*.45),best=-Infinity;
+  for(let i=2;i<=8;i++){const q=i/10,x=clamp(t.x+(target.x-t.x)*q,12,s.width-12),rel=botTerrainRelief(s,x-dir*45,x+dir*45);if(rel>best){best=rel;bestX=x;}}
+  return bestX;
+}
+function botAimProfile(s,t,target,id,d){
+  const dir=Math.sign(target.x-t.x||1),dx=Math.abs(target.x-t.x);
+  let type="landing",desiredX=target.x,desiredY=terrainY(s,target.x),angleBias=0;
+  if(id==="raillance"||id==="uzi")return {type:"direct",dir};
+  if(id==="imploder"||id==="quakecharge")return {type:"noaim",dir};
+  if(id==="rampage")return {type:"direction",dir};
+  if(id==="rampart"){desiredX=clamp(t.x+dir*Math.min(92,Math.max(48,dx*.28)),12,s.width-12);return {type:"landing",desiredX,desiredY:terrainY(s,desiredX),utility:true};}
+  if(id==="aegisdome"){desiredX=clamp(t.x+dir*Math.min(64,Math.max(34,dx*.18)),12,s.width-12);return {type:"landing",desiredX,desiredY:terrainY(s,desiredX),utility:true};}
+  if(id==="bridgebuilder"){desiredX=botBestBridgePoint(s,t,target);return {type:"landing",desiredX,desiredY:terrainY(s,desiredX),utility:true,preferMidArc:true};}
+  if(id==="roller"||id==="sawblade"){
+    const roll=Math.min(id==="sawblade"?220:205,Math.max(65,(d.rollSpeed||110)*(d.rollTime||3.2)*.38));
+    desiredX=clamp(target.x-dir*roll,10,s.width-10);return {type:"landing",desiredX,desiredY:terrainY(s,desiredX),roller:"forward",dir};
+  }
+  if(id==="backroller"){
+    const roll=Math.min(155,Math.max(62,(d.rollSpeed||118)*(d.rollTime||3.8)*.28));
+    desiredX=clamp(target.x+dir*roll,10,s.width-10);return {type:"landing",desiredX,desiredY:terrainY(s,desiredX),roller:"reverse",dir};
+  }
+  if(id==="groundwave"){
+    desiredX=clamp(target.x-dir*Math.min(135,Math.max(55,dx*.32)),10,s.width-10);return {type:"landing",desiredX,desiredY:terrainY(s,desiredX),groundRunner:true};
+  }
+  if(id==="ringer"){
+    const rr=d.ringRadius||55;desiredX=clamp(target.x-dir*rr,10,s.width-10);return {type:"ring",desiredX,ringRadius:rr};
+  }
+  if(id==="yoyo"){
+    desiredX=clamp(target.x+dir*Math.min(58,Math.max(30,dx*.12)),10,s.width-10);return {type:"landing",desiredX,desiredY:terrainY(s,desiredX),tether:true};
+  }
+  if(id==="proximitymine"){desiredX=clamp(target.x-dir*24,10,s.width-10);return {type:"landing",desiredX,desiredY:terrainY(s,desiredX)};}
+  if(id==="deadweight"||id==="seagull")return {type:"overhead",desiredX:target.x,overshoot:id==="seagull"?70:0};
+  if(id==="fighterjet")return {type:"apex",desiredX:target.x};
+  if(id==="batteringram")return {type:"landing",desiredX:target.x,desiredY:terrainY(s,target.x),ram:true};
+  if(id==="laserplow"){angleBias=.55;return {type:"landing",desiredX:target.x,desiredY:terrainY(s,target.x),angleBias};}
+  if(id==="sonicboom")return {type:"path",desiredX:target.x,desiredY:target.y};
+  // Marker, deployable, homing and area families generally want the marker itself on/near the target.
+  return {type,desiredX,desiredY,dir};
+}
+function simulateAimFlight(s,t,id,tier,angle,power,target){
+  const d=weaponDef(id,tier),speed=launchSpeedFromPower(power)*(id==="bfg1000"?(d.speedMult||.76):1);
+  let x=t.x+Math.cos(angle)*18,y=t.y-8-Math.sin(angle)*18,vx=Math.cos(angle)*speed,vy=-Math.sin(angle)*speed;
+  const dt=.035,windFactor=id==="bfg1000"?(d.windFactor||2):1;
+  let apex={x,y},closestOverhead=Infinity,pathClosest=Infinity,returned=false,returned2=false,ramApex=false,time=0,wallBounces=0,groundBounces=0;
+  for(let i=0;i<300;i++){
+    time+=dt;
+    if(id==="boomerang"&&time>(d.returnTime||.8)&&!returned){returned=true;const cap=d.returnSpeedCap||145;vx=-Math.sign(vx||1)*Math.min(cap,Math.max(90,Math.abs(vx)*(d.returnForce||1.18)));vy-=55;}
+    else if(id==="boomerang"&&d.doubleReturn&&returned&&!returned2&&time>(d.returnTime||.8)+.85){returned2=true;vx*=-.88;vy-=40;}
+    if(id==="batteringram"&&!ramApex&&vy>=0)ramApex=true;
+    vx+=s.wind*windFactor*dt;vy+=s.gravity*(d.gravity||1)*(ramApex?(d.ramApexGravity||4.9):1)*dt;
+    x+=vx*dt;y+=vy*dt;
+    if(y<apex.y)apex={x,y};
+    if(target){
+      pathClosest=Math.min(pathClosest,Math.hypot(x-target.x,y-target.y));
+      if(y<target.y-20)closestOverhead=Math.min(closestOverhead,Math.abs(x-target.x));
+    }
+    if(x<0||x>=s.width){
+      const side=x<0?-1:1,edgeX=side<0?0:s.width-1,ground=terrainY(s,edgeX),top=ground-(s.edgeWallHeight||s.height*.20);
+      if(y>=top&&y<=ground+10){x=side<0?4:s.width-4;vx=-vx*.92;wallBounces++;}else return {x:clamp(x,0,s.width),y:s.height,apex,closestOverhead,pathClosest,escaped:true,vx,wallBounces};
+    }
+    if(y>s.height)return {x:clamp(x,0,s.width),y:s.height,apex,closestOverhead,pathClosest,escaped:true,vx,wallBounces};
+    if(y>=terrainY(s,x)){
+      if(id==="hyperbounce"&&groundBounces<(d.bounces||0)){groundBounces++;y=terrainY(s,x)-6;vy=-Math.abs(vy)*(d.bouncePower||.7)-35;vx*=.92;continue;}
+      if(id==="ricochet"&&groundBounces<(d.bounces||0)){groundBounces++;y=terrainY(s,x)-7;vy=-Math.abs(vy)*(d.bouncePower||.62)-30;vx*=.80;if(d.maxHorizontalSpeed)vx=clamp(vx,-d.maxHorizontalSpeed,d.maxHorizontalSpeed);continue;}
+      if(id==="clustergrenade"&&!d.grenadeStorm&&groundBounces<(d.bounces||0)){groundBounces++;y=terrainY(s,x)-6;vy=-Math.abs(vy)*.43-22;vx*=.68;continue;}
+      return {x,y,apex,closestOverhead,pathClosest,escaped:false,vx,wallBounces,groundBounces};
+    }
+  }
+  return{x,y,apex,closestOverhead,pathClosest,escaped:true,vx,wallBounces,groundBounces};
+}
+function botCandidateScore(profile,flight,target,angle){
+  if(profile.type==="overhead"){
+    let score=flight.closestOverhead*2.25;
+    if(profile.overshoot){const dir=Math.sign(target.x-(profile.shooterX||0)||1),passed=(flight.x-target.x)*dir;score+=passed<profile.overshoot*.25?45:Math.abs(passed-profile.overshoot)*.18;}
+    return score+(flight.escaped?18:0);
+  }
+  if(profile.type==="apex")return Math.abs(flight.apex.x-target.x)*1.8+Math.abs(flight.apex.y-(target.y-95))*.12+(flight.escaped?20:0);
+  if(profile.type==="path")return flight.pathClosest*1.8+Math.abs(flight.x-(profile.desiredX??target.x))*.20+(flight.escaped?22:0);
+  if(profile.type==="ring"){
+    const radius=Math.abs(flight.x-target.x);return Math.abs(radius-profile.ringRadius)*2+Math.abs(flight.y-terrainYDummy(target,flight))*0;
+  }
+  let score=Math.abs(flight.x-profile.desiredX)+Math.abs(flight.y-(profile.desiredY??target.y))*.12;
+  if(profile.roller){
+    if((flight.wallBounces||0)>0)score+=320*(flight.wallBounces||1);
+    if(Math.sign(flight.vx||profile.dir)!==Math.sign(profile.dir||1))score+=260;
+  }
+  if(profile.angleBias)score+=Math.abs(Math.sin(angle)-profile.angleBias)*32;
+  if(flight.escaped)score+=70;
+  return score;
+}
+function terrainYDummy(target,flight){return target?.y??flight.y;} // keeps ring scoring explicit/readable
+function botReposition(s,t,target,weaponId=null){
+  if(t.fuel<=5||["imploder","rampart","aegisdome","bridgebuilder"].includes(weaponId))return;
   const slope=Math.abs(terrainSlope(s,t.x)),dist=Math.abs(target.x-t.x);
   if(slope<.28&&dist>260&&Math.random()>.32)return;
-  const preferred=target.x>t.x?-1:1; // usually create space for arcs
+  const preferred=target.x>t.x?-1:1;
   const tries=[preferred,-preferred];
   for(const dir of tries){
     let moved=0;
@@ -2076,19 +2386,37 @@ function botReposition(s,t,target){
     if(moved>8)return;
   }
 }
+function botDirectAngle(t,target){return clamp(Math.atan2(t.y-target.y,target.x-t.x),.02,Math.PI-.02);}
 export function performBotShot(s,t){
-  const enemies=aliveEnemies(s,t);if(!enemies.length)return;
-  const target=enemies.sort((a,b)=>Math.hypot(a.x-t.x,a.y-t.y)-Math.hypot(b.x-t.x,b.y-t.y))[0];
-  botReposition(s,t,target);
-  const chosen=botPickWeapon(s,t,target);if(!chosen)return;selectWeapon(s,t,chosen.id,chosen.tier);
-  const weaponId=chosen.id,tier=chosen.tier;
-  if(weaponId==="raillance"){const ang=Math.atan2(t.y-target.y,target.x-t.x);fire(s,t,ang,65,weaponId,tier);return;}
-  let best={score:Infinity,angle:Math.PI*.5,power:60},dir=target.x>=t.x?1:-1;
-  for(let i=0;i<s.diff.aiSamples;i++){
-    const angle=dir>0?rand(.18,Math.PI*.48):rand(Math.PI*.52,Math.PI-.18),power=rand(28,100);
-    const land=simulateLanding(s,{...t,selected:weaponId,selectedTier:tier},angle,power),score=Math.abs(land.x-target.x)+Math.abs(land.y-target.y)*.15;
-    if(score<best.score)best={score,angle,power};
+  const plan=botPickPlan(s,t);if(!plan)return;
+  const {slot,target}=plan,weaponId=slot.id,tier=slot.tier;
+  selectWeapon(s,t,weaponId,tier);
+  botReposition(s,t,target,weaponId);
+  const d=weaponDef(weaponId,tier),profile=botAimProfile(s,t,target,weaponId,d);
+  if(profile.type==="noaim"){
+    const dir=target.x>=t.x?1:-1,ang=dir>0?.58:Math.PI-.58;t.angle=ang;t.power=58;fire(s,t,ang,58,weaponId,tier);return;
   }
-  best.angle+=rand(-s.diff.aimError,s.diff.aimError);best.power=clamp(best.power+rand(-s.diff.powerError,s.diff.powerError),10,100);
+  if(profile.type==="direct"){
+    let ang=botDirectAngle(t,target);
+    // Straight weapons cannot bend around hills; a tiny difficulty error still keeps Easy human.
+    ang+=rand(-s.diff.aimError*.45,s.diff.aimError*.45);t.angle=ang;t.power=100;fire(s,t,ang,100,weaponId,tier);return;
+  }
+  if(profile.type==="direction"){
+    const dir=target.x>=t.x?1:-1,ang=dir>0?.12:Math.PI-.12;t.angle=ang;t.power=65;fire(s,t,ang,65,weaponId,tier);return;
+  }
+  profile.shooterX=t.x;
+  let best={score:Infinity,angle:Math.PI*.5,power:60},dir=(profile.desiredX??target.x)>=t.x?1:-1;
+  const samples=Math.max(55,s.diff.aiSamples||120);
+  for(let i=0;i<samples;i++){
+    let angle=dir>0?rand(.16,Math.PI*.49):rand(Math.PI*.51,Math.PI-.16);
+    // Low-angle candidates matter for terrain cutters and runners, but still sample the full arc space.
+    if(profile.angleBias&&i<samples*.35)angle=dir>0?rand(.28,.75):Math.PI-rand(.28,.75);
+    const power=rand(25,100),flight=simulateAimFlight(s,t,weaponId,tier,angle,power,target),score=botCandidateScore(profile,flight,target,angle);
+    if(score<best.score)best={score,angle,power,flight};
+  }
+  const utility=!!profile.utility,precisionScale=utility?.45:profile.roller?.25:profile.groundRunner?.65:1;
+  best.angle=clamp(best.angle+rand(-s.diff.aimError*precisionScale,s.diff.aimError*precisionScale),.04,Math.PI-.04);
+  best.power=clamp(best.power+rand(-s.diff.powerError*precisionScale,s.diff.powerError*precisionScale),10,100);
   t.angle=best.angle;t.power=best.power;fire(s,t,best.angle,best.power,weaponId,tier);
 }
+

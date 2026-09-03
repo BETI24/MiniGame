@@ -1,10 +1,12 @@
 import { CONFIG } from './CellArenaData.js';
 import { clamp, rand, rint, norm, center, largest, aliveOwners, ownerById, canOwnersEat, moveOwner, sameOwnerPhysics, splitOwner, ejectOwner, getProfile } from './CellArenaEngine.js';
 
+const sameDuo=(a,b)=>!!a?.duoId&&a.duoId===b?.duoId;
+
 function threatVector(world,o,c,m,profile){
   let vx=0,vy=0,weight=0,closest=null,closestD=1e9,closestOwner=null;
   for(const q of aliveOwners(world)){
-    if(q.id===o.id||!canOwnersEat(world,q,o))continue;
+    if(q.id===o.id||sameDuo(o,q)||!canOwnersEat(world,q,o))continue;
     for(const x of q.cells){
       if(!x.alive||x.mass<m*CONFIG.eatRatio)continue;const dx=c.x-x.x,dy=c.y-x.y,d=Math.max(1,Math.hypot(dx,dy)),range=profile.view+x.r;if(d>range)continue;
       const danger=clamp(1-d/range,0,1),massFactor=clamp(x.mass/Math.max(1,m),1,4),w=danger*danger*massFactor;vx+=dx/d*w;vy+=dy/d*w;weight+=w;
@@ -17,7 +19,7 @@ function threatVector(world,o,c,m,profile){
 function bestPrey(world,o,c,m,profile){
   let best=null,score=-1e9;
   for(const q of aliveOwners(world)){
-    if(q.id===o.id||!canOwnersEat(world,o,q))continue;
+    if(q.id===o.id||sameDuo(o,q)||!canOwnersEat(world,o,q))continue;
     for(const x of q.cells){
       if(!x.alive||m<x.mass*CONFIG.eatRatio*.72)continue;const d=Math.hypot(x.x-c.x,x.y-c.y);if(d>profile.prey)continue;
       const edible=m>=x.mass*CONFIG.eatRatio,ratio=m/Math.max(1,x.mass),edge=Math.min(x.x,x.y,world.size-x.x,world.size-x.y),edgeBonus=1-edge/world.size;
@@ -50,7 +52,7 @@ function nearestSafePortal(world,c,away){let best=null,bd=560;for(const p of wor
 
 function safeVirusFarm(world,o,c,big,threat,profile){
   if(threat||big.mass<CONFIG.virusSplitMass*1.12||o.cells.length>5||o.ai.virusFarm>0||Math.random()>profile.virusFarm)return null;
-  let best=null,bd=650;for(const v of world.viruses){const d=Math.hypot(v.x-c.x,v.y-c.y);if(d>=bd)continue;let enemyNear=false;for(const q of aliveOwners(world)){if(q.id===o.id||!canOwnersEat(world,q,o))continue;const qc=center(q);if(Math.hypot(qc.x-v.x,qc.y-v.y)<650&&q.totalMass>o.totalMass*.72){enemyNear=true;break;}}if(!enemyNear){best=v;bd=d;}}
+  let best=null,bd=650;for(const v of world.viruses){const d=Math.hypot(v.x-c.x,v.y-c.y);if(d>=bd)continue;let enemyNear=false;for(const q of aliveOwners(world)){if(q.id===o.id||sameDuo(o,q)||!canOwnersEat(world,q,o))continue;const qc=center(q);if(Math.hypot(qc.x-v.x,qc.y-v.y)<650&&q.totalMass>o.totalMass*.72){enemyNear=true;break;}}if(!enemyNear){best=v;bd=d;}}
   return best;
 }
 
@@ -66,27 +68,72 @@ function teamAssist(world,o,c,profile){
   return best;
 }
 
-function duoAction(world,o,c,big,profile){
+function duoAction(world,o,c,big,profile,prey){
   const mate=o.duoMateId?ownerById(world,o.duoMateId):null;if(!mate?.alive||!mate.cells.length)return null;const mc=center(mate),mb=largest(mate),d=Math.hypot(mc.x-c.x,mc.y-c.y);if(!mb)return null;
-  const mateThreat=threatVector(world,mate,mc,mb.mass,profile);
-  if(d>1100)return{mode:'duo-regroup',x:mc.x,y:mc.y};
-  if(mateThreat?.closest&&mateThreat.d<620){
+  const mateThreat=threatVector(world,mate,mc,mb.mass,profile),matePrey=bestPrey(world,mate,mc,mb.mass,profile);
+
+  // A classic team behavior: after a virus pop or deep multi-split, the partner absorbs
+  // loose pieces while leaving the largest recovery cell alive.
+  if(mate.cells.length>=3){
+    let loose=null,score=-1e9;for(const x of mate.cells){if(!x.alive||x.id===mb.id||big.mass<x.mass*CONFIG.eatRatio*1.01)continue;const dx=Math.hypot(x.x-c.x,x.y-c.y);if(dx>900)continue;const s=x.mass*2.4-dx*.10;if(s>score){score=s;loose=x;}}
+    if(loose&&profile.id!=='rookie')return{mode:'duo-loose-mass',x:loose.x,y:loose.y,prey:{cell:loose,owner:mate,d:Math.hypot(loose.x-c.x,loose.y-c.y),score:150,edible:true,ratio:big.mass/loose.mass}};
+  }
+
+  if(d>1150)return{mode:'duo-regroup',x:mc.x,y:mc.y};
+  if(mateThreat?.closest&&mateThreat.d<650){
     const t=mateThreat.closest,canPunish=big.mass>=t.mass*CONFIG.eatRatio*1.02;
-    if(canPunish)return{mode:'duo-cover',x:t.x,y:t.y,prey:{cell:t,owner:mateThreat.owner,d:Math.hypot(t.x-c.x,t.y-c.y),score:120,edible:true,ratio:big.mass/t.mass}};
-    const away=norm(mc.x-t.x,mc.y-t.y);return{mode:'duo-screen',x:clamp(mc.x+away.x*260,50,world.size-50),y:clamp(mc.y+away.y*260,50,world.size-50)};
+    if(canPunish)return{mode:'duo-cover',x:t.x,y:t.y,prey:{cell:t,owner:mateThreat.owner,d:Math.hypot(t.x-c.x,t.y-c.y),score:145,edible:true,ratio:big.mass/t.mass}};
+    const away=norm(mc.x-t.x,mc.y-t.y);return{mode:'duo-screen',x:clamp(mc.x+away.x*300,50,world.size-50),y:clamp(mc.y+away.y*300,50,world.size-50)};
   }
-  if(d<430&&o.ai.duoFeed<=0&&big.mass>CONFIG.ejectMinMass*1.7&&o.totalMass>mate.totalMass*1.58&&Math.random()<profile.duoFeed){
-    if(ejectOwner(world,o,mc.x,mc.y)){o.ai.duoFeed=rand(.55,1.15);return{mode:'duo-feed',x:mc.x,y:mc.y};}
-  }
-  // Bait: the smaller partner tempts an enemy that the larger partner can punish.
-  if(o.totalMass<mate.totalMass*.72&&d<720){
-    for(const enemy of aliveOwners(world,{includeBoss:false})){
-      if(enemy.id===mate.id||enemy.id===o.id||enemy.duoId===o.duoId)continue;const eb=largest(enemy);if(!eb)continue;const ec=center(enemy),ed=Math.hypot(ec.x-c.x,ec.y-c.y),emd=Math.hypot(ec.x-mc.x,ec.y-mc.y);
-      if(ed<620&&emd<760&&eb.mass>big.mass*CONFIG.eatRatio&&mb.mass>eb.mass*CONFIG.eatRatio*1.05){const toward=norm(ec.x-c.x,ec.y-c.y);return{mode:'duo-bait',x:clamp(c.x+toward.x*210,60,world.size-60),y:clamp(c.y+toward.y*210,60,world.size-60)};}
+
+  const target=(prey&&!sameDuo(o,prey.owner)?prey:null)||(matePrey&&!sameDuo(o,matePrey.owner)?matePrey:null);
+  if(target){
+    const tc={x:target.cell.x,y:target.cell.y},mt=Math.hypot(tc.x-mc.x,tc.y-mc.y),ot=Math.hypot(tc.x-c.x,tc.y-c.y);
+    const om=norm(mc.x-c.x,mc.y-c.y),mtv=norm(tc.x-mc.x,tc.y-mc.y),line=om.x*mtv.x+om.y*mtv.y;
+
+    // Split-feed / double-split-feed: make the teammate large enough to take a target.
+    if(d<520&&mt<650&&o.cells.length<=2&&o.totalMass>mate.totalMass*1.18&&o.ai.duoFeed<=0){
+      let steps=0;for(let n=1;n<=4;n++){const piece=big.mass/Math.pow(2,n);if(piece<CONFIG.minDecayMass)break;if(mb.mass>=piece*CONFIG.eatRatio*1.01){steps=n;break;}}
+      const mateNeedsMass=mb.mass<target.cell.mass*CONFIG.eatRatio*1.10;
+      if(steps&&mateNeedsMass&&Math.random()<(profile.duoSplitFeed||0))return{mode:'duo-split-feed',x:mc.x,y:mc.y,comboSteps:steps};
+    }
+
+    // Tricksplit / cannonsplit approximation: one bot throws a chain of edible pieces
+    // through its partner toward a victim; the partner can consume those pieces and
+    // continue onto the victim in the same line.
+    if(line>.58&&d>180&&d<620&&mt<610&&ot<1050&&o.cells.length<=2&&o.totalMass>mate.totalMass*1.45&&Math.random()<(profile.duoTrick||0)){
+      let steps=0;for(let n=2;n<=4;n++){const piece=big.mass/Math.pow(2,n);if(mb.mass>=piece*CONFIG.eatRatio*1.01){steps=n;break;}}
+      if(steps)return{mode:'duo-tricksplit',x:tc.x,y:tc.y,comboSteps:steps};
+    }
+
+    // W-feed only when the teammate is close to a real opportunity; this is safer than
+    // spraying mass constantly and mirrors practical team feeding.
+    if(d<440&&mt<560&&o.ai.duoFeed<=0&&big.mass>CONFIG.ejectMinMass*1.7&&o.totalMass>mate.totalMass*1.35&&Math.random()<profile.duoFeed){
+      if(ejectOwner(world,o,mc.x,mc.y)){o.ai.duoFeed=rand(.45,.95);return{mode:'duo-w-feed',x:mc.x,y:mc.y};}
     }
   }
-  if(d>610)return{mode:'duo-formation',x:mc.x,y:mc.y};
-  return null;
+
+  // Splitrunning-style transfer when rotating around the map: the larger partner can
+  // hand off a split piece so the pair stays mobile, then roles can naturally reverse.
+  if(!target&&!mateThreat&&d>210&&d<430&&o.cells.length===1&&o.totalMass>mate.totalMass*1.65&&o.ai.duoFeed<=0&&Math.random()<(profile.duoSplitFeed||0)*.18){
+    let steps=0;for(let n=1;n<=3;n++){const piece=big.mass/Math.pow(2,n);if(mb.mass>=piece*CONFIG.eatRatio*1.01){steps=n;break;}}
+    if(steps){o.ai.duoFeed=rand(2.2,4.0);return{mode:'duo-splitrun',x:mc.x,y:mc.y,comboSteps:steps};}
+  }
+
+  // Because FFA duo partners are now physically edible, avoid accidental full-body
+  // absorption when one partner is much larger unless a deliberate feed tactic is active.
+  if(d<big.r+mb.r+105&&(big.mass>=mb.mass*CONFIG.eatRatio||mb.mass>=big.mass*CONFIG.eatRatio)){
+    const away=norm(c.x-mc.x,c.y-mc.y),sideX=-away.y,sideY=away.x;return{mode:'duo-spacing',x:clamp(c.x+away.x*360+sideX*95,60,world.size-60),y:clamp(c.y+away.y*360+sideY*95,60,world.size-60)};
+  }
+
+  // Smaller partner can still bait an enemy toward the larger partner.
+  if(o.totalMass<mate.totalMass*.72&&d<760){
+    for(const enemy of aliveOwners(world,{includeBoss:false})){
+      if(enemy.id===mate.id||enemy.id===o.id||sameDuo(o,enemy))continue;const eb=largest(enemy);if(!eb)continue;const ec=center(enemy),ed=Math.hypot(ec.x-c.x,ec.y-c.y),emd=Math.hypot(ec.x-mc.x,ec.y-mc.y);
+      if(ed<650&&emd<790&&eb.mass>big.mass*CONFIG.eatRatio&&mb.mass>eb.mass*CONFIG.eatRatio*1.05){const toward=norm(ec.x-c.x,ec.y-c.y);return{mode:'duo-bait',x:clamp(c.x+toward.x*220,60,world.size-60),y:clamp(c.y+toward.y*220,60,world.size-60)};}
+    }
+  }
+  if(d>610)return{mode:'duo-formation',x:mc.x,y:mc.y};return null;
 }
 
 function bossFragmentGoal(world,c){let best=null,score=-1e9;for(const f of world.bossFragments){const d=Math.hypot(f.x-c.x,f.y-c.y);if(d>1250)continue;const s=f.mass*3-d*.08;if(s>score){score=s;best={x:f.x,y:f.y,score:s};}}return best;}
@@ -99,7 +146,7 @@ function tryVirusShot(world,o,c,big,prey,threat,profile){
 }
 
 function splitDanger(world,o,target,pieceMass){
-  let danger=0;for(const q of aliveOwners(world)){if(q.id===o.id||!canOwnersEat(world,q,o))continue;for(const c of q.cells){if(!c.alive||c.mass<pieceMass*CONFIG.eatRatio)continue;const d=Math.hypot(c.x-target.x,c.y-target.y);if(d<430+c.r)danger+=clamp(1-d/(430+c.r),0,1)*(c.mass/pieceMass);}}return danger;
+  let danger=0;for(const q of aliveOwners(world)){if(q.id===o.id||sameDuo(o,q)||!canOwnersEat(world,q,o))continue;for(const c of q.cells){if(!c.alive||c.mass<pieceMass*CONFIG.eatRatio)continue;const d=Math.hypot(c.x-target.x,c.y-target.y);if(d<430+c.r)danger+=clamp(1-d/(430+c.r),0,1)*(c.mass/pieceMass);}}return danger;
 }
 
 function planSplitAttack(world,o,big,prey,profile){
@@ -124,7 +171,7 @@ export function updateBotAI(world,o,dt){
   if(!o.alive||!o.cells.length||o.isBoss)return;const ai=o.ai,profile=getProfile(o);updateCombo(world,o,dt);const c=center(o),big=largest(o);if(!big)return;
   ai.think-=dt;ai.split-=dt;ai.escapeSplit-=dt;ai.forageSplit-=dt;ai.virusFarm-=dt;ai.virusShot-=dt;ai.duoFeed-=dt;ai.wander-=dt;
   if(ai.think<=0){
-    ai.think=rand(profile.think[0],profile.think[1]);const threat=threatVector(world,o,c,big.mass,profile),avoid=hazardAvoidance(world,c,big),prey=bestPrey(world,o,c,big.mass,profile),duo=duoAction(world,o,c,big,profile);
+    ai.think=rand(profile.think[0],profile.think[1]);const threat=threatVector(world,o,c,big.mass,profile),avoid=hazardAvoidance(world,c,big),prey=bestPrey(world,o,c,big.mass,profile),duo=duoAction(world,o,c,big,profile,prey);
     if(Math.random()<profile.mistake*.08){
       ai.mode='mistake';ai.biasAngle+=rand(-2.2,2.2);ai.goalX=clamp(c.x+Math.cos(ai.biasAngle)*rand(280,780),70,world.size-70);ai.goalY=clamp(c.y+Math.sin(ai.biasAngle)*rand(280,780),70,world.size-70);
       if(big.mass>CONFIG.splitMinMass*1.35&&ai.split<=0&&Math.random()<profile.badSplit)beginCombo(world,o,ai.goalX,ai.goalY,1);
@@ -144,7 +191,9 @@ export function updateBotAI(world,o,dt){
       tryVirusShot(world,o,c,big,null,threat,profile);
     }
     else if(duo){
-      ai.mode=duo.mode;ai.goalX=duo.x;ai.goalY=duo.y;if(duo.prey){const steps=planSplitAttack(world,o,big,duo.prey,profile);if(steps)beginCombo(world,o,duo.x,duo.y,steps);}
+      ai.mode=duo.mode;ai.goalX=duo.x;ai.goalY=duo.y;
+      if(duo.comboSteps&&ai.split<=0){beginCombo(world,o,duo.x,duo.y,duo.comboSteps);o.ai.duoFeed=Math.max(o.ai.duoFeed,rand(1.1,2.2));}
+      else if(duo.prey){const steps=planSplitAttack(world,o,big,duo.prey,profile);if(steps)beginCombo(world,o,duo.x,duo.y,steps);}
     }
     else{
       const farm=safeVirusFarm(world,o,c,big,threat,profile),assist=teamAssist(world,o,c,profile),zone=hotZoneGoal(world,c,threat,profile);

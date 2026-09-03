@@ -8,7 +8,8 @@ export const CONFIG = {
 
   // Vanilla-like Agar physics. Agar/Ogar internally models size roughly as sqrt(mass).
   recombineDelay: 30,
-  mergeMassFactor: 2.0,
+  // Old vanilla-style merge: base 30 s + about 2% of the cell's mass.
+  mergeMassFactor: .02,
   splitGhostTime: .60,
   splitMinMass: 36,
   ejectMinMass: 32,
@@ -25,6 +26,8 @@ export const CONFIG = {
   eatOverlap: .333,
   virusSplitMass: 145,
   virusMassGain: 100,
+  virusUnevenMass: 1500,
+  virusMinPieceMass: 10,
   minDecayMass: 10,
   massDecayRate: .002,
   maxCellMass: 22500,
@@ -79,11 +82,11 @@ export const TEAM_DEFS = [
 ];
 
 export const AI_PROFILES = [
-  { id:'rookie', label:'Rookie', weight:18, think:[.22,.38], view:720, prey:820, foodSamples:50,  splitAgg:.13, badSplit:.16, escapeSplit:.10, forageSplit:.04, virusFarm:.01, virusShot:.01, lead:.04, assist:.04, mistake:.20, combo:0, comboChance:0, duoFeed:.03 },
-  { id:'casual', label:'Casual', weight:31, think:[.16,.28], view:880, prey:1000,foodSamples:82,  splitAgg:.31, badSplit:.07, escapeSplit:.24, forageSplit:.08, virusFarm:.05, virusShot:.04, lead:.22, assist:.15, mistake:.10, combo:1, comboChance:.08, duoFeed:.12 },
-  { id:'skilled',label:'Skilled',weight:29, think:[.105,.20],view:1080,prey:1240,foodSamples:125, splitAgg:.56, badSplit:.025,escapeSplit:.44, forageSplit:.14, virusFarm:.15, virusShot:.13, lead:.46, assist:.36, mistake:.035,combo:2, comboChance:.38, duoFeed:.34 },
-  { id:'veteran',label:'Veteran',weight:17, think:[.075,.15],view:1260,prey:1450,foodSamples:155, splitAgg:.73, badSplit:.010,escapeSplit:.62, forageSplit:.18, virusFarm:.25, virusShot:.25, lead:.68, assist:.58, mistake:.014,combo:3, comboChance:.67, duoFeed:.58 },
-  { id:'ace',    label:'Ace',    weight:5,  think:[.055,.115],view:1450,prey:1650,foodSamples:190, splitAgg:.84, badSplit:.004,escapeSplit:.74, forageSplit:.22, virusFarm:.36, virusShot:.38, lead:.84, assist:.74, mistake:.005,combo:4, comboChance:.86, duoFeed:.78 },
+  { id:'rookie', label:'Rookie', weight:18, think:[.22,.38], view:720, prey:820, foodSamples:50,  splitAgg:.13, badSplit:.16, escapeSplit:.10, forageSplit:.04, virusFarm:.01, virusShot:.01, lead:.04, assist:.04, mistake:.20, combo:0, comboChance:0, duoFeed:.03, duoSplitFeed:.01, duoTrick:.00 },
+  { id:'casual', label:'Casual', weight:31, think:[.16,.28], view:880, prey:1000,foodSamples:82,  splitAgg:.31, badSplit:.07, escapeSplit:.24, forageSplit:.08, virusFarm:.05, virusShot:.04, lead:.22, assist:.15, mistake:.10, combo:1, comboChance:.08, duoFeed:.12, duoSplitFeed:.08, duoTrick:.02 },
+  { id:'skilled',label:'Skilled',weight:29, think:[.105,.20],view:1080,prey:1240,foodSamples:125, splitAgg:.56, badSplit:.025,escapeSplit:.44, forageSplit:.14, virusFarm:.15, virusShot:.13, lead:.46, assist:.36, mistake:.035,combo:2, comboChance:.38, duoFeed:.34, duoSplitFeed:.34, duoTrick:.16 },
+  { id:'veteran',label:'Veteran',weight:17, think:[.075,.15],view:1260,prey:1450,foodSamples:155, splitAgg:.73, badSplit:.010,escapeSplit:.62, forageSplit:.18, virusFarm:.25, virusShot:.25, lead:.68, assist:.58, mistake:.014,combo:3, comboChance:.67, duoFeed:.58, duoSplitFeed:.62, duoTrick:.38 },
+  { id:'ace',    label:'Ace',    weight:5,  think:[.055,.115],view:1450,prey:1650,foodSamples:190, splitAgg:.84, badSplit:.004,escapeSplit:.74, forageSplit:.22, virusFarm:.36, virusShot:.38, lead:.84, assist:.74, mistake:.005,combo:4, comboChance:.86, duoFeed:.78, duoSplitFeed:.84, duoTrick:.62 },
 ];
 
 export const AI_PRESETS = {

@@ -217,7 +217,7 @@ export function maintain(world){
 function applyBoost(c,dt){
   if(!(c.boostDistance>0))return;const remain=c.boostDistance,decay=Math.pow(8/9,dt/.04),step=remain*(1-decay);c.boostDistance=remain*decay;c.x+=c.boostDx*step;c.y+=c.boostDy*step;if(c.boostDistance<.8)c.boostDistance=0;
 }
-function mergeDelayFor(world,c){return Math.max(world.recombineDelay,CONFIG.mergeMassFactor*Math.sqrt(Math.max(1,c.mass)))*(world.mode.rush?.60:1);}
+function mergeDelayFor(world,c){return (world.recombineDelay+CONFIG.mergeMassFactor*Math.max(0,c.mass))*(world.mode.rush?.60:1);}
 export function speedFor(world,c){
   const ref=radius(CONFIG.startMass),size=Math.max(1,c.r),scale=Math.pow(ref/size,CONFIG.movementExponent);return CONFIG.baseSpeed*scale*(world.mode.rush?1.06:1);
 }
@@ -238,19 +238,18 @@ function splitMassOff(world,o,parent,mass,angle,boostDistance=CONFIG.splitBoostD
   const r=radius(mass),dx=Math.cos(angle),dy=Math.sin(angle);return cell(world,o,parent.x+dx*r*.22,parent.y+dy*r*.22,mass,0,0,0,{boostDistance,boostDx:dx,boostDy:dy});
 }
 export function splitOwner(world,o,tx,ty,maxCells=o.isPlayer?CONFIG.maxPlayerCells:CONFIG.maxBotCells,{single=false,boost=1}={}){
-  const arr=o.cells.filter(c=>c.alive),slotsStart=maxCells-arr.length;if(slotsStart<=0)return false;let slots=slotsStart,did=false;
+  const arr=o.cells.filter(c=>c.alive).sort((a,b)=>b.mass-a.mass),slotsStart=maxCells-arr.length;if(slotsStart<=0)return false;let slots=slotsStart,did=false;
   for(const c of arr){if(slots<=0||c.mass<CONFIG.splitMinMass)continue;const a=Math.atan2(ty-c.y,tx-c.x),m=c.mass*.5;c.mass=m;c.r=radius(m);c.age=0;const dx=Math.cos(a),dy=Math.sin(a),nr=radius(m);cell(world,o,c.x+dx*nr*.22,c.y+dy*nr*.22,m,0,0,0,{boostDistance:CONFIG.splitBoostDistance*boost,boostDx:dx,boostDy:dy});slots--;did=true;if(single)break;}
   return did;
 }
 export function ejectOwner(world,o,tx,ty){
   if(o.ejectCooldown>0||world.ejected.length>=CONFIG.maxEjected)return false;const arr=o.cells.filter(c=>c.alive),shots=[];
-  for(const c of arr){if(c.mass<CONFIG.ejectMinMass)continue;const d=norm(tx-c.x,ty-c.y),baseA=Math.atan2(d.y||0,d.x||1),a=baseA+rand(-.16,.16),dx=Math.cos(a),dy=Math.sin(a);c.mass-=CONFIG.ejectCost;c.r=radius(c.mass);shots.push({id:world.nextId++,ownerId:o.id,x:c.x+dx*(c.r+10),y:c.y+dy*(c.r+10),r:radius(CONFIG.ejectMass)*.72,mass:CONFIG.ejectMass,color:o.color,vx:0,vy:0,boostDistance:CONFIG.ejectBoostDistance,boostDx:dx,boostDy:dy,life:12});}
+  for(const c of arr){if(c.mass<CONFIG.ejectMinMass)continue;const d=norm(tx-c.x,ty-c.y),baseA=Math.atan2(d.y||0,d.x||1),a=baseA+rand(-.16,.16),dx=Math.cos(a),dy=Math.sin(a);c.mass-=CONFIG.ejectCost;c.r=radius(c.mass);shots.push({id:world.nextId++,ownerId:o.id,sourceCellId:c.id,x:c.x+dx*(c.r+10),y:c.y+dy*(c.r+10),r:radius(CONFIG.ejectMass)*.72,mass:CONFIG.ejectMass,color:o.color,vx:0,vy:0,boostDistance:CONFIG.ejectBoostDistance,boostDx:dx,boostDy:dy,life:12});}
   if(!shots.length)return false;world.ejected.push(...shots.slice(0,Math.max(0,CONFIG.maxEjected-world.ejected.length)));o.ejectCooldown=CONFIG.ejectCooldown;return true;
 }
 
 export function canOwnersEat(world,eater,prey){
   if(!eater||!prey||eater.id===prey.id)return false;if(prey.spawnShield>0)return false;
-  if(eater.duoMateId===prey.id||prey.duoMateId===eater.id)return false;
   if(world.mode.teams&&eater.team===prey.team)return false;
   if(world.mode.boss){if(eater.isBoss&&!prey.isBoss)return true;if(!eater.isBoss&&prey.isBoss)return false;if(!eater.isBoss&&!prey.isBoss)return false;}
   return true;
@@ -259,7 +258,7 @@ export function canOwnersEat(world,eater,prey){
 function eatFood(world,c){
   const o=ownerById(world,c.ownerId),teamShare=world.mode.teams&&o?.team!=null?teamShares(world)[o.team]:.25;
   for(let i=world.food.length-1;i>=0;i--){const p=world.food[i];if(Math.abs(p.x-c.x)>c.r+10||Math.abs(p.y-c.y)>c.r+10)continue;if(Math.hypot(p.x-c.x,p.y-c.y)<c.r){let gain=p.mass;if(world.mode.teams&&teamShare<.20)gain*=1.18;c.mass+=gain;world.food.splice(i,1);if(o?.isPlayer)world.playerFood=(world.playerFood||0)+1;}}
-  for(let i=world.ejected.length-1;i>=0;i--){const p=world.ejected[i];if(p.ownerId===c.ownerId&&p.life>10.5)continue;if(Math.hypot(p.x-c.x,p.y-c.y)<c.r){c.mass+=p.mass;world.ejected.splice(i,1);}}
+  for(let i=world.ejected.length-1;i>=0;i--){const p=world.ejected[i];if(Math.hypot(p.x-c.x,p.y-c.y)<c.r){c.mass+=p.mass;world.ejected.splice(i,1);}}
   for(let i=world.bossFragments.length-1;i>=0;i--){const p=world.bossFragments[i];if(Math.hypot(p.x-c.x,p.y-c.y)<c.r&&c.mass>=p.mass*.72){c.mass+=p.mass*.72;world.bossFragments.splice(i,1);if(world.bossState){const dmg=p.damage;c.ownerId&&o&&(o.bossDamage+=dmg);world.bossState.hp=Math.max(0,world.bossState.hp-dmg);}}}
 }
 
@@ -280,14 +279,32 @@ function virusHit(world){
   for(const c of world.entities){
     if(!c.alive||c.mass<CONFIG.virusSplitMass)continue;const o=ownerById(world,c.ownerId);if(!o||o.isBoss)continue;
     for(let vi=world.viruses.length-1;vi>=0;vi--){const v=world.viruses[vi];if(Math.hypot(c.x-v.x,c.y-v.y)>=c.r+v.r*.30)continue;
-      c.mass+=v.mass||CONFIG.virusMassGain;c.r=radius(c.mass);world.viruses.splice(vi,1);
-      const max=o.isPlayer?CONFIG.maxPlayerCells:CONFIG.maxBotCells,alive=o.cells.filter(x=>x.alive).length,slots=max-alive;if(slots<=0)break;
-      const minPiece=10,maxNew=Math.min(slots,Math.max(1,Math.floor((c.mass-minPiece)/minPiece)));if(maxNew<=0)break;
-      // MultiOgar-inspired virus explosion: many small fragments plus a few larger chunks.
-      let bigMasses=[];if(maxNew===1)bigMasses=[c.mass*.5];else if(maxNew===2)bigMasses=[c.mass*.25,c.mass*.25];else if(maxNew===3)bigMasses=[c.mass*.25,c.mass*.25,c.mass/7];else if(maxNew===4)bigMasses=[c.mass/5,c.mass/7,c.mass/8,c.mass/10];
-      let created=0;for(const m of bigMasses){if(created>=maxNew)break;const a=rand(0,Math.PI*2);if(splitMassOff(world,o,c,m,a,rand(255,350)))created++;}
-      while(created<maxNew&&c.mass>minPiece*2){const slotsLeft=maxNew-created,keep=Math.max(minPiece,c.mass*.26),available=Math.max(0,c.mass-keep),m=Math.min(rand(10,14.5),available/Math.max(1,slotsLeft));if(m<minPiece*.92)break;const a=created/maxNew*Math.PI*2+rand(-.35,.35);if(!splitMassOff(world,o,c,m,a,rand(250,365)))break;created++;}
-      c.age=0;break;
+      const total=c.mass+(v.mass||CONFIG.virusMassGain);world.viruses.splice(vi,1);
+      const max=o.isPlayer?CONFIG.maxPlayerCells:CONFIG.maxBotCells,otherAlive=o.cells.filter(x=>x.alive&&x.id!==c.id).length,pieceCount=Math.max(1,Math.min(max-otherAlive,16));
+      if(pieceCount<=1){c.mass=total;c.r=radius(total);c.drawR=Math.min(c.drawR??c.r,c.r);c.age=0;break;}
+
+      // Vanilla-inspired virus pop: smaller/medium pops fill the available slots with
+      // near-equal cells. Very large pops keep one clearly largest piece, but the rest
+      // are still substantial randomized chunks instead of a cloud of 10-mass crumbs.
+      let masses=[];
+      if(total<=CONFIG.virusUnevenMass){
+        const m=total/pieceCount;masses=Array(pieceCount).fill(m);
+      }else{
+        const weights=[rand(1.9,2.35)];for(let i=1;i<pieceCount;i++)weights.push(rand(.72,1.28));
+        const sum=weights.reduce((a,b)=>a+b,0);masses=weights.map(w=>total*w/sum);
+        // Preserve a sensible floor while keeping total mass exact.
+        const floor=CONFIG.virusMinPieceMass;let deficit=0;
+        for(let i=1;i<masses.length;i++)if(masses[i]<floor){deficit+=floor-masses[i];masses[i]=floor;}
+        if(deficit>0)masses[0]=Math.max(floor,masses[0]-deficit);
+      }
+
+      c.mass=masses[0];c.r=radius(c.mass);c.drawR=Math.min(c.drawR??c.r,c.r);c.age=0;c.boostDistance=0;
+      const phase=rand(0,Math.PI*2);
+      for(let k=1;k<masses.length;k++){
+        const a=phase+(k-1)/(masses.length-1)*Math.PI*2+rand(-.16,.16),dx=Math.cos(a),dy=Math.sin(a),m=masses[k],r=radius(m);
+        cell(world,o,c.x+dx*r*.20,c.y+dy*r*.20,m,0,0,0,{boostDistance:rand(275,390),boostDx:dx,boostDy:dy});
+      }
+      break;
     }
   }
 }

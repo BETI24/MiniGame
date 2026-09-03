@@ -26,7 +26,7 @@ import NeonDossier from "../games/NeonDossier.js";
 import TypeForge from "../games/TypeForge.js";
 import GardenSiege from "../games/GardenSiege.js";
 import CraterClash from "../games/CraterClash.js";
-import VaultBreakerIdle from "../games/VaultBreakerIdle.js";
+import VaultBreakerIdle from "../games/VaultbreakerIdle.js";
 import ReelEmpireIdle from "../games/ReelEmpireIdle.js";
 import AntColonyIdle from "../games/AntColonyIdle.js";
 import ParadiseAngler from "../games/ParadiseAngler.js";

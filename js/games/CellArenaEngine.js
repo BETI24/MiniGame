@@ -1,4 +1,4 @@
-import { CONFIG, PLAYER_COLORS, FOOD_COLORS, BOT_NAMES, TEAM_DEFS, AI_PROFILES, MODE_DEFS, BOSS_DEFS } from './CellArenaData.js';
+import { CONFIG, PLAYER_COLORS, FOOD_COLORS, BOT_NAMES, TEAM_DEFS, AI_PROFILES, AI_PRESETS, MODE_DEFS, BOSS_DEFS } from './CellArenaData.js';
 
 export const rand=(a,b)=>a+Math.random()*(b-a);
 export const rint=(a,b)=>Math.floor(rand(a,b+1));
@@ -8,20 +8,25 @@ export const norm=(x,y)=>{const l=Math.hypot(x,y);return l>.0001?{x:x/l,y:y/l,l}
 export const fmtTime=t=>`${Math.floor(Math.max(0,t)/60)}:${String(Math.floor(Math.max(0,t))%60).padStart(2,'0')}`;
 export const shade=(hex,p)=>{const v=parseInt(hex.replace('#',''),16),n=Math.round(2.55*p),r=clamp((v>>16)+n,0,255),g=clamp(((v>>8)&255)+n,0,255),b=clamp((v&255)+n,0,255);return '#'+(0x1000000+r*0x10000+g*0x100+b).toString(16).slice(1)};
 
-function weightedProfile(){
-  const total=AI_PROFILES.reduce((s,p)=>s+p.weight,0);let roll=Math.random()*total;
-  for(const p of AI_PROFILES){roll-=p.weight;if(roll<=0)return p;}return AI_PROFILES[1];
+function weightedProfile(world){
+  const preset=AI_PRESETS[world?.settings?.aiPreset]||AI_PRESETS.balanced;
+  const weights=AI_PROFILES.map(p=>p.weight*(preset[p.id]??1));
+  const total=weights.reduce((a,b)=>a+b,0);let roll=Math.random()*total;
+  for(let i=0;i<AI_PROFILES.length;i++){roll-=weights[i];if(roll<=0)return AI_PROFILES[i];}
+  return AI_PROFILES[1];
 }
 
 function newOwner(world,name,color,{isPlayer=false,team=null,isBoss=false,profile=null}={}){
-  const p=profile||(!isPlayer&&!isBoss?weightedProfile():null);
+  const p=profile||(!isPlayer&&!isBoss?weightedProfile(world):null);
   const x=rand(0,world.size),y=rand(0,world.size);
   return {
     id:world.nextId++,name,color,isPlayer,isBoss,team,alive:true,cells:[],totalMass:0,best:0,peakMass:0,
-    respawnTimer:0,spawnShield:0,controlScore:0,bossDamage:0,kills:0,deaths:0,
+    respawnTimer:0,spawnShield:0,ejectCooldown:0,controlScore:0,bossDamage:0,kills:0,deaths:0,
+    duoId:null,duoMateId:null,
     ai:p?{
       profileId:p.id,label:p.label,think:rand(p.think[0],p.think[1]),tx:x,ty:y,goalX:x,goalY:y,
-      split:rand(.7,2.4),escapeSplit:rand(1.3,4),forageSplit:rand(2,6),virusFarm:rand(4,9),virusShot:rand(3,8),wander:rand(1,3),biasAngle:rand(0,Math.PI*2),mode:'wander'
+      split:rand(.7,2.4),escapeSplit:rand(1.3,4),forageSplit:rand(2,6),virusFarm:rand(4,9),virusShot:rand(3,8),duoFeed:rand(1,4),wander:rand(1,3),biasAngle:rand(0,Math.PI*2),mode:'wander',
+      comboSteps:0,comboTimer:0,comboX:x,comboY:y,
     }:null,
   };
 }
@@ -29,7 +34,7 @@ function newOwner(world,name,color,{isPlayer=false,team=null,isBoss=false,profil
 export function getProfile(owner){return AI_PROFILES.find(p=>p.id===owner?.ai?.profileId)||AI_PROFILES[1];}
 
 export function cell(world,o,x,y,m,vx=0,vy=0,age=null,extra={}){
-  const c={id:world.nextId++,ownerId:o.id,x,y,mass:m,r:radius(m),vx,vy,age:age??world.recombineDelay,alive:true,portalCooldown:0,...extra};
+  const r=radius(m);const c={id:world.nextId++,ownerId:o.id,x,y,mass:m,r,drawR:r,vx,vy,age:age??world.recombineDelay,alive:true,portalCooldown:0,boostDistance:0,boostDx:0,boostDy:0,...extra};
   o.cells.push(c);world.entities.push(c);return c;
 }
 
@@ -38,7 +43,7 @@ export function pellet(world,x=null,y=null,{ttl=null,spawnerId=null,mass=1.15,go
 }
 
 function virus(world,opts={}){
-  return {id:world.nextId++,x:opts.x??rand(80,world.size-80),y:opts.y??rand(80,world.size-80),r:radius(100)*.94,mass:100,fed:0,vx:opts.vx||0,vy:opts.vy||0,phase:rand(0,6.28),red:!!world.mode.rush};
+  return {id:world.nextId++,x:opts.x??rand(80,world.size-80),y:opts.y??rand(80,world.size-80),r:radius(100)*.94,mass:100,fed:0,vx:opts.vx||0,vy:opts.vy||0,boostDistance:opts.boostDistance||0,boostDx:opts.boostDx||0,boostDy:opts.boostDy||0,phase:rand(0,6.28),red:!!world.mode.rush};
 }
 function spawner(world){
   const base=radius(122);return {id:world.nextId++,x:rand(150,world.size-150),y:rand(150,world.size-150),r:base,life:CONFIG.spawner.lifetime,maxLife:CONFIG.spawner.lifetime,pelletTimer:rand(CONFIG.spawner.pelletIntervalMin,CONFIG.spawner.pelletIntervalMax),phase:rand(0,6.28)};
@@ -66,11 +71,61 @@ function comet(world){
   return{id:world.nextId++,x,y,vx:Math.cos(ang)*340,vy:Math.sin(ang)*340,life:CONFIG.comet.lifetime,pelletTimer:0,phase:0};
 }
 
-export function createWorld(modeId='classic',{playerName='Player',playerColor=PLAYER_COLORS[0]}={}){
-  const mode=MODE_DEFS[modeId]||MODE_DEFS.classic;
-  const size=Math.round(CONFIG.worldSize*mode.worldScale);
+function normalizeSettings(baseMode,input={}){
+  const teamCount=clamp(Math.round(input.teamCount??baseMode.teamCount??4),2,4);
+  return {
+    botCount:clamp(Math.round(input.botCount??baseMode.botCount??CONFIG.botCount),0,80),
+    foodTarget:clamp(Math.round(input.foodTarget??CONFIG.foodTarget*baseMode.worldScale),120,2800),
+    virusTarget:clamp(Math.round(input.virusTarget??CONFIG.virusTarget*baseMode.worldScale),0,90),
+    playerStartMass:clamp(Number(input.playerStartMass??CONFIG.startMass),10,500),
+    botStartMode:['equal','varied','hierarchy'].includes(input.botStartMode)?input.botStartMode:'varied',
+    giantBots:clamp(Math.round(input.giantBots??0),0,8),
+    giantMass:clamp(Number(input.giantMass??3200),500,9000),
+    aiPreset:AI_PRESETS[input.aiPreset]?input.aiPreset:'balanced',
+    duoChance:clamp(Number(input.duoChance??.10),0,.6),
+    massDecayRate:clamp(Number(input.massDecayRate??CONFIG.massDecayRate),0,.008),
+    teamCount,
+    teamDistribution:input.teamDistribution==='random'?'random':'balanced',
+    mapScale:clamp(Number(input.mapScale??1),.75,1.35),
+    respawnBots:input.respawnBots!==false,
+  };
+}
+
+function botStartMass(world,index,giantSet){
+  const s=world.settings,base=s.playerStartMass;if(giantSet.has(index))return s.giantMass*rand(.84,1.18);
+  if(s.botStartMode==='equal')return base;
+  if(s.botStartMode==='hierarchy'){
+    const r=Math.random();
+    if(r<.50)return base*rand(.75,1.35);
+    if(r<.75)return base*rand(1.5,3.3);
+    if(r<.91)return base*rand(4,10);
+    return Math.max(500,base*rand(14,38));
+  }
+  return Math.random()<.13?base*rand(1.35,2.25):base*rand(.76,1.22);
+}
+
+function forceDuoSkill(o){
+  if(!o.ai)return;const current=getProfile(o);if(['skilled','veteran','ace'].includes(current.id))return;
+  const p=Math.random()<.72?AI_PROFILES.find(x=>x.id==='skilled'):AI_PROFILES.find(x=>x.id==='veteran');o.ai.profileId=p.id;o.ai.label=p.label;
+}
+
+function pairDuoBots(world){
+  if(world.mode.teams||world.mode.boss||world.mode.battle||world.settings.duoChance<=0)return;
+  const pool=world.bots.slice().sort(()=>Math.random()-.5),pairCount=Math.min(Math.floor(pool.length/2),Math.round(pool.length*world.settings.duoChance/2));
+  for(let i=0;i<pairCount;i++){
+    const a=pool[i*2],b=pool[i*2+1],id=`duo-${i+1}`;if(!a||!b)break;
+    a.duoId=b.duoId=id;a.duoMateId=b.id;b.duoMateId=a.id;forceDuoSkill(a);forceDuoSkill(b);
+    a.name=`${a.name} ◇`;b.name=`${b.name} ◇`;
+  }
+}
+
+export function createWorld(modeId='classic',{playerName='Player',playerColor=PLAYER_COLORS[0],settings={}}={}){
+  const base=MODE_DEFS[modeId]||MODE_DEFS.classic,opts=normalizeSettings(base,settings);
+  const mode={...base,env:{...base.env},botCount:opts.botCount,teamCount:opts.teamCount,respawn:!!base.respawn&&opts.respawnBots};
+  if(mode.teams)mode.name=`Teams (${mode.teamCount})`;
+  const size=Math.round(CONFIG.worldSize*mode.worldScale*opts.mapScale);
   const world={
-    mode,size,nextId:1,recombineDelay:CONFIG.recombineDelay*(mode.rush?.60:1),time:0,finished:false,finishReason:'',winner:null,
+    mode,settings:opts,size,nextId:1,recombineDelay:CONFIG.recombineDelay,time:0,finished:false,finishReason:'',winner:null,
     entities:[],food:[],viruses:[],spawners:[],mothers:[],portals:[],bumpers:[],clouds:[],comets:[],ejected:[],bossFragments:[],
     owners:[],bots:[],player:null,
     envTimers:{spawner:rand(15,32),mother:rand(22,46),portal:rand(25,50),bumper:rand(18,35),cloud:rand(16,31),comet:rand(32,55)},
@@ -79,17 +134,20 @@ export function createWorld(modeId='classic',{playerName='Player',playerColor=PL
     stats:{respawns:0,teamComebacks:0,bossesDefeated:0},
   };
   const playerTeam=mode.teams?0:null;
-  world.player=newOwner(world,playerName,mode.teams?TEAM_DEFS[playerTeam].color:playerColor,{isPlayer:true,team:playerTeam});
-  world.owners.push(world.player);spawnOwner(world,world.player,CONFIG.startMass);
+  world.player=newOwner(world,playerName,mode.teams?TEAM_DEFS[playerTeam].color:playerColor,{isPlayer:true,team:playerTeam});world.owners.push(world.player);
   for(let i=0;i<mode.botCount;i++){
-    const team=mode.teams?((i+1)%mode.teamCount):null;
+    const team=mode.teams?(opts.teamDistribution==='random'?rint(0,mode.teamCount-1):((i+1)%mode.teamCount)):null;
     const color=mode.teams?TEAM_DEFS[team].color:PLAYER_COLORS[(i+2)%PLAYER_COLORS.length];
     const o=newOwner(world,BOT_NAMES[i%BOT_NAMES.length],color,{team});world.bots.push(o);world.owners.push(o);
-    spawnOwner(world,o,Math.random()<.13?rand(44,78):rand(26,40));
   }
-  if(mode.hotzones){spawnHotZones(world,true);}
-  if(mode.boss){initBossMode(world);}
-  maintain(world);recalcAll(world);return world;
+  pairDuoBots(world);
+  spawnOwner(world,world.player,opts.playerStartMass);
+  const ids=[...Array(world.bots.length).keys()].sort(()=>Math.random()-.5),giantSet=new Set(ids.slice(0,opts.giantBots));
+  for(let i=0;i<world.bots.length;i++){
+    const o=world.bots[i],mate=o.duoMateId?ownerById(world,o.duoMateId):null,near=mate?.cells?.length?mate:null;
+    spawnOwner(world,o,botStartMass(world,i,giantSet),{near});
+  }
+  if(mode.hotzones)spawnHotZones(world,true);if(mode.boss)initBossMode(world);maintain(world);recalcAll(world);return world;
 }
 
 export function ownerById(world,id){return world.owners.find(o=>o.id===id)||null;}
@@ -109,31 +167,37 @@ function weakestTeam(world){
   let best=0,score=Infinity;for(let i=0;i<world.mode.teamCount;i++){const s=masses[i]+counts[i]*CONFIG.startMass*1.5;if(s<score){score=s;best=i}}return best;
 }
 function teamComebackMass(world,team){
-  if(!world.mode.teams)return 1;const shares=teamShares(world),share=shares[team]||0;
-  return 1+clamp((.25-share)*2.6,0,.68);
+  if(!world.mode.teams)return 1;const shares=teamShares(world),share=shares[team]||0,target=1/Math.max(2,world.mode.teamCount||2);
+  return 1+clamp((target-share)*2.15,0,.68);
 }
 function bountyMultiplier(world,eater,prey){
   if(!world.mode.teams||eater.team==null||prey.team==null)return 1;
-  const shares=teamShares(world),a=shares[eater.team]||0,b=shares[prey.team]||0;
-  if(a<.19&&b>.38)return 1.22;if(a<.22&&b>.34)return 1.12;return 1;
+  const shares=teamShares(world),a=shares[eater.team]||0,b=shares[prey.team]||0,target=1/Math.max(2,world.mode.teamCount||2),gap=b-a;
+  if(a<target*.78&&gap>target*.58)return 1.22;if(a<target*.9&&gap>target*.36)return 1.12;return 1;
 }
 
 export function safeSpawn(world,owner=null){
   for(let n=0;n<140;n++){
     const p={x:rand(240,world.size-240),y:rand(240,world.size-240)};let bad=false;
-    for(const c of world.entities){if(!c.alive||c.mass<55)continue;const other=ownerById(world,c.ownerId);if(owner&&other&&world.mode.teams&&other.team===owner.team)continue;if(Math.hypot(p.x-c.x,p.y-c.y)<c.r+250){bad=true;break}}
+    for(const c of world.entities){if(!c.alive||c.mass<55)continue;const other=ownerById(world,c.ownerId);if(owner&&other&&world.mode.teams&&other.team===owner.team)continue;if(Math.hypot(p.x-c.x,p.y-c.y)<c.r+250){bad=true;break;}}
     if(world.safeZone&&world.safeZone.r<world.size*.5&&Math.hypot(p.x-world.safeZone.x,p.y-world.safeZone.y)>world.safeZone.r*.82)bad=true;
     if(!bad)return p;
   }
   return{x:rand(180,world.size-180),y:rand(180,world.size-180)};
 }
-export function spawnOwner(world,o,m=CONFIG.startMass){
+function safeSpawnNear(world,anchor,owner){
+  const ac=center(anchor);for(let n=0;n<55;n++){
+    const a=rand(0,Math.PI*2),d=rand(310,620),p={x:clamp(ac.x+Math.cos(a)*d,180,world.size-180),y:clamp(ac.y+Math.sin(a)*d,180,world.size-180)};let bad=false;
+    for(const c of world.entities){if(!c.alive||c.ownerId===anchor.id||c.mass<80)continue;if(Math.hypot(p.x-c.x,p.y-c.y)<c.r+180){bad=true;break;}}
+    if(!bad)return p;
+  }return safeSpawn(world,owner);
+}
+export function spawnOwner(world,o,m=CONFIG.startMass,{near=null}={}){
   if(world.mode.teams&&!o.isPlayer&&!o.isBoss){
-    const weak=weakestTeam(world),shares=teamShares(world);if(o.team==null||Math.random()<.72&&shares[o.team]>(shares[weak]||0)+.035)o.team=weak;
-    o.color=TEAM_DEFS[o.team].color;
+    const weak=weakestTeam(world),shares=teamShares(world);if(o.team==null||Math.random()<.72&&shares[o.team]>(shares[weak]||0)+.035)o.team=weak;o.team=clamp(o.team,0,world.mode.teamCount-1);o.color=TEAM_DEFS[o.team].color;
   }
-  const p=safeSpawn(world,o);const mass=m*(world.mode.teams?teamComebackMass(world,o.team):1);
-  o.cells=[];o.alive=true;o.respawnTimer=0;o.spawnShield=world.mode.teams?CONFIG.teamSpawnShield:CONFIG.spawnShield;
+  const p=near?safeSpawnNear(world,near,o):safeSpawn(world,o),mass=m*(world.mode.teams?teamComebackMass(world,o.team):1);
+  o.cells=[];o.alive=true;o.respawnTimer=0;o.ejectCooldown=0;o.spawnShield=world.mode.teams?CONFIG.teamSpawnShield:CONFIG.spawnShield;
   cell(world,o,p.x,p.y,mass);recalcOwner(world,o);return o;
 }
 
@@ -144,35 +208,49 @@ export function recalcOwner(world,o){
 export function recalcAll(world){for(const o of world.owners)recalcOwner(world,o);}
 
 export function maintain(world){
-  const target=Math.round(CONFIG.foodTarget*(world.mode.rush?1.18:1)*world.mode.worldScale);
+  const target=Math.round(world.settings.foodTarget*(world.mode.rush?1.18:1));
   while(world.food.length<target)world.food.push(pellet(world));
-  if(world.mode.env.viruses){while(world.viruses.length<Math.round(CONFIG.virusTarget*world.mode.worldScale))world.viruses.push(virus(world));}
+  if(world.mode.env.viruses){while(world.viruses.length<world.settings.virusTarget)world.viruses.push(virus(world));while(world.viruses.length>world.settings.virusTarget)world.viruses.pop();}
   else world.viruses.length=0;
 }
 
-export function speedFor(world,c){return CONFIG.baseSpeed/Math.pow(Math.max(1,c.mass/CONFIG.startMass),.23)*(world.mode.rush?1.06:1);}
+function applyBoost(c,dt){
+  if(!(c.boostDistance>0))return;const remain=c.boostDistance,decay=Math.pow(8/9,dt/.04),step=remain*(1-decay);c.boostDistance=remain*decay;c.x+=c.boostDx*step;c.y+=c.boostDy*step;if(c.boostDistance<.8)c.boostDistance=0;
+}
+function mergeDelayFor(world,c){return Math.max(world.recombineDelay,CONFIG.mergeMassFactor*Math.sqrt(Math.max(1,c.mass)))*(world.mode.rush?.60:1);}
+export function speedFor(world,c){
+  const ref=radius(CONFIG.startMass),size=Math.max(1,c.r),scale=Math.pow(ref/size,CONFIG.movementExponent);return CONFIG.baseSpeed*scale*(world.mode.rush?1.06:1);
+}
 export function moveOwner(world,o,tx,ty,dt){
-  for(const c of o.cells){if(!c.alive)continue;c.age+=dt;c.portalCooldown=Math.max(0,c.portalCooldown-dt);const d=norm(tx-c.x,ty-c.y),slow=clamp(d.l/Math.max(70,c.r*2.1),.12,1),sp=speedFor(world,c)*slow;c.x+=d.x*sp*dt+c.vx*dt;c.y+=d.y*sp*dt+c.vy*dt;const drag=Math.pow(.945,dt*60);c.vx*=drag;c.vy*=drag;c.r=radius(c.mass);c.x=clamp(c.x,c.r,world.size-c.r);c.y=clamp(c.y,c.r,world.size-c.r);}
+  for(const c of o.cells){if(!c.alive)continue;c.age+=dt;c.portalCooldown=Math.max(0,c.portalCooldown-dt);applyBoost(c,dt);const d=norm(tx-c.x,ty-c.y),slow=clamp(d.l/CONFIG.mouseSlowRadius,0,1),sp=speedFor(world,c)*slow;c.x+=d.x*sp*dt+c.vx*dt;c.y+=d.y*sp*dt+c.vy*dt;const drag=Math.pow(.945,dt*60);c.vx*=drag;c.vy*=drag;c.r=radius(c.mass);c.x=clamp(c.x,c.r,world.size-c.r);c.y=clamp(c.y,c.r,world.size-c.r);}
 }
 export function sameOwnerPhysics(world,o){
   const a=o.cells.filter(c=>c.alive);for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++){
-    const A=a[i],B=a[j],dx=B.x-A.x,dy=B.y-A.y,d=Math.max(.001,Math.hypot(dx,dy)),min=(A.r+B.r)*.92,merge=A.age>=world.recombineDelay&&B.age>=world.recombineDelay;
-    if(merge&&d<Math.max(A.r,B.r)*.42){const keep=A.mass>=B.mass?A:B,eat=keep===A?B:A,total=keep.mass+eat.mass;keep.x=(keep.x*keep.mass+eat.x*eat.mass)/total;keep.y=(keep.y*keep.mass+eat.y*eat.mass)/total;keep.mass=total;keep.r=radius(total);keep.age=world.recombineDelay;eat.alive=false;}
-    else if(!merge&&d<min){const ov=min-d,nx=dx/d,ny=dy/d,total=A.mass+B.mass;A.x-=nx*ov*(B.mass/total)*.55;A.y-=ny*ov*(B.mass/total)*.55;B.x+=nx*ov*(A.mass/total)*.55;B.y+=ny*ov*(A.mass/total)*.55;}
+    const A=a[i],B=a[j],dx=B.x-A.x,dy=B.y-A.y,d=Math.max(.001,Math.hypot(dx,dy));if(A.age<CONFIG.splitGhostTime||B.age<CONFIG.splitGhostTime)continue;
+    const ready=A.age>=mergeDelayFor(world,A)&&B.age>=mergeDelayFor(world,B),big=A.r>=B.r?A:B,small=big===A?B:A,mergeDist=Math.max(2,big.r-small.r/3);
+    if(ready&&d<mergeDist){const keep=A.mass>=B.mass?A:B,eat=keep===A?B:A,total=keep.mass+eat.mass;keep.x=(keep.x*keep.mass+eat.x*eat.mass)/total;keep.y=(keep.y*keep.mass+eat.y*eat.mass)/total;keep.mass=total;keep.r=radius(total);keep.age=Math.max(keep.age,eat.age);eat.alive=false;continue;}
+    if(!ready&&d<A.r+B.r){const ov=A.r+B.r-d,nx=dx/d,ny=dy/d,total=A.mass+B.mass;A.x-=nx*ov*(B.mass/total)*.52;A.y-=ny*ov*(B.mass/total)*.52;B.x+=nx*ov*(A.mass/total)*.52;B.y+=ny*ov*(A.mass/total)*.52;}
   }
 }
 
+function splitMassOff(world,o,parent,mass,angle,boostDistance=CONFIG.splitBoostDistance){
+  mass=Math.min(parent.mass-CONFIG.minDecayMass,mass);if(mass<CONFIG.minDecayMass)return null;parent.mass-=mass;parent.r=radius(parent.mass);parent.age=0;
+  const r=radius(mass),dx=Math.cos(angle),dy=Math.sin(angle);return cell(world,o,parent.x+dx*r*.22,parent.y+dy*r*.22,mass,0,0,0,{boostDistance,boostDx:dx,boostDy:dy});
+}
 export function splitOwner(world,o,tx,ty,maxCells=o.isPlayer?CONFIG.maxPlayerCells:CONFIG.maxBotCells,{single=false,boost=1}={}){
-  const arr=o.cells.filter(c=>c.alive).sort((a,b)=>b.mass-a.mass);let slots=maxCells-arr.length,did=false;
-  for(const c of arr){if(slots<=0||c.mass<CONFIG.splitMinMass)continue;const a=Math.atan2(ty-c.y,tx-c.x),m=c.mass*.5;c.mass=m;c.r=radius(m);c.age=0;cell(world,o,c.x+Math.cos(a)*c.r*.75,c.y+Math.sin(a)*c.r*.75,m,Math.cos(a)*CONFIG.splitVelocity*boost,Math.sin(a)*CONFIG.splitVelocity*boost,0);slots--;did=true;if(single)break;}
+  const arr=o.cells.filter(c=>c.alive),slotsStart=maxCells-arr.length;if(slotsStart<=0)return false;let slots=slotsStart,did=false;
+  for(const c of arr){if(slots<=0||c.mass<CONFIG.splitMinMass)continue;const a=Math.atan2(ty-c.y,tx-c.x),m=c.mass*.5;c.mass=m;c.r=radius(m);c.age=0;const dx=Math.cos(a),dy=Math.sin(a),nr=radius(m);cell(world,o,c.x+dx*nr*.22,c.y+dy*nr*.22,m,0,0,0,{boostDistance:CONFIG.splitBoostDistance*boost,boostDx:dx,boostDy:dy});slots--;did=true;if(single)break;}
   return did;
 }
 export function ejectOwner(world,o,tx,ty){
-  if(world.ejected.length>CONFIG.maxEjected)return false;const c=largest(o);if(!c||c.mass<CONFIG.ejectMinMass)return false;const a=Math.atan2(ty-c.y,tx-c.x);c.mass-=CONFIG.ejectCost;c.r=radius(c.mass);world.ejected.push({id:world.nextId++,ownerId:o.id,x:c.x+Math.cos(a)*(c.r+16),y:c.y+Math.sin(a)*(c.r+16),r:radius(CONFIG.ejectMass)*.72,mass:CONFIG.ejectMass,vx:Math.cos(a)*CONFIG.ejectVelocity,vy:Math.sin(a)*CONFIG.ejectVelocity,life:12});return true;
+  if(o.ejectCooldown>0||world.ejected.length>=CONFIG.maxEjected)return false;const arr=o.cells.filter(c=>c.alive),shots=[];
+  for(const c of arr){if(c.mass<CONFIG.ejectMinMass)continue;const d=norm(tx-c.x,ty-c.y),baseA=Math.atan2(d.y||0,d.x||1),a=baseA+rand(-.16,.16),dx=Math.cos(a),dy=Math.sin(a);c.mass-=CONFIG.ejectCost;c.r=radius(c.mass);shots.push({id:world.nextId++,ownerId:o.id,x:c.x+dx*(c.r+10),y:c.y+dy*(c.r+10),r:radius(CONFIG.ejectMass)*.72,mass:CONFIG.ejectMass,color:o.color,vx:0,vy:0,boostDistance:CONFIG.ejectBoostDistance,boostDx:dx,boostDy:dy,life:12});}
+  if(!shots.length)return false;world.ejected.push(...shots.slice(0,Math.max(0,CONFIG.maxEjected-world.ejected.length)));o.ejectCooldown=CONFIG.ejectCooldown;return true;
 }
 
 export function canOwnersEat(world,eater,prey){
   if(!eater||!prey||eater.id===prey.id)return false;if(prey.spawnShield>0)return false;
+  if(eater.duoMateId===prey.id||prey.duoMateId===eater.id)return false;
   if(world.mode.teams&&eater.team===prey.team)return false;
   if(world.mode.boss){if(eater.isBoss&&!prey.isBoss)return true;if(!eater.isBoss&&prey.isBoss)return false;if(!eater.isBoss&&!prey.isBoss)return false;}
   return true;
@@ -202,26 +280,30 @@ function virusHit(world){
   for(const c of world.entities){
     if(!c.alive||c.mass<CONFIG.virusSplitMass)continue;const o=ownerById(world,c.ownerId);if(!o||o.isBoss)continue;
     for(let vi=world.viruses.length-1;vi>=0;vi--){const v=world.viruses[vi];if(Math.hypot(c.x-v.x,c.y-v.y)>=c.r+v.r*.30)continue;
-      c.mass+=CONFIG.virusMassGain;c.r=radius(c.mass);const max=o.isPlayer?CONFIG.maxPlayerCells:CONFIG.maxBotCells,aliveCount=o.cells.filter(x=>x.alive).length,available=max-aliveCount+1;world.viruses.splice(vi,1);
-      if(available>1){const pieces=Math.min(available,Math.max(4,Math.min(8,Math.floor(c.mass/45)))),total=c.mass,m=total/pieces;c.mass=m;c.r=radius(m);c.age=0;for(let k=1;k<pieces;k++){const an=k/pieces*Math.PI*2+rand(-.18,.18);cell(world,o,c.x+Math.cos(an)*c.r*.35,c.y+Math.sin(an)*c.r*.35,m,Math.cos(an)*rand(390,630),Math.sin(an)*rand(390,630),0);}}
-      break;
+      c.mass+=v.mass||CONFIG.virusMassGain;c.r=radius(c.mass);world.viruses.splice(vi,1);
+      const max=o.isPlayer?CONFIG.maxPlayerCells:CONFIG.maxBotCells,alive=o.cells.filter(x=>x.alive).length,slots=max-alive;if(slots<=0)break;
+      const minPiece=10,maxNew=Math.min(slots,Math.max(1,Math.floor((c.mass-minPiece)/minPiece)));if(maxNew<=0)break;
+      // MultiOgar-inspired virus explosion: many small fragments plus a few larger chunks.
+      let bigMasses=[];if(maxNew===1)bigMasses=[c.mass*.5];else if(maxNew===2)bigMasses=[c.mass*.25,c.mass*.25];else if(maxNew===3)bigMasses=[c.mass*.25,c.mass*.25,c.mass/7];else if(maxNew===4)bigMasses=[c.mass/5,c.mass/7,c.mass/8,c.mass/10];
+      let created=0;for(const m of bigMasses){if(created>=maxNew)break;const a=rand(0,Math.PI*2);if(splitMassOff(world,o,c,m,a,rand(255,350)))created++;}
+      while(created<maxNew&&c.mass>minPiece*2){const slotsLeft=maxNew-created,keep=Math.max(minPiece,c.mass*.26),available=Math.max(0,c.mass-keep),m=Math.min(rand(10,14.5),available/Math.max(1,slotsLeft));if(m<minPiece*.92)break;const a=created/maxNew*Math.PI*2+rand(-.35,.35);if(!splitMassOff(world,o,c,m,a,rand(250,365)))break;created++;}
+      c.age=0;break;
     }
   }
 }
 
 function feedViruses(world){
   for(let ei=world.ejected.length-1;ei>=0;ei--){const e=world.ejected[ei];let hit=false;
-    for(const v of world.viruses){if(Math.hypot(e.x-v.x,e.y-v.y)>v.r+e.r)continue;hit=true;
-      const d=norm(e.vx,e.vy);if(world.mode.experimentalVirus){v.vx+=d.x*310;v.vy+=d.y*310;v.fed=Math.max(0,v.fed-.5);}
-      else{v.fed++;if(v.fed>=CONFIG.virusFeedPieces){v.fed=0;world.viruses.push(virus(world,{x:clamp(v.x+d.x*v.r*1.7,50,world.size-50),y:clamp(v.y+d.y*v.r*1.7,50,world.size-50),vx:d.x*520,vy:d.y*520}));}}
+    for(const v of world.viruses){if(Math.hypot(e.x-v.x,e.y-v.y)>v.r+e.r)continue;hit=true;const d=(e.boostDistance>0)?{x:e.boostDx,y:e.boostDy}:norm(e.vx,e.vy);
+      if(world.mode.experimentalVirus){v.boostDx=d.x;v.boostDy=d.y;v.boostDistance=Math.max(v.boostDistance||0,CONFIG.virusBoostDistance*.65);v.fed=Math.max(0,v.fed-.5);}
+      else{v.fed++;if(v.fed>=CONFIG.virusFeedPieces){v.fed=0;world.viruses.push(virus(world,{x:clamp(v.x+d.x*v.r*1.7,50,world.size-50),y:clamp(v.y+d.y*v.r*1.7,50,world.size-50),boostDistance:CONFIG.virusBoostDistance,boostDx:d.x,boostDy:d.y}));}}
       break;
-    }
-    if(hit)world.ejected.splice(ei,1);
+    }if(hit)world.ejected.splice(ei,1);
   }
 }
 
-function updateEjected(world,dt){for(let i=world.ejected.length-1;i>=0;i--){const p=world.ejected[i];p.life-=dt;const drag=Math.pow(.92,dt*60);p.vx*=drag;p.vy*=drag;p.x+=p.vx*dt;p.y+=p.vy*dt;p.x=clamp(p.x,p.r,world.size-p.r);p.y=clamp(p.y,p.r,world.size-p.r);if(p.life<=0)world.ejected.splice(i,1);}}
-function updateViruses(world,dt){for(const v of world.viruses){v.phase+=dt*1.7;v.x+=v.vx*dt;v.y+=v.vy*dt;const drag=Math.pow(.94,dt*60);v.vx*=drag;v.vy*=drag;v.x=clamp(v.x,v.r,world.size-v.r);v.y=clamp(v.y,v.r,world.size-v.r);}}
+function updateEjected(world,dt){for(let i=world.ejected.length-1;i>=0;i--){const p=world.ejected[i];p.life-=dt;applyBoost(p,dt);p.x+=p.vx*dt;p.y+=p.vy*dt;const drag=Math.pow(.92,dt*60);p.vx*=drag;p.vy*=drag;p.x=clamp(p.x,p.r,world.size-p.r);p.y=clamp(p.y,p.r,world.size-p.r);if(p.life<=0)world.ejected.splice(i,1);}}
+function updateViruses(world,dt){for(const v of world.viruses){v.phase+=dt*1.7;applyBoost(v,dt);v.x+=v.vx*dt;v.y+=v.vy*dt;const drag=Math.pow(.94,dt*60);v.vx*=drag;v.vy*=drag;v.x=clamp(v.x,v.r,world.size-v.r);v.y=clamp(v.y,v.r,world.size-v.r);}}
 
 function spawnSpawnerPellets(world,s){const count=rint(CONFIG.spawner.pelletsMin,CONFIG.spawner.pelletsMax);for(let i=0;i<count;i++){const a=rand(0,Math.PI*2),d=rand(s.r*1.35,s.r*3.25);world.food.push(pellet(world,clamp(s.x+Math.cos(a)*d,14,world.size-14),clamp(s.y+Math.sin(a)*d,14,world.size-14),{ttl:CONFIG.spawner.pelletLifetime,spawnerId:s.id}));}}
 function updateSpawners(world,dt){
@@ -253,12 +335,15 @@ function updateComets(world,dt){
 function expireFood(world,dt){for(let i=world.food.length-1;i>=0;i--){const p=world.food[i];if(p.ttl==null)continue;p.ttl-=dt;if(p.ttl<=0)world.food.splice(i,1);}}
 
 function applyMassDecay(world,dt){
-  for(const o of aliveOwners(world)){if(o.isBoss)continue;for(const c of o.cells){if(!c.alive||c.mass<700)continue;const rate=c.mass>2600?.0022:c.mass>1400?.00135:.00065;c.mass=Math.max(CONFIG.startMass*.45,c.mass*(1-rate*dt));}}
+  const base=world.settings.massDecayRate;if(base<=0)return;for(const o of aliveOwners(world)){if(o.isBoss)continue;for(const c of o.cells){if(!c.alive||c.mass<=CONFIG.minDecayMass)continue;const rate=base*(world.mode.decayMod||1),next=c.mass*Math.pow(Math.max(.90,1-rate),dt);c.mass=Math.max(CONFIG.minDecayMass,next);c.r=radius(c.mass);}}
+}
+function updateAutoSplit(world){
+  for(const o of aliveOwners(world,{includeBoss:false})){const max=o.isPlayer?CONFIG.maxPlayerCells:CONFIG.maxBotCells;for(const c of [...o.cells]){if(!c.alive||c.mass<=CONFIG.maxCellMass)continue;if(o.cells.filter(x=>x.alive).length<max){const a=rand(0,Math.PI*2),tx=c.x+Math.cos(a)*500,ty=c.y+Math.sin(a)*500;splitOwner(world,o,tx,ty,max,{single:true});}else{c.mass=CONFIG.maxCellMass;c.r=radius(c.mass);}}}
 }
 function updateRespawns(world,dt){
-  for(const o of world.bots){if(o.alive)continue;if(!world.mode.respawn)continue;o.respawnTimer-=dt;if(o.respawnTimer<=0){spawnOwner(world,o,rand(28,41));world.stats.respawns++;}}
+  for(const o of world.bots){if(o.alive||!world.mode.respawn)continue;o.respawnTimer-=dt;if(o.respawnTimer<=0){const mate=o.duoMateId?ownerById(world,o.duoMateId):null;spawnOwner(world,o,world.settings.playerStartMass*rand(.80,1.18),{near:mate?.alive?mate:null});world.stats.respawns++;}}
 }
-function updateSpawnShields(world,dt){for(const o of world.owners)o.spawnShield=Math.max(0,(o.spawnShield||0)-dt);}
+function updateSpawnShields(world,dt){for(const o of world.owners){o.spawnShield=Math.max(0,(o.spawnShield||0)-dt);o.ejectCooldown=Math.max(0,(o.ejectCooldown||0)-dt);}}
 
 function updateBattle(world,dt){
   if(!world.mode.battle||world.finished)return;const z=world.safeZone,progress=clamp(world.time/world.mode.duration,0,1),ease=progress*progress*(3-2*progress);z.r=z.startR+(z.targetR-z.startR)*ease;
@@ -311,11 +396,11 @@ export function updateWorld(world,dt){
   if(world.finished)return;world.time+=dt;updateSpawnShields(world,dt);updateEjected(world,dt);updateViruses(world,dt);feedViruses(world);
   updateSpawners(world,dt);updateMothers(world,dt);updatePortals(world,dt);updateBumpers(world,dt);updateClouds(world,dt);updateComets(world,dt);expireFood(world,dt);
   for(const c of world.entities)if(c.alive)eatFood(world,c);eatCells(world);virusHit(world);world.entities=world.entities.filter(c=>c.alive);recalcAll(world);
-  applyMassDecay(world,dt);updateRespawns(world,dt);updateBattle(world,dt);updateHotZones(world,dt);updateBoss(world,dt);updateTimed(world);maintain(world);
+  applyMassDecay(world,dt);updateAutoSplit(world);updateRespawns(world,dt);updateBattle(world,dt);updateHotZones(world,dt);updateBoss(world,dt);recalcAll(world);updateTimed(world);maintain(world);
 }
 
 export function getModeStatus(world){
-  if(world.mode.teams){const masses=teamMasses(world),total=masses.reduce((a,b)=>a+b,0)||1;return {type:'teams',teams:masses.map((mass,i)=>({team:TEAM_DEFS[i],mass,share:mass/total}))};}
+  if(world.mode.teams){const masses=teamMasses(world),total=masses.reduce((a,b)=>a+b,0)||1;return {type:'teams',teams:masses.slice(0,world.mode.teamCount).map((mass,i)=>({team:TEAM_DEFS[i],mass,share:mass/total}))};}
   if(world.mode.battle)return {type:'battle',alive:aliveOwners(world,{includeBoss:false}).length,zone:world.safeZone};
   if(world.mode.boss){const b=world.bossState;return {type:'boss',name:b?.def?.name||'Incoming Titan',hp:b?.hp||0,maxHp:b?.maxHp||1,cycle:b?.cycle||1,defeated:world.stats.bossesDefeated};}
   if(world.mode.hotzones)return {type:'hotzones',timer:Math.max(0,world.mode.duration-world.time)};

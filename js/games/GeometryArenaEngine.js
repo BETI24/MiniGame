@@ -60,9 +60,9 @@ export function createRun(profile){
   const classId=profile.selectedClass,colorId=profile.selectedColor;
   return {
     classId,colorId,stageMajor:1,stageMinor:1,difficultyId:profile.difficulty,
-    stats:buildStats(profile,classId,colorId), upgrades:[], stars:0, earnedStars:0, fragments:0, geometryCoins:0,
+    stats:buildStats(profile,classId,colorId), upgrades:[], stars:0, earnedStars:0, fragments:18, geometryCoins:0,
     rerollCost:0,storeRoll:[],score:0,kills:0,eliteKills:0,bossKills:0,wonStages:0,shotCounter:0,
-    amuletUsed:false,alive:true,
+    amuletUsed:false,alive:true,storeMessage:'18 starting fragments',storeMessageTime:2.5,
   };
 }
 
@@ -81,17 +81,29 @@ function rollUpgrade(run,exclude=[]){
   for(let i=0;i<pool.length;i++){r-=weights[i];if(r<=0)return pool[i]}return pool[pool.length-1];
 }
 export function rollStore(run){
-  const out=[],used=[];for(let i=0;i<3;i++){const u=rollUpgrade(run,used);used.push(u.id);const rc=UPGRADE_RARITIES[u.rarity].cost;const stageMul=1+(run.stageMajor-1)*.18+(run.stageMinor-1)*.05;out.push({...u,cost:Math.max(1,Math.round(rand(rc[0],rc[1]+1)*stageMul))});}
+  const out=[],used=[];
+  for(let i=0;i<3;i++){
+    const starter=i===0&&run.stageMajor===1&&run.stageMinor===1&&run.upgrades.length===0;
+    let u;
+    if(starter){const pool=UPGRADES.filter(x=>x.rarity==='common');u=pick(pool);}else u=rollUpgrade(run,used);
+    used.push(u.id);const rc=UPGRADE_RARITIES[u.rarity].cost,stageMul=1+(run.stageMajor-1)*.18+(run.stageMinor-1)*.05;
+    const cost=starter?Math.min(6,Math.max(1,Math.round(rand(rc[0],rc[1]+1)))):Math.max(1,Math.round(rand(rc[0],rc[1]+1)*stageMul));
+    out.push({...u,cost});
+  }
   run.storeRoll=out;return out;
 }
 export function rerollStore(run){const cost=run.rerollCost; if(run.fragments<cost)return false;run.fragments-=cost;run.rerollCost=Math.min(12,cost+1);rollStore(run);return true;}
 export function buyUpgrade(run,index){
-  const u=run.storeRoll[index];if(!u||run.fragments<u.cost)return false;run.fragments-=u.cost;run.upgrades.push(u.id);u.apply(run.stats);run.storeRoll[index]=null;return true;
+  const u=run.storeRoll[index];
+  if(!u){run.storeMessage='That slot is already purchased.';run.storeMessageTime=1.8;return false;}
+  if(run.fragments<u.cost){run.storeMessage=`Need ${u.cost-run.fragments} more fragments.`;run.storeMessageTime=2.2;return false;}
+  run.fragments-=u.cost;run.upgrades.push(u.id);u.apply(run.stats);run.storeRoll[index]=null;
+  run.storeMessage=`${u.name} acquired`;run.storeMessageTime=2.2;return true;
 }
 
 function particle(world,x,y,color,count=8,speed=100,size=3,life=.45,kind='dot'){
-  const cap=GA_CONFIG.maxParticles;if(world.particles.length>cap)world.particles.splice(0,world.particles.length-cap);
-  const scale=world.fxDensity||1,count2=Math.max(1,Math.round(count*scale));
+  const light=world.profile?.settings?.light||4,cap=Math.min(GA_CONFIG.maxParticles,450+light*290);if(world.particles.length>cap+64)world.particles.splice(0,world.particles.length-cap);
+  const scale=(world.fxDensity||1)*(world.performanceScale||1),count2=Math.max(1,Math.round(count*scale));
   for(let i=0;i<count2;i++){const a=rand(0,Math.PI*2),s=rand(speed*.25,speed);world.particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rand(life*.55,life),maxLife:life,size:rand(size*.5,size*1.45),color,kind,rot:rand(0,6.28),spin:rand(-6,6)});}
 }
 function lineFx(world,x1,y1,x2,y2,color,life=.14,width=3){world.lines.push({x1,y1,x2,y2,color,life,maxLife:life,width});}
@@ -99,15 +111,21 @@ function ringFx(world,x,y,color,r=8,vr=140,life=.35,width=3){world.rings.push({x
 function textFx(world,x,y,text,color='#fff',size=20){world.texts.push({x,y,text,color,size,life:.7,maxLife:.7,vy:-28});}
 function shake(world,v){world.shake=Math.max(world.shake,v);}
 
-export function createWorld(run,profile){
+export function createWorld(run,profile,previous=null){
   const c=getClassById(run.classId),col=getColorById(run.colorId),d=getDifficulty(run.difficultyId);
   const bossStage=run.stageMinor===5;
+  const diffIndex=Math.max(0,DIFFICULTIES.findIndex(x=>x.id===run.difficultyId));
+  const baseCount=7+(run.stageMajor-1)*5+(run.stageMinor-1)*2;
+  const waveTarget=Math.max(4,Math.round(baseCount*d.enemyCount*(bossStage?.65:1)));
+  const startX=previous?.player?.x??500,startY=previous?.player?.y??520;
   const world={
-    run,profile,classDef:c,colorDef:col,diff:d,time:0,battleTime:GA_CONFIG.baseStageTime+run.stageMajor*1.5+(bossStage?9:0),
-    spawnTimer:.2,enemySerial:0,player:{x:500,y:520,vx:0,vy:0,angle:-Math.PI/2,radius:16*run.stats.bodySize,fireCd:0,skillCd:0,skillActive:0,hitFlash:0,invuln:0,spin:0,tornadoCharge:0},
+    run,profile,classDef:c,colorDef:col,diff:d,time:0,battleTime:0,phase:'prepare',
+    spawnTimer:.35,enemySerial:0,waveTarget,spawnedEnemies:0,spawnComplete:false,victoryDelay:0,bossStage,
+    concurrentCap:Math.max(4,Math.min(24,5+diffIndex*2+run.stageMajor+Math.floor(run.stageMinor/2))),
+    player:{x:startX,y:startY,vx:0,vy:0,angle:previous?.player?.angle??-Math.PI/2,radius:16*run.stats.bodySize,fireCd:0,skillCd:0,skillActive:0,hitFlash:0,invuln:0,spin:previous?.player?.spin??0,tornadoCharge:0},
     enemies:[],bullets:[],enemyBullets:[],pickups:[],minions:[],mines:[],particles:[],lines:[],rings:[],texts:[],
-    mouse:{x:500,y:350,down:false},keys:new Set(),ended:false,won:false,spawnBoss:false,boss:null,shake:0,flash:0,flashColor:'#fff',fxDensity:clamp((profile.settings.light||4)/3,0.45,1.8),
-    damageWindow:0,damageWindowTime:0,dps:0,stageStars:0,stageFragments:0,stageCoins:0,killsAtStart:run.kills,
+    mouse:{x:previous?.mouse?.x??500,y:previous?.mouse?.y??350,down:false},keys:new Set(),ended:false,won:false,spawnBoss:false,boss:null,shake:0,flash:0,flashColor:'#fff',fxDensity:clamp((profile.settings.light||4)/3,0.45,1.65),
+    performanceScale:1,stableFrames:0,damageWindow:0,damageWindowTime:0,dps:0,stageStars:0,stageFragments:0,stageCoins:0,killsAtStart:run.kills,
   };
   if(c.id==='summoner')for(let i=0;i<2;i++)spawnMinion(world,true);
   if(c.id==='swordmaster')for(let i=0;i<2;i++)spawnMinion(world,true,'blade');
@@ -133,7 +151,7 @@ function spawnBoss(world){
 function shootEnemy(world,e){
   const p=world.player,n=norm(p.x-e.x,p.y-e.y),speed=e.boss?220:170;const shots=e.boss?(e.phase>1?9:6):(e.elite?3:1);
   const base=Math.atan2(n.y,n.x),spread=e.boss?Math.PI*.72:(e.elite?.24:0);
-  for(let i=0;i<shots;i++){const off=shots===1?0:(i-(shots-1)/2)*spread/Math.max(1,shots-1),a=base+off;world.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,r:e.boss?7:5,life:5,color:e.boss?world.colorDef.hex:e.color,damage:e.boss?2*world.diff.damage:1*world.diff.damage});}
+  for(let i=0;i<shots;i++){const off=shots===1?0:(i-(shots-1)/2)*spread/Math.max(1,shots-1),a=base+off;world.enemyBullets.push({x:e.x,y:e.y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,r:e.boss?7:5,life:5,color:e.boss?world.colorDef.hex:e.color,damage:e.boss?2*world.diff.damage:1*world.diff.damage});if(world.enemyBullets.length>GA_CONFIG.maxEnemyBullets)world.enemyBullets.splice(0,world.enemyBullets.length-GA_CONFIG.maxEnemyBullets);}
   particle(world,e.x,e.y,e.color,e.boss?18:5,e.boss?160:75,e.boss?4:2,.35);shake(world,e.boss?2:.4);
 }
 
@@ -142,7 +160,7 @@ function bulletBase(world,x,y,a,damageMul=1,sizeMul=1,opts={}){
   const crit=Math.random()<Math.min(.95,s.crit);let dmg=s.damage*damageMul*(s.ultra||1)*(crit?s.critEffect:1);
   if(world.player.skillActive>0&&world.classDef.id==='sniper')dmg*=1.7;
   const b={x,y,px:x,py:y,vx:Math.cos(a2)*speed,vy:Math.sin(a2)*speed,r:4.2*s.bulletSize*sizeMul,life:s.range/11,age:0,damage:dmg,crit,color:world.colorDef.hex,pierce:s.pierce||0,bounces:s.ricochet||0,homing:s.homing||0,split:s.split||0,explosive:s.explosive||0,fromMinion:!!opts.fromMinion,heavy:!!opts.heavy};
-  world.bullets.push(b);return b;
+  world.bullets.push(b);if(world.bullets.length>GA_CONFIG.maxPlayerBullets)world.bullets.splice(0,world.bullets.length-GA_CONFIG.maxPlayerBullets);return b;
 }
 
 function playerMuzzle(world,a){const p=world.player;return{x:p.x+Math.cos(a)*p.radius*1.15,y:p.y+Math.sin(a)*p.radius*1.15};}
@@ -228,7 +246,7 @@ function updatePlayer(world,dt,input){
   let move=s.move*36*(p.skillActive>0&&c.id==='soldier'?1.25:1)*(c.id==='tornado'?(1+p.tornadoCharge*.25):1);
   p.vx+=dx*move*dt*7;p.vy+=dy*move*dt*7;const drag=Math.pow(.0009,dt);p.vx*=drag;p.vy*=drag;const max=move*1.12,vl=Math.hypot(p.vx,p.vy);if(vl>max){p.vx=p.vx/vl*max;p.vy=p.vy/vl*max;}
   p.x=clamp(p.x+p.vx*dt,22,978);p.y=clamp(p.y+p.vy*dt,22,978);
-  p.angle=Math.atan2(world.mouse.y-p.y,world.mouse.x-p.x);p.fireCd=Math.max(0,p.fireCd-dt);p.skillCd=Math.max(0,p.skillCd-dt);p.skillActive=Math.max(0,p.skillActive-dt);p.invuln=Math.max(0,p.invuln-dt);p.hitFlash=Math.max(0,p.hitFlash-dt);
+  if(world.profile.settings.autoFire&&world.phase==='battle'&&world.enemies.length){let target=null,best=Infinity;for(const e of world.enemies){if(e.dead)continue;const dd=dist2(p,e);if(dd<best){best=dd;target=e}}if(target)p.angle=Math.atan2(target.y-p.y,target.x-p.x);else p.angle=Math.atan2(world.mouse.y-p.y,world.mouse.x-p.x);}else p.angle=Math.atan2(world.mouse.y-p.y,world.mouse.x-p.x);p.fireCd=Math.max(0,p.fireCd-dt);p.skillCd=Math.max(0,p.skillCd-dt);p.skillActive=Math.max(0,p.skillActive-dt);p.invuln=Math.max(0,p.invuln-dt);p.hitFlash=Math.max(0,p.hitFlash-dt);
   if(c.id==='tornado'){if(world.mouse.down||world.profile.settings.autoFire)p.tornadoCharge=clamp(p.tornadoCharge+dt*.22,0,1);else p.tornadoCharge=clamp(p.tornadoCharge-dt*.32,0,1);p.spin+=dt*(5+22*p.tornadoCharge);}
   if((world.mouse.down||world.profile.settings.autoFire))firePlayer(world);
   if(world.revengeTimer>0){world.revengeTimer-=dt;}
@@ -249,16 +267,28 @@ function updateMines(world,dt){
   world.mines=world.mines.filter(m=>!m.dead);
 }
 
+function spatialBuckets(items,cell=125){
+  const map=new Map();
+  for(const it of items){if(it.dead)continue;const gx=Math.floor(it.x/cell),gy=Math.floor(it.y/cell),k=gx+gy*32;let a=map.get(k);if(!a)map.set(k,a=[]);a.push(it);}
+  return {map,cell};
+}
+function visitNearby(bucket,x,y,fn){
+  const gX=Math.floor(x/bucket.cell),gY=Math.floor(y/bucket.cell);
+  for(let yy=gY-1;yy<=gY+1;yy++)for(let xx=gX-1;xx<=gX+1;xx++){const a=bucket.map.get(xx+yy*32);if(!a)continue;for(let i=0;i<a.length;i++)if(fn(a[i]))return true;}
+  return false;
+}
 function updateBullets(world,dt){
-  const s=world.run.stats;
+  const s=world.run.stats,enemyGrid=spatialBuckets(world.enemies),enemyBulletGrid=spatialBuckets(world.enemyBullets);
   for(const b of world.bullets){b.px=b.x;b.py=b.y;b.age+=dt;b.life-=dt;
-    if(b.homing){let target=null,best=190*190*(1+b.homing*.4);for(const e of world.enemies)if(!e.dead){const d=dist2(b,e);if(d<best){best=d;target=e}}if(target){const speed=Math.hypot(b.vx,b.vy),cur=Math.atan2(b.vy,b.vx),want=Math.atan2(target.y-b.y,target.x-b.x),a=cur+angDiff(cur,want)*clamp(dt*(1.8+b.homing),0,1);b.vx=Math.cos(a)*speed;b.vy=Math.sin(a)*speed;}}
-    if(s.intensify){const g=clamp(b.age/1.25,0,.5);b.r*=1+dt*.22;b.damage*=1+dt*.18;}
+    if(b.homing&&world.enemies.length){let target=null,best=190*190*(1+b.homing*.4);visitNearby(enemyGrid,b.x,b.y,e=>{const d=dist2(b,e);if(d<best){best=d;target=e}return false;});if(target){const speed=Math.hypot(b.vx,b.vy),cur=Math.atan2(b.vy,b.vx),want=Math.atan2(target.y-b.y,target.x-b.x),a=cur+angDiff(cur,want)*clamp(dt*(1.8+b.homing),0,1);b.vx=Math.cos(a)*speed;b.vy=Math.sin(a)*speed;}}
+    if(s.intensify){b.r*=1+dt*.22;b.damage*=1+dt*.18;}
     b.x+=b.vx*dt;b.y+=b.vy*dt;
     if(b.x<0||b.x>1000){if(b.bounces>0){b.vx*=-1;b.bounces--;b.x=clamp(b.x,0,1000)}else b.life=0}
     if(b.y<0||b.y>1000){if(b.bounces>0){b.vy*=-1;b.bounces--;b.y=clamp(b.y,0,1000)}else b.life=0}
-    for(const e of world.enemies){if(e.dead||b.life<=0)continue;if(Math.hypot(e.x-b.x,e.y-b.y)<=e.radius+b.r){damageEnemy(world,e,b.damage,b.crit);if(b.explosive)explosion(world,b.x,b.y,52+50*b.explosive,b.damage*b.explosive,b.color);if(b.split>0){const a=Math.atan2(b.vy,b.vx);for(const off of [-.6,.6]){const child=bulletBase(world,b.x,b.y,a+off,.55,.68);child.split=b.split-1;child.life*=.65;}}if(b.pierce>0)b.pierce--;else b.life=0;}}
-    for(const eb of world.enemyBullets){if(eb.dead||b.life<=0)continue;if(Math.hypot(eb.x-b.x,eb.y-b.y)<eb.r+b.r){eb.dead=true;if(b.pierce>0)b.pierce--;else b.life=0;particle(world,eb.x,eb.y,b.color,5,90,2,.22,'spark');}}
+    if(b.life<=0)continue;
+    visitNearby(enemyGrid,b.x,b.y,e=>{if(e.dead||b.life<=0)return b.life<=0;const rr=e.radius+b.r,dx=e.x-b.x,dy=e.y-b.y;if(dx*dx+dy*dy<=rr*rr){damageEnemy(world,e,b.damage,b.crit);if(b.explosive)explosion(world,b.x,b.y,52+50*b.explosive,b.damage*b.explosive,b.color);if(b.split>0){const a=Math.atan2(b.vy,b.vx);for(const off of [-.6,.6]){const child=bulletBase(world,b.x,b.y,a+off,.55,.68);child.split=b.split-1;child.life*=.65;}}if(b.pierce>0)b.pierce--;else b.life=0;}return b.life<=0;});
+    if(b.life<=0)continue;
+    visitNearby(enemyBulletGrid,b.x,b.y,eb=>{if(eb.dead)return false;const rr=eb.r+b.r,dx=eb.x-b.x,dy=eb.y-b.y;if(dx*dx+dy*dy<rr*rr){eb.dead=true;if(b.pierce>0)b.pierce--;else b.life=0;particle(world,eb.x,eb.y,b.color,4,90,2,.22,'spark');}return b.life<=0;});
   }
   world.bullets=world.bullets.filter(b=>b.life>0);
   world.enemyBullets=world.enemyBullets.filter(b=>!b.dead&&b.life>0);
@@ -300,17 +330,34 @@ function updateFx(world,dt){
 }
 
 function spawnLogic(world,dt){
-  const bossStage=world.run.stageMinor===5,remaining=world.battleTime-world.time;
-  if(bossStage&&!world.spawnBoss&&world.time>2.6)spawnBoss(world);
-  world.spawnTimer-=dt;if(world.spawnTimer<=0){const stage=world.run.stageMajor+(world.run.stageMinor-1)/5;const base=.75/(world.diff.enemyCount*(1+stage*.09));world.spawnTimer=rand(base*.65,base*1.25);let n=Math.random()<.18*world.diff.enemyCount?2:1;if(bossStage&&world.boss&&!world.boss.dead)n=Math.min(1,n);for(let i=0;i<n&&world.enemies.length<95;i++)spawnEnemy(world);}
-  if(!bossStage&&remaining<0){world.ended=true;world.won=true;}
-  if(bossStage&&world.spawnBoss&&!world.boss&&!world.enemies.some(e=>e.boss)){world.ended=true;world.won=true;}
+  const bossStage=world.bossStage;
+  if(bossStage&&!world.spawnBoss&&world.time>.9)spawnBoss(world);
+  world.spawnTimer-=dt;
+  const regularTarget=world.waveTarget;
+  if(world.spawnedEnemies<regularTarget&&world.enemies.length<world.concurrentCap&&world.spawnTimer<=0){
+    const diffBoost=1+Math.max(0,DIFFICULTIES.findIndex(x=>x.id===world.run.difficultyId))*.08;
+    const interval=Math.max(.16,.66/diffBoost/(1+world.run.stageMajor*.06));
+    world.spawnTimer=rand(interval*.72,interval*1.22);
+    let n=1;
+    if(world.diff.enemyCount>1.8&&Math.random()<.28)n=2;
+    for(let i=0;i<n&&world.spawnedEnemies<regularTarget&&world.enemies.length<world.concurrentCap;i++){spawnEnemy(world);world.spawnedEnemies++;}
+  }
+  world.spawnComplete=world.spawnedEnemies>=regularTarget;
   if(world.boss?.dead)world.boss=null;
+  const combatDone=world.spawnComplete&&world.enemies.length===0&&(!bossStage||world.spawnBoss&&!world.boss);
+  if(combatDone){world.victoryDelay+=dt;world.enemyBullets.length=0;if(world.victoryDelay>.65){world.ended=true;world.won=true;}}else world.victoryDelay=0;
 }
 
-export function updateWorld(world,dt,input){
-  if(world.ended){updateFx(world,dt);return;}dt=Math.min(.034,dt);world.time+=dt;
-  updatePlayer(world,dt,input);updateMinions(world,dt);updateMines(world,dt);spawnLogic(world,dt);updateBullets(world,dt);updateEnemies(world,dt);updateEnemyBullets(world,dt);updatePickups(world,dt);updateFx(world,dt);
+export function updateWorld(world,dt,input,phase='battle'){
+  if(world.ended){updateFx(world,dt);return;}dt=Math.min(.034,dt);world.phase=phase;
+  if(dt>.026)world.performanceScale=Math.max(.45,world.performanceScale-.035);else if(dt<.019)world.performanceScale=Math.min(1,world.performanceScale+.006);
+  world.time+=dt;
+  updatePlayer(world,dt,input);updateMinions(world,dt);updateMines(world,dt);
+  if(phase==='battle')spawnLogic(world,dt);
+  updateBullets(world,dt);
+  if(phase==='battle'){updateEnemies(world,dt);updateEnemyBullets(world,dt);updatePickups(world,dt);}else{world.enemyBullets.length=0;world.enemies.length=0;world.pickups.length=0;}
+  updateFx(world,dt);
+  if(world.run.storeMessageTime>0)world.run.storeMessageTime=Math.max(0,world.run.storeMessageTime-dt);
   if(world.damageWindowTime>0){world.damageWindowTime-=dt;world.dps=lerp(world.dps,world.damageWindow/.7,.08);if(world.damageWindowTime<=0)world.damageWindow=0;}else world.dps*=Math.pow(.7,dt);
 }
 

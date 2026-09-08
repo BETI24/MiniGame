@@ -19,7 +19,8 @@ export default {
   },
   init:(container,services={})=>{
     let destroyed=false,raf=0,last=performance.now(),w=1,h=1,dpr=1,ro=null;
-    let hotspots=[],mode='title',world=null,run=null,time=0,mouseDown=false;
+    let hotspots=[],mode='title',world=null,run=null,time=0,mouseDown=false,hovered=null;
+    let pointer={x:-999,y:-999};
     const keys=new Set();
     let profile=loadProfile();
 
@@ -37,12 +38,12 @@ export default {
       try{return sanitizeProfile(JSON.parse(localStorage.getItem(GA_CONFIG.saveKey)||'null'))}catch{return defaultProfile()}
     }
     function saveProfile(){try{localStorage.setItem(GA_CONFIG.saveKey,JSON.stringify(profile))}catch{} }
-    function setMode(m){mode=m;root.classList.toggle('ga-menu',m!=='battle');}
+    function setMode(m){mode=m;root.classList.toggle('ga-menu',!['battle','prepare'].includes(m));}
     function refreshPreview(){return buildStats(profile,profile.selectedClass,profile.selectedColor)}
     function newRun(){
       run=createRun(profile);rollStore(run);world=createWorld(run,profile);setMode('prepare');saveProfile();
     }
-    function goFight(){if(!run)return;world=createWorld(run,profile);setMode('battle');ensureAudio();tone(260,.08,.014,'sine');}
+    function goFight(){if(!run)return;world=createWorld(run,profile,world);world.phase='battle';setMode('battle');ensureAudio();tone(260,.08,.014,'sine');}
     function finishBattle(){
       if(!world||!world.ended)return;
       if(world.won){
@@ -50,7 +51,7 @@ export default {
         if(runComplete(run)){
           finalizeRun(run,profile);saveProfile();world=null;setMode('endComplete');tone(720,.22,.02,'triangle');
         }else{
-          world=createWorld(run,profile);setMode('prepare');tone(540,.12,.014,'triangle');
+          world=createWorld(run,profile,world);setMode('prepare');tone(540,.12,.014,'triangle');
         }
       }else{
         finalizeRun(run,profile);saveProfile();world=null;setMode('end');tone(90,.35,.018,'sawtooth');
@@ -72,19 +73,19 @@ export default {
 
     function render(){
       ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
-      const common={time,profile,run,world,mode,previewStats:refreshPreview()};
+      const common={time,profile,run,world,mode,previewStats:refreshPreview(),hovered};
       if(mode==='title')hotspots=renderTitle(ctx,w,h,common);
       else if(mode==='loadout')hotspots=renderLoadout(ctx,w,h,common);
       else if(mode==='settings')hotspots=renderSettings(ctx,w,h,common);
       else if(mode==='manual')hotspots=renderSimpleInfo(ctx,w,h,common,'Manual',[
         'Move: WASD or Arrow Keys    ·    Aim: Mouse',
         'Shoot: Left Mouse Button    ·    Skill: Right Mouse Button / Space',
-        'Auto Fire: F    ·    Store: Q    ·    Challenge: E    ·    Fight: G',
+        'Auto Fire: F (auto-targets nearest enemy)    ·    Store: Q    ·    Challenge: E    ·    Fight: G',
         'Destroy hostile projectiles, collect fragments, and combine upgrades into absurd builds.',
         'Normal Mode: 4 big levels, each containing 5 small levels.'
       ]);
-      else if(mode==='updates')hotspots=renderSimpleInfo(ctx,w,h,common,'Prototype v0.1',[
-        'First browser version: 12 class slots, 12 colors, talents, 30 upgrade effects, difficulty ladder.',
+      else if(mode==='updates')hotspots=renderSimpleInfo(ctx,w,h,common,'Browser V2',[
+        'V2: playable prepare phase, clickable/hotkey store, finite clear-based waves, auto-fire targeting, responsive HUD.',
         'Normal Mode structure, bosses, elites, destructible enemy bullets and escalating particle effects are playable.',
         'More exact class modules, runes, enemies, upgrades and UI details will be added in later versions.'
       ]);
@@ -112,7 +113,7 @@ export default {
     }}
     function frame(now){
       if(destroyed)return;const dt=Math.min(.05,(now-last)/1000||0);last=now;time+=dt;
-      if(mode==='battle'&&world&&!world.ended){world.mouse.down=mouseDown;updateWorld(world,dt,inputState());if(world.ended)finishBattle();}
+      if((mode==='battle'||mode==='prepare')&&world&&!world.ended){world.mouse.down=mouseDown;updateWorld(world,dt,inputState(),mode);if(mode==='battle'&&world.ended)finishBattle();}
       render();raf=requestAnimationFrame(frame);
     }
 
@@ -120,7 +121,7 @@ export default {
     function updateAim(p){
       if(!world)return;const lay=arenaLayout(w,h);world.mouse.x=(p.x-lay.ax)/lay.arena*1000;world.mouse.y=(p.y-lay.ay)/lay.arena*1000;
     }
-    function hit(p){return hotspots.find(b=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h);}
+    function hit(p){return hotspots.findLast?hotspots.findLast(b=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h):[...hotspots].reverse().find(b=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h);}
 
     function action(a,value){
       ensureAudio();
@@ -147,28 +148,31 @@ export default {
         case 'playAgain':setMode('loadout');break;
         case 'light':profile.settings.light=value;saveProfile();break;
         case 'toggleShake':profile.settings.screenShake=!profile.settings.screenShake;saveProfile();break;
+        case 'toggleAutoFire':profile.settings.autoFire=!profile.settings.autoFire;saveProfile();tone(profile.settings.autoFire?700:250,.05,.008);break;
       }
     }
 
-    function onPointerMove(ev){const p=localPos(ev);updateAim(p);}
+    function onPointerMove(ev){const p=localPos(ev);pointer=p;updateAim(p);const b=hit(p);hovered=b?{action:b.action,value:b.value,hoverKind:b.hoverKind,hoverValue:b.hoverValue}:null;}
     function onPointerDown(ev){
-      const p=localPos(ev);const b=hit(p);if(b){action(b.action,b.value);return;}
-      if(mode==='battle'&&world){updateAim(p);if(ev.button===2){useSkill(world);tone(220,.05,.01,'square')}else{mouseDown=true;world.mouse.down=true;firePlayer(world,true);}}
+      const p=localPos(ev);pointer=p;const b=hit(p);if(b&&b.action){action(b.action,b.value);return;}
+      if((mode==='battle'||mode==='prepare')&&world){updateAim(p);if(ev.button===2){useSkill(world);tone(220,.05,.01,'square')}else{mouseDown=true;world.mouse.down=true;firePlayer(world,true);}}
     }
     function onPointerUp(){mouseDown=false;if(world)world.mouse.down=false;}
-    function onContext(ev){if(mode==='battle'){ev.preventDefault();const p=localPos(ev);updateAim(p);useSkill(world);}}
+    function onContext(ev){if(mode==='battle'||mode==='prepare'){ev.preventDefault();const p=localPos(ev);updateAim(p);useSkill(world);}}
 
     function onKeyDown(ev){
       if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(ev.code))ev.preventDefault();keys.add(ev.code);
       if(ev.repeat&&!["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(ev.code))return;
-      if(mode==='battle'&&world){
+      if((mode==='battle'||mode==='prepare')&&world){
         if(ev.code==='Space')useSkill(world);
-        if(ev.code==='KeyF'){profile.settings.autoFire=!profile.settings.autoFire;saveProfile();tone(profile.settings.autoFire?700:250,.05,.008);}
-        if(ev.code==='Escape'){profile.settings.autoFire=false;saveProfile();}
+        if(ev.code==='KeyF')action('toggleAutoFire');
+        if(mode==='prepare'){
+          if(ev.code==='KeyQ')action('store');else if(ev.code==='KeyE')action('challenge');else if(ev.code==='KeyG')action('goFight');else if(ev.code==='Escape')setMode('loadout');
+        }
       }else if(mode==='prepare'){
         if(ev.code==='KeyQ')action('store');else if(ev.code==='KeyE')action('challenge');else if(ev.code==='KeyG')action('goFight');else if(ev.code==='Escape')setMode('loadout');
       }else if(mode==='store'){
-        if(ev.code==='KeyQ'||ev.code==='Escape')action('closeOverlay');else if(ev.code==='KeyR')action('reroll');else if(['Digit1','Digit2','Digit3'].includes(ev.code))action('buyUpgrade',Number(ev.code.slice(-1))-1);
+        if(ev.code==='KeyQ'||ev.code==='Escape')action('closeOverlay');else if(ev.code==='KeyR')action('reroll');else if(['Digit1','Digit2','Digit3','Numpad1','Numpad2','Numpad3'].includes(ev.code))action('buyUpgrade',Number(ev.code.slice(-1))-1);
       }else if(mode==='challenge'){
         if(ev.code==='KeyE'||ev.code==='Escape')action('closeOverlay');else if(ev.code==='KeyR')action('raiseDifficulty');
       }else if(['manual','updates','credits','leaderboard','settings'].includes(mode)&&ev.code==='Escape')setMode('title');

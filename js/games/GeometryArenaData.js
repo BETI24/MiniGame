@@ -4,7 +4,9 @@ export const GA_CONFIG = {
   prepareTitle: 'Prepare Phase',
   saveKey: 'nexus.geometryArena.v1',
   lightDefault: 4,
-  maxParticles: 2400,
+  maxParticles: 1900,
+  maxPlayerBullets: 1800,
+  maxEnemyBullets: 900,
 };
 
 export const CLASSES = [

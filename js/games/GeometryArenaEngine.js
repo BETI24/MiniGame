@@ -10,7 +10,7 @@ const angDiff=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
 
 export function defaultProfile(){
   return {
-    totalStars:0, lifetimeStars:0, fragments:0, geometryCoins:0, selectedClass:'soldier', selectedColor:'coral', difficulty:'E',
+    totalStars:0, lifetimeStars:0, fragments:0, geometryCoins:0, selectedClass:'soldier', selectedColor:'coral', difficulty:'F',
     classProficiency:Object.fromEntries(CLASSES.map(c=>[c.id,0])),
     talents:Object.fromEntries(CLASSES.map(c=>[c.id,Object.fromEntries(TALENTS.map(t=>[t.id,0]))])),
     settings:{light:4,screenShake:true,autoFire:false}, games:0, bestStage:'1-1', lifetimeKills:0,
@@ -25,7 +25,7 @@ export function sanitizeProfile(raw){
   p.settings={...d.settings,...(raw?.settings||{})};
   if(!CLASSES.some(c=>c.id===p.selectedClass))p.selectedClass='soldier';
   if(!COLORS.some(c=>c.id===p.selectedColor))p.selectedColor='coral';
-  if(!DIFFICULTIES.some(dif=>dif.id===p.difficulty))p.difficulty='E';
+  if(!DIFFICULTIES.some(dif=>dif.id===p.difficulty))p.difficulty='F';
   return p;
 }
 
@@ -44,7 +44,7 @@ export function buildStats(profile,classId,colorId){
   const s={
     hpMax:b.hp,hp:b.hp,move:b.move,fireRate:b.fireRate,damage:b.damage,bulletSpeed:b.bulletSpeed,range:b.range,
     bodySize:b.bodySize,bulletSize:b.bulletSize,crit:b.crit,critEffect:b.critEffect,accuracy:b.accuracy,recoil:b.recoil,knockback:b.knockback,
-    projectiles:1,spread:0,pierce:0,homing:0,ricochet:0,split:0,pickup:55,starGain:1,explosive:0,
+    projectiles:1,spread:0,pierce:0,homing:0,ricochet:0,split:0,pickup:130,starGain:1,explosive:0,
   };
   for(const [k,v] of Object.entries(col.mods||{})){
     if(k==='hp'){s.hpMax*=v;s.hp*=v}else if(k in s)s[k]*=v;else s[k]=v;
@@ -59,7 +59,7 @@ export function buildStats(profile,classId,colorId){
 export function createRun(profile){
   const classId=profile.selectedClass,colorId=profile.selectedColor;
   return {
-    classId,colorId,stageMajor:1,stageMinor:1,difficultyId:profile.difficulty,
+    classId,colorId,stageMajor:1,stageMinor:1,difficultyId:'F',
     stats:buildStats(profile,classId,colorId), upgrades:[], stars:0, earnedStars:0, fragments:18, geometryCoins:0,
     rerollCost:0,storeRoll:[],score:0,kills:0,eliteKills:0,bossKills:0,wonStages:0,shotCounter:0,
     amuletUsed:false,alive:true,storeMessage:'18 starting fragments',storeMessageTime:2.5,
@@ -120,12 +120,12 @@ export function createWorld(run,profile,previous=null){
   const startX=previous?.player?.x??500,startY=previous?.player?.y??520;
   const world={
     run,profile,classDef:c,colorDef:col,diff:d,time:0,battleTime:0,phase:'prepare',
-    spawnTimer:.35,enemySerial:0,waveTarget,spawnedEnemies:0,spawnComplete:false,victoryDelay:0,bossStage,
+    spawnTimer:.5,enemySerial:0,waveTarget,spawnedEnemies:0,spawnComplete:false,victoryDelay:0,bossStage,
     concurrentCap:Math.max(4,Math.min(24,5+diffIndex*2+run.stageMajor+Math.floor(run.stageMinor/2))),
     player:{x:startX,y:startY,vx:0,vy:0,angle:previous?.player?.angle??-Math.PI/2,radius:16*run.stats.bodySize,fireCd:0,skillCd:0,skillActive:0,hitFlash:0,invuln:0,spin:previous?.player?.spin??0,tornadoCharge:0},
-    enemies:[],bullets:[],enemyBullets:[],pickups:[],minions:[],mines:[],particles:[],lines:[],rings:[],texts:[],
+    enemies:[],spawnWarnings:[],bullets:[],enemyBullets:[],pickups:[],minions:[],mines:[],particles:[],lines:[],rings:[],texts:[],
     mouse:{x:previous?.mouse?.x??500,y:previous?.mouse?.y??350,down:false},keys:new Set(),ended:false,won:false,spawnBoss:false,boss:null,shake:0,flash:0,flashColor:'#fff',fxDensity:clamp((profile.settings.light||4)/3,0.45,1.65),
-    performanceScale:1,stableFrames:0,damageWindow:0,damageWindowTime:0,dps:0,stageStars:0,stageFragments:0,stageCoins:0,killsAtStart:run.kills,
+    performanceScale:1,stableFrames:0,damageWindow:0,damageWindowTime:0,dps:0,stageStars:0,stageFragments:0,stageCoins:0,killsAtStart:run.kills,clearRewarded:false,bossWarningQueued:false,
   };
   if(c.id==='summoner')for(let i=0;i<2;i++)spawnMinion(world,true);
   if(c.id==='swordmaster')for(let i=0;i<2;i++)spawnMinion(world,true,'blade');
@@ -137,15 +137,29 @@ function spawnMinion(world,permanent=false,type='drone'){
 }
 
 function enemyScale(world){return 1+(world.run.stageMajor-1)*.48+(world.run.stageMinor-1)*.12;}
-function spawnPoint(){const side=(Math.random()*4)|0,m=45;return side===0?{x:rand(m,955),y:m}:side===1?{x:955,y:rand(m,955)}:side===2?{x:rand(m,955),y:955}:{x:m,y:rand(m,955)};}
-function chooseEnemyType(world){const max=Math.min(ENEMY_TYPES.length,2+world.run.stageMajor+Math.floor(world.run.stageMinor/2));return ENEMY_TYPES[(Math.random()*max)|0];}
-function spawnEnemy(world,forceElite=false){
-  const t=chooseEnemyType(world),p=spawnPoint(),scale=enemyScale(world),elite=forceElite||Math.random()<world.diff.elite;
-  const e={id:++world.enemySerial,type:t.id,shape:t.shape,x:p.x,y:p.y,vx:0,vy:0,radius:t.radius*(elite?1.32:1),hp:t.hp*scale*world.diff.hp*(elite?4.2:1),maxHp:0,speed:t.speed*world.diff.speed*(elite?.85:1),score:t.score,contact:t.contact*world.diff.damage*(elite?1.6:1),shootCd:t.shoot?rand(.4,1.5):999,shootRate:t.shoot?Math.max(.34,1.65-t.shoot):999,color:t.color,elite,rot:rand(0,6.28),spin:rand(-2,2),hit:0,dead:false};e.maxHp=e.hp;world.enemies.push(e);return e;
+function spawnPoint(world){
+  const m=45,p=world.player;let point=null;
+  // Keep telegraphed spawns away from the player when possible so the warning is actionable.
+  for(let tries=0;tries<8;tries++){
+    const side=(Math.random()*4)|0;
+    point=side===0?{x:rand(m,955),y:m,side}:side===1?{x:955,y:rand(m,955),side}:side===2?{x:rand(m,955),y:955,side}:{x:m,y:rand(m,955),side};
+    if(!p||Math.hypot(point.x-p.x,point.y-p.y)>190)break;
+  }
+  return point;
 }
-function spawnBoss(world){
-  const p={x:500,y:130};const scale=enemyScale(world)*world.diff.hp;
-  const b={id:++world.enemySerial,type:'boss',shape:'boss',x:p.x,y:p.y,vx:0,vy:0,radius:62+world.run.stageMajor*4,hp:(1100+world.run.stageMajor*780)*scale,maxHp:0,speed:38*world.diff.speed,score:400,contact:4*world.diff.damage,shootCd:.6,shootRate:.85,color:world.colorDef.hex,elite:true,boss:true,rot:0,spin:.7,hit:0,dead:false,phase:0};b.maxHp=b.hp;world.enemies.push(b);world.boss=b;world.spawnBoss=true;ringFx(world,b.x,b.y,b.color,15,210,.8,5);return b;
+function chooseEnemyType(world){const max=Math.min(ENEMY_TYPES.length,2+world.run.stageMajor+Math.floor(world.run.stageMinor/2));return ENEMY_TYPES[(Math.random()*max)|0];}
+function queueSpawnWarning(world,{boss=false,forceElite=false}={}){
+  const t=boss?null:chooseEnemyType(world),p=boss?{x:500,y:130,side:0}:spawnPoint(world),elite=boss||forceElite||Math.random()<world.diff.elite;
+  const duration=boss?1.35:clamp(.9-Math.max(0,difficultyIndex(world.run.difficultyId))*.035,.58,.9);
+  world.spawnWarnings.push({x:p.x,y:p.y,side:p.side??0,time:duration,maxTime:duration,type:t?.id||'boss',shape:t?.shape||'boss',elite,boss,color:boss?world.colorDef.hex:t.color});
+}
+function spawnEnemyAt(world,w){
+  const t=ENEMY_TYPES.find(x=>x.id===w.type)||chooseEnemyType(world),scale=enemyScale(world),elite=!!w.elite;
+  const e={id:++world.enemySerial,type:t.id,shape:t.shape,x:w.x,y:w.y,vx:0,vy:0,radius:t.radius*(elite?1.32:1),hp:t.hp*scale*world.diff.hp*(elite?4.2:1),maxHp:0,speed:t.speed*world.diff.speed*(elite?.85:1),score:t.score,contact:t.contact*world.diff.damage*(elite?1.6:1),shootCd:t.shoot?rand(.4,1.5):999,shootRate:t.shoot?Math.max(.34,1.65-t.shoot):999,color:t.color,elite,rot:rand(0,6.28),spin:rand(-2,2),hit:0,dead:false,spawnGlow:.22};e.maxHp=e.hp;world.enemies.push(e);ringFx(world,e.x,e.y,e.color,5,95,.25,2);return e;
+}
+function spawnBossAt(world,w){
+  const scale=enemyScale(world)*world.diff.hp;
+  const b={id:++world.enemySerial,type:'boss',shape:'boss',x:w.x,y:w.y,vx:0,vy:0,radius:62+world.run.stageMajor*4,hp:(1100+world.run.stageMajor*780)*scale,maxHp:0,speed:38*world.diff.speed,score:400,contact:4*world.diff.damage,shootCd:.6,shootRate:.85,color:world.colorDef.hex,elite:true,boss:true,rot:0,spin:.7,hit:0,dead:false,phase:0,spawnGlow:.35};b.maxHp=b.hp;world.enemies.push(b);world.boss=b;world.spawnBoss=true;ringFx(world,b.x,b.y,b.color,15,210,.8,5);return b;
 }
 
 function shootEnemy(world,e){
@@ -220,7 +234,13 @@ function killEnemy(world,e){
   const star=Math.max(1,Math.round(e.score*d.star*(s.starGain||1)*(e.elite?2.2:1)*(e.boss?5:1)));
   world.run.stars+=star;world.run.earnedStars+=star;world.run.score+=star*10;world.stageStars+=star;world.run.kills++;if(e.elite)world.run.eliteKills++;if(e.boss)world.run.bossKills++;
   textFx(world,e.x,e.y-8,`+${star} ★`,'#fff',16);particle(world,e.x,e.y,e.color,e.boss?90:e.elite?35:15,e.boss?300:180,e.boss?7:4,e.boss?.9:.5,'poly');ringFx(world,e.x,e.y,e.color,e.radius*.3,e.boss?320:180,e.boss?.8:.4,e.boss?8:3);
-  const fragChance=e.boss?1:e.elite?.8:.17;if(Math.random()<fragChance){const n=e.boss?8+world.run.stageMajor*2:e.elite?rand(2,5)|0:1;for(let i=0;i<n;i++)world.pickups.push({x:e.x+rand(-15,15),y:e.y+rand(-15,15),vx:rand(-60,60),vy:rand(-60,60),r:6,type:'fragment',value:1,life:12});}
+  // Fragments are the run's build currency, so ordinary kills should feed the store frequently.
+  const fragmentMul=world.diff.fragment||1;
+  const fragChance=e.boss?1:e.elite?.98:clamp(.72*fragmentMul,.66,.96);
+  if(Math.random()<fragChance){
+    const n=e.boss?12+world.run.stageMajor*3:e.elite?(rand(3,6)|0):1+(Math.random()<.16*fragmentMul?1:0);
+    for(let i=0;i<n;i++)world.pickups.push({x:e.x+rand(-15,15),y:e.y+rand(-15,15),vx:rand(-70,70),vy:rand(-70,70),r:6,type:'fragment',value:1,life:14});
+  }
   if(Math.random()<(e.boss?.35:.008)){world.pickups.push({x:e.x,y:e.y,vx:0,vy:0,r:8,type:'coin',value:1,life:15});}
   if(s.burstKill)explosion(world,e.x,e.y,95,s.damage*2.8,'#ffac61');
   if(s.chainKill&&Math.random()<s.chainKill)explosion(world,e.x,e.y,70,s.damage*1.7,world.colorDef.hex);
@@ -313,8 +333,15 @@ function updateEnemyBullets(world,dt){
 }
 
 function updatePickups(world,dt){
-  const p=world.player,s=world.run.stats,pr=s.pickup||55;
-  for(const a of world.pickups){a.life-=dt;a.vx*=Math.pow(.2,dt);a.vy*=Math.pow(.2,dt);const dx=p.x-a.x,dy=p.y-a.y,d=Math.hypot(dx,dy);if(d<pr){const k=clamp(1-d/pr,0,1);a.vx+=dx/(d||1)*dt*800*k;a.vy+=dy/(d||1)*dt*800*k;}a.x+=a.vx*dt;a.y+=a.vy*dt;
+  const p=world.player,s=world.run.stats,basePr=s.pickup||130;
+  for(const a of world.pickups){
+    a.life-=dt;a.age=(a.age||0)+dt;a.vx*=Math.pow(.2,dt);a.vy*=Math.pow(.2,dt);
+    const dx=p.x-a.x,dy=p.y-a.y,d=Math.hypot(dx,dy);
+    // Fragments drift for a moment, then stream toward the player. This keeps the economy reliable
+    // without removing the satisfying on-field pickup visual.
+    const pr=a.type==='fragment'&&a.age>.45?Math.max(basePr,1150):basePr;
+    if(d<pr){const k=clamp(1-d/pr,0,1);const accel=a.type==='fragment'&&a.age>.45?1450:800;a.vx+=dx/(d||1)*dt*accel*(.3+.7*k);a.vy+=dy/(d||1)*dt*accel*(.3+.7*k);}
+    a.x+=a.vx*dt;a.y+=a.vy*dt;
     if(d<p.radius+a.r+4){a.dead=true;if(a.type==='fragment'){world.run.fragments+=a.value;world.stageFragments+=a.value;textFx(world,p.x,p.y-22,`+${a.value}`,'#fff',14)}else{world.run.geometryCoins+=a.value;world.stageCoins+=a.value;textFx(world,p.x,p.y-22,'GEOMETRY COIN!','#eaff8c',16)}}
   }
   world.pickups=world.pickups.filter(a=>!a.dead&&a.life>0);
@@ -331,21 +358,40 @@ function updateFx(world,dt){
 
 function spawnLogic(world,dt){
   const bossStage=world.bossStage;
-  if(bossStage&&!world.spawnBoss&&world.time>.9)spawnBoss(world);
+
+  // Telegraph every spawn before it becomes dangerous.
+  for(const w of world.spawnWarnings)w.time-=dt;
+  for(const w of world.spawnWarnings){
+    if(w.time<=0&&!w.done){w.done=true;if(w.boss)spawnBossAt(world,w);else spawnEnemyAt(world,w);}
+  }
+  world.spawnWarnings=world.spawnWarnings.filter(w=>!w.done);
+
+  if(bossStage&&!world.spawnBoss&&!world.bossWarningQueued&&world.time>.55){world.bossWarningQueued=true;queueSpawnWarning(world,{boss:true});}
+
   world.spawnTimer-=dt;
   const regularTarget=world.waveTarget;
-  if(world.spawnedEnemies<regularTarget&&world.enemies.length<world.concurrentCap&&world.spawnTimer<=0){
-    const diffBoost=1+Math.max(0,DIFFICULTIES.findIndex(x=>x.id===world.run.difficultyId))*.08;
-    const interval=Math.max(.16,.66/diffBoost/(1+world.run.stageMajor*.06));
-    world.spawnTimer=rand(interval*.72,interval*1.22);
+  const occupied=world.enemies.length+world.spawnWarnings.filter(w=>!w.boss).length;
+  if(world.spawnedEnemies<regularTarget&&occupied<world.concurrentCap&&world.spawnTimer<=0){
+    const diffBoost=1+Math.max(0,difficultyIndex(world.run.difficultyId))*.08;
+    const interval=Math.max(.18,.78/diffBoost/(1+world.run.stageMajor*.055));
+    world.spawnTimer=rand(interval*.82,interval*1.22);
     let n=1;
-    if(world.diff.enemyCount>1.8&&Math.random()<.28)n=2;
-    for(let i=0;i<n&&world.spawnedEnemies<regularTarget&&world.enemies.length<world.concurrentCap;i++){spawnEnemy(world);world.spawnedEnemies++;}
+    if(world.diff.enemyCount>1.8&&Math.random()<.24)n=2;
+    for(let i=0;i<n&&world.spawnedEnemies<regularTarget&&occupied+i<world.concurrentCap;i++){
+      queueSpawnWarning(world);world.spawnedEnemies++;
+    }
   }
   world.spawnComplete=world.spawnedEnemies>=regularTarget;
   if(world.boss?.dead)world.boss=null;
-  const combatDone=world.spawnComplete&&world.enemies.length===0&&(!bossStage||world.spawnBoss&&!world.boss);
-  if(combatDone){world.victoryDelay+=dt;world.enemyBullets.length=0;if(world.victoryDelay>.65){world.ended=true;world.won=true;}}else world.victoryDelay=0;
+  const combatDone=world.spawnComplete&&world.enemies.length===0&&world.spawnWarnings.length===0&&(!bossStage||world.spawnBoss&&!world.boss);
+  if(combatDone){
+    if(!world.clearRewarded){
+      world.clearRewarded=true;
+      const bonus=2+world.run.stageMinor+Math.floor((world.run.stageMajor-1)/2)+Math.floor(difficultyIndex(world.run.difficultyId)/2);
+      world.run.fragments+=bonus;world.stageFragments+=bonus;textFx(world,world.player.x,world.player.y-48,`WAVE CLEAR  +${bonus} ◧`,'#dfffff',18);
+    }
+    world.victoryDelay+=dt;world.enemyBullets.length=0;if(world.victoryDelay>.85){world.ended=true;world.won=true;}
+  }else world.victoryDelay=0;
 }
 
 export function updateWorld(world,dt,input,phase='battle'){

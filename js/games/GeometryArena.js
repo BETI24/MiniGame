@@ -41,6 +41,8 @@ export default {
     function setMode(m){mode=m;root.classList.toggle('ga-menu',!['battle','prepare'].includes(m));}
     function refreshPreview(){return buildStats(profile,profile.selectedClass,profile.selectedColor)}
     function newRun(){
+      // Challenge is run-local: every fresh run starts from F, regardless of the last run.
+      profile.difficulty='F';
       run=createRun(profile);rollStore(run);world=createWorld(run,profile);setMode('prepare');saveProfile();
     }
     function goFight(){if(!run)return;world=createWorld(run,profile,world);world.phase='battle';setMode('battle');ensureAudio();tone(260,.08,.014,'sine');}
@@ -85,7 +87,7 @@ export default {
         'Normal Mode: 4 big levels, each containing 5 small levels.'
       ]);
       else if(mode==='updates')hotspots=renderSimpleInfo(ctx,w,h,common,'Browser V2',[
-        'V2: playable prepare phase, clickable/hotkey store, finite clear-based waves, auto-fire targeting, responsive HUD.',
+        'V2.1: every run starts at F, richer fragment economy, finite clear-based waves and telegraphed enemy spawns.',
         'Normal Mode structure, bosses, elites, destructible enemy bullets and escalating particle effects are playable.',
         'More exact class modules, runes, enemies, upgrades and UI details will be added in later versions.'
       ]);

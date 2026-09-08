@@ -40,14 +40,16 @@ export const COLORS = [
 ];
 
 export const DIFFICULTIES = [
-  {id:'E',label:'E',enemyCount:.72,hp:.9,damage:.62,speed:.92,elite:.025,star:1.0,rare:1.0,epic:.7},
-  {id:'D',label:'D',enemyCount:.95,hp:1.25,damage:.82,speed:.98,elite:.045,star:1.35,rare:1.15,epic:.85},
-  {id:'C',label:'C',enemyCount:1.4,hp:2.0,damage:1.22,speed:1.08,elite:.08,star:1.7,rare:1.3,epic:1.0},
-  {id:'B',label:'B',enemyCount:1.6,hp:3.0,damage:1.35,speed:1.12,elite:.12,star:2.15,rare:1.5,epic:1.25},
-  {id:'A',label:'A',enemyCount:1.9,hp:4.5,damage:1.5,speed:1.18,elite:.17,star:2.8,rare:1.8,epic:1.55},
-  {id:'S',label:'S',enemyCount:2.2,hp:6.5,damage:1.7,speed:1.24,elite:.22,star:3.7,rare:2.1,epic:1.9},
-  {id:'MAX',label:'MAX',enemyCount:2.6,hp:9.5,damage:1.95,speed:1.3,elite:.30,star:5.0,rare:2.6,epic:2.4},
-  {id:'MAX+1',label:'MAX+1',enemyCount:3.0,hp:14,damage:2.2,speed:1.36,elite:.38,star:6.8,rare:3.1,epic:3.0},
+  // Every run begins at F. Higher challenges increase danger, rewards and fragment income.
+  {id:'F',label:'F',enemyCount:.58,hp:.72,damage:.52,speed:.88,elite:.015,star:.85,fragment:1.00,rare:.90,epic:.58},
+  {id:'E',label:'E',enemyCount:.72,hp:.9,damage:.62,speed:.92,elite:.025,star:1.0,fragment:1.12,rare:1.0,epic:.7},
+  {id:'D',label:'D',enemyCount:.95,hp:1.25,damage:.82,speed:.98,elite:.045,star:1.35,fragment:1.25,rare:1.15,epic:.85},
+  {id:'C',label:'C',enemyCount:1.4,hp:2.0,damage:1.22,speed:1.08,elite:.08,star:1.7,fragment:1.42,rare:1.3,epic:1.0},
+  {id:'B',label:'B',enemyCount:1.6,hp:3.0,damage:1.35,speed:1.12,elite:.12,star:2.15,fragment:1.60,rare:1.5,epic:1.25},
+  {id:'A',label:'A',enemyCount:1.9,hp:4.5,damage:1.5,speed:1.18,elite:.17,star:2.8,fragment:1.82,rare:1.8,epic:1.55},
+  {id:'S',label:'S',enemyCount:2.2,hp:6.5,damage:1.7,speed:1.24,elite:.22,star:3.7,fragment:2.10,rare:2.1,epic:1.9},
+  {id:'MAX',label:'MAX',enemyCount:2.6,hp:9.5,damage:1.95,speed:1.3,elite:.30,star:5.0,fragment:2.45,rare:2.6,epic:2.4},
+  {id:'MAX+1',label:'MAX+1',enemyCount:3.0,hp:14,damage:2.2,speed:1.36,elite:.38,star:6.8,fragment:2.85,rare:3.1,epic:3.0},
 ];
 
 export const UPGRADE_RARITIES = {
